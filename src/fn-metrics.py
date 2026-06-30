@@ -15,6 +15,7 @@ from opers.operation_if_less import DirectiveOperationIfLess
 from opers.operation_if_equal import DirectiveOperationIfEqual
 from opers.operation_if_notequal import DirectiveOperationIfNotequal
 from opers.operation_fill_empty import DirectiveOperationFillEmpty
+from opers.operation_math import DirectiveOperationMath
 
 def setup_parser():
   parser = OperationParser()
@@ -30,6 +31,7 @@ def setup_parser():
   parser.add_operation('if-equal', DirectiveOperationIfEqual())
   parser.add_operation('if-notequal', DirectiveOperationIfNotequal())
   parser.add_operation('fill-empty', DirectiveOperationFillEmpty())
+  parser.add_operation('math', DirectiveOperationMath())
   return parser
 
 def main():

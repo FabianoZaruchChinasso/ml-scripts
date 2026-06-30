@@ -54,9 +54,9 @@ class OperationParser:
     op_obj = self.operations[op_name]
     
     # Check if columns exist (except for rename where they might be about to change, 
-    # but we still need the old ones to exist)
+    # but we still need the old ones to exist; and math which creates new columns)
     missing_cols = [c for c in columns if c not in df.columns]
-    if missing_cols and op_name != 'rename':
+    if missing_cols and op_name not in ['rename', 'math']:
       logging.warning(f"Columns {missing_cols} not found in dataset. Skipping directive '{directive_name}'.")
       self.skipped_any = True
       return df

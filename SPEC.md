@@ -23,6 +23,7 @@ The following operations are possible:
 - subst-same: convert a string to a number. When collumn value matches the first operation value (string), it is replaced by the second value (typically 1). Otherwise, it is replaced by the third value (typically 0).
 - subst-contains: similar to subst-same, but performs a substring match.
 - fill-empty: fill empty (NaN) values in a column or list of columns with a specified value. If no value is provided, it defaults to 0.
+- math: add a new column or a list of new columns to the dataset. The values are calculated according to one or more arithmetic formulas provided in the `values` field (separated by commas if multiple). Formulas support standard operators (`+`, `-`, `*`, `/`), parentheses for precedence, power operator (`**`), and advanced mathematical functions (e.g., `log`, `sqrt`, `exp`, `sin`, `cos`). Formulas can reference existing columns by name or use constants.
 
 ## 2. Directory Structure
 
@@ -40,7 +41,7 @@ The script for filter and normalize metrics is divided in following classes:
 - **DirectiveOperationItf**: it is an interface class which has interface functions:
   - *DoOperation*, which receives the following parameter: the dataset and an optional row mask.
   - *SetValues*, which receives the operation values.
-- **DirectiveOperation<name>**: specific directive operation classes (e.g., `DirectiveOperationDrop`, `DirectiveOperationScale`), derived from DirectiveOperationItf.
+- **DirectiveOperation<name>**: specific directive operation classes (e.g., `DirectiveOperationDrop`, `DirectiveOperationScale`, `DirectiveOperationMath`), derived from DirectiveOperationItf.
 - **OperationParser**: responsible to register all operation in a map.
   - *AddOperation*: adds a mapping from operation name to object.
   - *Parse*: parses the directive line, logs the action, and calls the appropriate operation. It handles the 'if-else' logic by managing the active mask passed to DoOperation.
