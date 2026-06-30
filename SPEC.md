@@ -24,6 +24,9 @@ The following operations are possible:
 - subst-contains: similar to subst-same, but performs a substring match.
 - fill-empty: fill empty (NaN) values in a column or list of columns with a specified value. If no value is provided, it defaults to 0.
 - math: add a new column or a list of new columns to the dataset. The values are calculated according to one or more arithmetic formulas provided in the `values` field (separated by commas if multiple). Formulas support standard operators (`+`, `-`, `*`, `/`), parentheses for precedence, power operator (`**`), and advanced mathematical functions (e.g., `log`, `sqrt`, `exp`, `sin`, `cos`). Formulas can reference existing columns by name or use constants.
+- suppress-eq: suppress (remove) rows from the dataset when a column's value is equal to the specified operation value.
+- suppress-ne: suppress (remove) rows from the dataset when a column's value is not equal to the specified operation value.
+
 
 ## 2. Directory Structure
 
