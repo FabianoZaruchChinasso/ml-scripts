@@ -32,10 +32,14 @@ The following operations are possible:
 
 ## 3. Architecture
 The collection scripts ('get') are three:
-1. get-metrics: collect metrics from InfluxDB. Parameters: `-o` (output file), `-s` (start time), `-e` (end time), `-u` (server URL), `-r` (org), `-b` (bucket). The Influx DB token MUST be provided via the `INFLUXDB_TOKEN` environment variable; the script will validate its presence.
+1. get-metrics: collect metrics from InfluxDB. Parameters: `-o` (output file), `-s` (start time), `-e` (end time), `-u` (server URL), `-r` (org), `-b` (bucket). The Influx DB token MUST be provided via the `INFLUXDB_TOKEN` environment variable; the script will validate its presence. In addition to standard fields, it calculates two new features:
+   - `router_opportunity_medium_use`: calculated by parsing the `router_site_survey_ap` map and counting neighbors using the same frequency.
+   - `client_opportunity_medium_use`: calculated by parsing the `site_survey_client` map and counting neighbors using the same frequency.
+   The raw JSON map fields are excluded from the output dataset.
 2. get-router: get route site survey, which contains the client list metrics, each client metric is in a map. 
 3. get-client: get client site survey, which contains the AP list metrics, each AP metric is in a map.
 The scripts receive as parameters the output CSV file, the start and stop time to collect metrics and the influxdb address. The Influx DB token is an environment variable.
+
 
 The script for filter and normalize metrics is divided in following classes:
 - **DirectiveOperationItf**: it is an interface class which has interface functions:
