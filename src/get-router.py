@@ -49,6 +49,7 @@ def main():
     r["_field"] == "router_site_survey_ap" or 
     r["_field"] == "site_survey_client",
     )
+    |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
     """
             tables = client.query_api().query(query, org=org)
             #print(tables)
@@ -56,24 +57,19 @@ def main():
                 #print(table)
                 for record in table.records:
                     print(record)
-                    if record["_field"] == "AP_channel":
-                        if not record["_value"]:
-                            continue
-                        channel = record["_value"]
-                        ch_map = channels_24g
-                        try:
-                            if record["radio"] == '5ghz':
-                                ch_map = channels_5g
-                        except:
-                            print(record)
+                    row_data = record.values
+                    channel_val = row_data.get("AP_channel")
+                    if channel_val is not None:
+                        channel = int(float(channel_val))
                         radio = row_data.get("radio")
                         ch_map = channels_5g if radio == '5ghz' else channels_24g
                         print(f"=======> Channel {channel}")
-                    if record["_field"] == "router_site_survey_ap":
+                    router_survey = row_data.get("router_site_survey_ap")
+                    if router_survey:
                         router_medium_contention = 0
                         found = None
                         #print(record["_value"])
-                        real_v = json.loads(record["_value"])
+                        real_v = json.loads(router_survey)
                         for v in real_v:
                             #print(v)
                             if v["freq_mhz"] == ch_map[channel]:
@@ -84,11 +80,12 @@ def main():
                             #print(found)
                         else:
                             print("*****************************************************************")
-                    if record["_field"] == "site_survey_client":
+                    client_survey = row_data.get("site_survey_client")
+                    if client_survey:
                         client_medion_contention = 0
                         found = None
                         #print(record["_value"])
-                        real_v = json.loads(record["_value"])
+                        real_v = json.loads(client_survey)
                         for v in real_v:
                             #print(v)
                             if v["frequency"] == ch_map[channel]:
