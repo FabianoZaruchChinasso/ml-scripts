@@ -1,2 +1,12 @@
 influxdb-client
 pandas
+seaborn
+ruptures
+tqdm
+scikit-learn
+pandas
+numpy
+tensorflow
+torch
+matplotlib
+
