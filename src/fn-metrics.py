@@ -15,9 +15,11 @@ from opers.operation_if_less import DirectiveOperationIfLess
 from opers.operation_if_equal import DirectiveOperationIfEqual
 from opers.operation_if_notequal import DirectiveOperationIfNotequal
 from opers.operation_fill_empty import DirectiveOperationFillEmpty
+from opers.operation_fill_last import DirectiveOperationFillLast
 from opers.operation_math import DirectiveOperationMath
 from opers.operation_suppress_eq import DirectiveOperationSuppressEq
 from opers.operation_suppress_ne import DirectiveOperationSuppressNe
+from opers.operation_suppress_empty_pct import DirectiveOperationSuppressEmptyPct
 
 def setup_parser():
   parser = OperationParser()
@@ -33,9 +35,11 @@ def setup_parser():
   parser.add_operation('if-equal', DirectiveOperationIfEqual())
   parser.add_operation('if-notequal', DirectiveOperationIfNotequal())
   parser.add_operation('fill-empty', DirectiveOperationFillEmpty())
+  parser.add_operation('fill-last', DirectiveOperationFillLast())
   parser.add_operation('math', DirectiveOperationMath())
   parser.add_operation('suppress-eq', DirectiveOperationSuppressEq())
   parser.add_operation('suppress-ne', DirectiveOperationSuppressNe())
+  parser.add_operation('suppress-empty-pct', DirectiveOperationSuppressEmptyPct())
   return parser
 
 def main():
