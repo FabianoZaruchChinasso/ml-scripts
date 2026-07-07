@@ -9,4 +9,5 @@ numpy
 tensorflow
 torch
 matplotlib
-
+mlflow
+skops

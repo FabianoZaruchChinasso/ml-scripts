@@ -6,6 +6,8 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
 DS_CSV="data/metrics-20260630-5g-qoe2.csv"
 #DS_CSV="data/metrics-20260630-24g-qoe.csv"
@@ -106,3 +108,11 @@ print(
         ascending=False
     )
 )
+
+# y_true are the actual labels, y_pred are your model's predictions
+cm = confusion_matrix(y_test, y_pred, normalize='true')
+
+# Display the matrix
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=display_labels)
+disp.plot(cmap=plt.cm.Blues)
+plt.show()
