@@ -24,6 +24,7 @@ from opers.operation_if_equal import DirectiveOperationIfEqual
 from opers.operation_if_notequal import DirectiveOperationIfNotequal
 from opers.operation_fill_empty import DirectiveOperationFillEmpty
 from opers.operation_fill_last import DirectiveOperationFillLast
+from opers.operation_math import DirectiveOperationMath
 from opers.operation_suppress_eq import DirectiveOperationSuppressEq
 from opers.operation_suppress_ne import DirectiveOperationSuppressNe
 from opers.operation_suppress_empty_pct import DirectiveOperationSuppressEmptyPct
@@ -49,6 +50,7 @@ class TestFnMetrics(unittest.TestCase):
     parser.add_operation('if-notequal', DirectiveOperationIfNotequal())
     parser.add_operation('fill-empty', DirectiveOperationFillEmpty())
     parser.add_operation('fill-last', DirectiveOperationFillLast())
+    parser.add_operation('math', DirectiveOperationMath())
     parser.add_operation('suppress-eq', DirectiveOperationSuppressEq())
     parser.add_operation('suppress-ne', DirectiveOperationSuppressNe())
     parser.add_operation('suppress-empty-pct', DirectiveOperationSuppressEmptyPct())
@@ -155,16 +157,32 @@ class TestFnMetrics(unittest.TestCase):
     self.assertEqual(df_result.iloc[1]["empty_col"], 99.0)
 
   def test_fill_last(self):
-    line = "fl1; empty_col; fill-last"
-    df_result = self.parser.parse(line, self.df.copy())
-    # Row 0: 1.0
-    # Row 1: empty -> should become 1.0
+    df = self.df.copy()
+    df.loc[df.index[0], "empty_col"] = np.nan
+
+    line = "fl1; empty_col; fill-last; 99"
+    df_result = self.parser.parse(line, df)
+    # Row 0: empty -> should become default 99
+    # Row 1: empty -> should become default 99
     # Row 2: 3.0
     # Row 3: empty -> should become 3.0
-    self.assertEqual(df_result.iloc[0]["empty_col"], 1.0)
-    self.assertEqual(df_result.iloc[1]["empty_col"], 1.0)
+    self.assertEqual(df_result.iloc[0]["empty_col"], 99.0)
+    self.assertEqual(df_result.iloc[1]["empty_col"], 99.0)
     self.assertEqual(df_result.iloc[2]["empty_col"], 3.0)
     self.assertEqual(df_result.iloc[3]["empty_col"], 3.0)
+
+  def test_math_inplace_cell_formula(self):
+    df = pd.DataFrame({
+      "calc": ["1 + 2", "(3 + 4) * 2", "10 / 4", "7 - 5"],
+    })
+
+    line = "m1; calc; math"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["calc"], 3)
+    self.assertEqual(df_result.iloc[1]["calc"], 14)
+    self.assertAlmostEqual(df_result.iloc[2]["calc"], 2.5)
+    self.assertEqual(df_result.iloc[3]["calc"], 2)
 
   def test_suppress_empty_pct(self):
     # Use columns ['empty_col', 'RSSI']
