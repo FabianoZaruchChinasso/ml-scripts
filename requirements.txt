@@ -9,5 +9,6 @@ numpy
 tensorflow
 torch
 matplotlib
+xgboost
 mlflow
 skops

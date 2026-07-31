@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, QuantileTransformer
+from sklearn.model_selection import GroupShuffleSplit
+from xgboost import XGBRegressor
 
 def calculate_accuracy(model, X_test, y_test):
     y_pred=model.predict(X_test)
@@ -15,15 +17,27 @@ def calculate_accuracy(model, X_test, y_test):
     mean_error=pow(mean_squared_error(y_test, y_pred),0.5)
     return score, mean_error
 
+def group_split(df, X, y):
 DS_CSV="data/metrics-20260630-out.csv"
+    gss = GroupShuffleSplit(
+        n_splits=1,
+        test_size=0.3,
+        random_state=42
+    )
+    train_idx, test_idx = next(
+        gss.split(X, y, groups=df['local'])
+    )
+    X_train = X.iloc[train_idx]
+    X_test = X.iloc[test_idx]
+    y_train = y.iloc[train_idx]
+    y_test = y.iloc[test_idx]
+    return X_train, X_test, y_train, y_test
 #DS_CSV="data/metrics-20260630-5g-out.csv"
 
 df = pd.read_csv(DS_CSV, sep=',', header=0)
-regressions = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
+TARGTES = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
 
-for regression in regressions:
 
-    y=df[regression]
     #df=df.drop(columns=['speedtest_down_mbps', 'speedtest_up_mbps', '_time'])
     features=df.columns
     features=["router_expected_throughput_mbps",
@@ -42,17 +56,45 @@ for regression in regressions:
               "client_opportunity_medium_use"]
     X = df[features]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    #X_train, X_test, y_train, y_test = group_split(df, X, y)
 
     scaler = RobustScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    clf = RandomForestRegressor(n_estimators=10)
+    clf = RandomForestRegressor(n_estimators=600)
     history=clf.fit(X_train, y_train)
     model_score = clf.score(X_test, y_test)
     score, mean_error = calculate_accuracy(clf, X_test, y_test)
     print(f"-------------------------------------------------------------")
-    print(f"RandomForestRegressor for {regression}: Score={score}, Mean error={mean_error}")
+    print(f"RandomForestRegressor for {target}: Score={score}, Mean error={mean_error}")
+    print(f"-------------------------------------------------------------")
+
+    xgb = XGBRegressor(
+        n_estimators=1000,
+        learning_rate=0.03,
+        max_depth=6,
+        min_child_weight=3,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_alpha=0.01,
+        reg_lambda=1.0,
+        objective="reg:squarederror",
+        random_state=42
+    )
+
+    xgb.fit(
+        X_train,
+        y_train,
+        eval_set=[(X_test, y_test)],
+        verbose=False
+    )
+
+    y_pred = xgb.predict(X_test)
+    score = xgb.score(X_test, y_test)
+    mean_error=pow(mean_squared_error(y_test, y_pred),0.5)
+    print(f"-------------------------------------------------------------")
+    print(f"XGBRegressor for {target}: Score={score}, Mean error={mean_error}")
     print(f"-------------------------------------------------------------")
 
     from sklearn.tree import DecisionTreeRegressor
