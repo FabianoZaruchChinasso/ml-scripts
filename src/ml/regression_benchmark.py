@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import ExtraTreesRegressor, HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, TimeSeriesSplit, cross_validate
+from sklearn.model_selection import KFold, TimeSeriesSplit, cross_validate, GroupKFold
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
@@ -124,6 +124,7 @@ class SplitData:
   X_test: pd.DataFrame
   y_train: pd.Series
   y_test: pd.Series
+  grp: pd.Series
 
 
 def parse_csv_list(raw: str):
@@ -166,7 +167,7 @@ def train_test_split_time_aware(df: pd.DataFrame, features, target: str, time_co
     y_test=test_df[target],
   )
 
-def group_split(df, features, target, group='local'):
+def group_split(df, features, target, test_size, group='local'):
     #cols=['local','AP_channel','channel_width','radio','distance_m']
     #cols=['distance_m']
     #for c in cols:
@@ -176,7 +177,7 @@ def group_split(df, features, target, group='local'):
     y = df[target]
     gss = GroupShuffleSplit(
         n_splits=1,
-        test_size=0.3,
+        test_size=test_size,
         random_state=42
     )
     train_idx, test_idx = next(
@@ -186,7 +187,8 @@ def group_split(df, features, target, group='local'):
     X_test = X.iloc[test_idx]
     y_train = y.iloc[train_idx]
     y_test = y.iloc[test_idx]
-    return SplitData(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
+    grp = df[group].iloc[train_idx]
+    return SplitData(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test, grp = grp)
 
 
 def train_test_split_random(df: pd.DataFrame, features, target: str, test_size: float, seed: int):
@@ -269,13 +271,22 @@ def evaluate_target(
   seed: int,
 ):
   if use_group_split:
+    print(f"Unique groups: {df[group_column].nunique()}")
     #split = train_test_split_time_aware(df, features, target, time_column, test_size)
     #cv = TimeSeriesSplit(n_splits=cv_folds)
-    split = group_split(df, features, target, group=group_column)
-    cv = KFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+    split = group_split(df, features, target, test_size, group=group_column)
+    n_groups = split.grp.nunique()
+    effective_folds = min(cv_folds, n_groups)
+    if effective_folds < 2:
+        raise ValueError("Need at least 2 groups for GroupKFold")
+    print(f"Train groups: {n_groups}, using {effective_folds} CV folds")
+    cv = GroupKFold(n_splits=effective_folds)
+    groups = split.grp
   else:
     split = train_test_split_random(df, features, target, test_size, seed)
-    cv = KFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+    cv = KFold(n_splits=cv_folds, shuffle=False)#True, random_state=seed)
+    groups = None
+
 
   rows = []
   for name, model in models.items():
@@ -284,6 +295,7 @@ def evaluate_target(
       split.X_train,
       split.y_train,
       cv=cv,
+      groups=groups,
       scoring={
         "r2": "r2",
         "rmse": "neg_root_mean_squared_error",
@@ -311,7 +323,7 @@ def evaluate_target(
       }
     )
 
-  result = pd.DataFrame(rows).sort_values("holdout_r2", ascending=False)
+  result = pd.DataFrame(rows).sort_values("cv_r2_mean", ascending=False)
   return result.reset_index(drop=True)
 
 
