@@ -171,6 +171,48 @@ class TestFnMetrics(unittest.TestCase):
     self.assertEqual(df_result.iloc[2]["empty_col"], 3.0)
     self.assertEqual(df_result.iloc[3]["empty_col"], 3.0)
 
+  def test_fill_last_without_values_legacy_behavior(self):
+    df = pd.DataFrame({
+      "value": [np.nan, 2.0, np.nan],
+    })
+
+    line = "fl_legacy; value; fill-last"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["value"], 0.0)
+    self.assertEqual(df_result.iloc[1]["value"], 2.0)
+    self.assertEqual(df_result.iloc[2]["value"], 2.0)
+
+  def test_fill_last_grouped_by_column_and_name_comma(self):
+    df = pd.DataFrame({
+      "measure_group": ["A", "B", "A", "B", "A"],
+      "value": [np.nan, 50.0, 10.0, np.nan, np.nan],
+    })
+
+    line = "fl_group_1; value; fill-last; measure_group, A"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["value"], 0.0)
+    self.assertEqual(df_result.iloc[1]["value"], 50.0)
+    self.assertEqual(df_result.iloc[2]["value"], 10.0)
+    self.assertTrue(pd.isna(df_result.iloc[3]["value"]))
+    self.assertEqual(df_result.iloc[4]["value"], 10.0)
+
+  def test_fill_last_grouped_by_column_and_name_double_colon(self):
+    df = pd.DataFrame({
+      "measure_group": ["A", "B", "B", "B", "A"],
+      "value": [1.0, np.nan, 5.0, np.nan, np.nan],
+    })
+
+    line = "fl_group_2; value; fill-last; measure_group::B"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["value"], 1.0)
+    self.assertEqual(df_result.iloc[1]["value"], 0.0)
+    self.assertEqual(df_result.iloc[2]["value"], 5.0)
+    self.assertEqual(df_result.iloc[3]["value"], 5.0)
+    self.assertTrue(pd.isna(df_result.iloc[4]["value"]))
+
   def test_math_inplace_cell_formula(self):
     df = pd.DataFrame({
       "calc": ["1 + 2", "(3 + 4) * 2", "10 / 4", "7 - 5"],
