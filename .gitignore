@@ -1,3 +1,4 @@
-src/__pycache__
-src/opers/__pycache__
+__pycache__/
 venv
+.mcp.json
+superpowers/
