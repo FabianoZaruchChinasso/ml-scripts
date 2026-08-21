@@ -24,6 +24,7 @@ from opers.operation_if_equal import DirectiveOperationIfEqual
 from opers.operation_if_notequal import DirectiveOperationIfNotequal
 from opers.operation_fill_empty import DirectiveOperationFillEmpty
 from opers.operation_fill_last import DirectiveOperationFillLast
+from opers.operation_fill_last_auto import DirectiveOperationFillLastAuto
 from opers.operation_math import DirectiveOperationMath
 from opers.operation_suppress_eq import DirectiveOperationSuppressEq
 from opers.operation_suppress_ne import DirectiveOperationSuppressNe
@@ -50,6 +51,7 @@ class TestFnMetrics(unittest.TestCase):
     parser.add_operation('if-notequal', DirectiveOperationIfNotequal())
     parser.add_operation('fill-empty', DirectiveOperationFillEmpty())
     parser.add_operation('fill-last', DirectiveOperationFillLast())
+    parser.add_operation('fill-last-auto', DirectiveOperationFillLastAuto())
     parser.add_operation('math', DirectiveOperationMath())
     parser.add_operation('suppress-eq', DirectiveOperationSuppressEq())
     parser.add_operation('suppress-ne', DirectiveOperationSuppressNe())
@@ -212,6 +214,48 @@ class TestFnMetrics(unittest.TestCase):
     self.assertEqual(df_result.iloc[2]["value"], 5.0)
     self.assertEqual(df_result.iloc[3]["value"], 5.0)
     self.assertTrue(pd.isna(df_result.iloc[4]["value"]))
+
+  def test_fill_last_auto_single_column(self):
+    df = pd.DataFrame({
+      "measure_group": ["A", "B", "A", "B", "A", "B"],
+      "value": [1.0, 50.0, np.nan, np.nan, 3.0, np.nan],
+    })
+
+    line = "fla1; value; fill-last-auto; measure_group"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[2]["value"], 1.0)
+    self.assertEqual(df_result.iloc[3]["value"], 50.0)
+    self.assertEqual(df_result.iloc[5]["value"], 50.0)
+
+  def test_fill_last_auto_list_of_columns(self):
+    df = pd.DataFrame({
+      "measure_group": ["A", "B", "A", "B"],
+      "v1": [1.0, 10.0, np.nan, np.nan],
+      "v2": [2.0, 20.0, np.nan, np.nan],
+    })
+
+    line = "fla2; ['v1', 'v2']; fill-last-auto; measure_group"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[2]["v1"], 1.0)
+    self.assertEqual(df_result.iloc[2]["v2"], 2.0)
+    self.assertEqual(df_result.iloc[3]["v1"], 10.0)
+    self.assertEqual(df_result.iloc[3]["v2"], 20.0)
+
+  def test_fill_last_auto_uses_zero_when_no_previous_group_value(self):
+    df = pd.DataFrame({
+      "measure_group": ["A", "A", "B", "B"],
+      "value": [np.nan, 5.0, np.nan, 7.0],
+    })
+
+    line = "fla3; value; fill-last-auto; measure_group"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["value"], 0.0)
+    self.assertEqual(df_result.iloc[1]["value"], 5.0)
+    self.assertEqual(df_result.iloc[2]["value"], 0.0)
+    self.assertEqual(df_result.iloc[3]["value"], 7.0)
 
   def test_math_inplace_cell_formula(self):
     df = pd.DataFrame({
