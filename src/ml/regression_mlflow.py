@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, QuantileTransformer
@@ -13,10 +12,19 @@ mlflow.set_experiment("MLflow Wifi Regressions")
 
 mlflow.autolog(log_models=False)
 
-DS_CSV="data/metrics-20260630-out-filllast.csv"
-df = pd.read_csv(DS_CSV, sep=',', header=0)
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from ml.core.data import SITE_COLUMN, load_datasets
+from ml.core.splits import outer_logo_folds
 
 regression = 'speedtest_down_mbps'
+
+DS_CSV = os.environ.get('DS_CSV', 'data/metrics-20260630-out.csv')
+df = load_datasets(DS_CSV.split(','), target=regression)
+
 features=["router_expected_throughput_mbps",
               "router_noise",
               "router_rx_drop_misc",
@@ -35,8 +43,12 @@ features=["router_expected_throughput_mbps",
 int_features = df.select_dtypes(include=['int64', 'int32']).columns
 df[int_features] = df[int_features].astype("float64")
 
+dataset_name = ','.join(
+    os.path.splitext(os.path.basename(path))[0] for path in DS_CSV.split(',')
+)
+
 dataset = mlflow.data.from_pandas(
-    df, source=DS_CSV, name="metrics-20260630-out-filllast", targets=regression
+    df, source=DS_CSV, name=dataset_name, targets=regression
 )
 
 print(f"Dataset: {dataset}")
@@ -54,14 +66,20 @@ model_configs = [
     {"model_type": "GradientBoostingRegressor", "n_estimators": 200, "max_depth": 20},
 ]
 
+y = df[regression]
+X = df[features]
+# Single fold for fast experiment iteration; see regression_benchmark.py for the full per-site sweep.
+fold = outer_logo_folds(X, y, df[SITE_COLUMN])[0]
+X_train, X_test, y_train, y_test = fold.X_train, fold.X_test, fold.y_train, fold.y_test
+
 for i, config in enumerate(model_configs):
 
     with mlflow.start_run():
         mlflow.log_input(dataset, context="training")
-        mlflow.log_artifact(DS_CSV, artifact_path="dataset_source")
-        y=df[regression]
-        X = df[features]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+        for path in DS_CSV.split(','):
+            mlflow.log_artifact(path, artifact_path="dataset_source")
+        mlflow.log_param('test_site', fold.test_site)
+        mlflow.log_param('train_sites', ','.join(fold.train_sites))
 
         if config["model_type"] == "RandomForest":
             model = RandomForestRegressor(

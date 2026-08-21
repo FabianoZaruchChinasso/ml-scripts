@@ -1,8 +1,9 @@
+import os
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, recall_score, f1_score
-from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
@@ -14,7 +15,7 @@ mlflow.set_experiment("MLflow Wifi Classifiers")
 
 mlflow.autolog(log_models=False)
 
-DS_CSV="data/metrics-20260630-qoe-speed.csv"
+DS_CSV = os.environ.get('DS_CSV', 'data/metrics-20260630-qoe.csv')
 df = pd.read_csv(DS_CSV, sep=',', header=0)
 
 int_features = df.select_dtypes(include=['int64', 'int32']).columns
@@ -38,37 +39,12 @@ df['qoe_class']=df[qoe].apply(lambda x: "bad" if x < q1 else "mid" if x < q3 els
 
 target = "qoe_class"
 
-features=['AP_channel', 'RSSI', 'channel_width', 'client_ID',
-       'distance_m', 'download_packet_loss', 'download_retrans',
-       'download_tcp_rtt_ms', 'jitter_ms', 'latency_ms', 'link_speed_mbps',
-       'local', 'obstacles', 'radio', 'router_expected_throughput_mbps',
-       'router_noise', 'router_rx_drop_misc', 'router_rx_duration_us',
-       'router_rx_rate_mbps', 'router_signal_avg_dbm', 'router_signal_dbm',
-       'router_snr', 'router_tx_duration_us', 'router_tx_failed',
-       'router_tx_rate_mbps', 'router_tx_retries', 'signal_level',
-       'site_survey_same_channel_aps', 'site_survey_strongest_channel',
-       'site_survey_strongest_rssi', 'site_survey_total_aps',
-       'speedtest_down_mbps', 'speedtest_up_mbps', 'upload_packet_loss',
-       'upload_retrans', 'upload_tcp_rtt_ms']
 features=["router_expected_throughput_mbps", "router_noise", "router_rx_drop_misc", "router_rx_duration_us", "router_rx_rate_mbps", "router_signal_avg_dbm", "router_signal_dbm", "router_snr", "router_tx_duration_us", "router_tx_failed", "router_tx_rate_mbps", "router_tx_retries", "router_opportunity_medium_use", "client_opportunity_medium_use"]
 
-encoder = LabelEncoder()
-
-df[target] = encoder.fit_transform(df[target])
-
-print(dict(zip(
-    encoder.classes_,
-    encoder.transform(encoder.classes_)
-)))
-
-encoder = LabelEncoder()
-
-df[target] = encoder.fit_transform(df[target])
-
-print(dict(zip(
-    encoder.classes_,
-    encoder.transform(encoder.classes_)
-)))
+CLASS_ORDER = ['bad', 'mid', 'good']
+CLASS_TO_INT = {name: index for index, name in enumerate(CLASS_ORDER)}
+df[target] = df[target].map(CLASS_TO_INT)
+print(f'class mapping: {CLASS_TO_INT}')
 
 X = df[features]
 y = df[target]
@@ -140,7 +116,7 @@ for i, config in enumerate(model_configs):
         rscore=recall_score(y_test, y_pred, average='macro')
         print(f"Recall: {rscore}")
         f1 = f1_score(y_test, y_pred, average='macro')
-        print(f"F1-score: {accuracy}")
+        print(f"F1-score: {f1}")
         mlflow.log_metric("Accuracy", accuracy)
         mlflow.log_metric("Recall Score", rscore)
         mlflow.log_metric("F1-score", f1)
