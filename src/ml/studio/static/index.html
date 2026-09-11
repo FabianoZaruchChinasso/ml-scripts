@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<script>
+/* Tema aplicado antes do primeiro paint: fazer isso no studio.js causaria um
+   flash claro antes do escuro. Aceita ?theme=dark para links diretos. */
+(function () {
+  var p = new URLSearchParams(location.search);
+  var t = p.get('theme') || localStorage.getItem('qoe-theme');
+  if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QoE Studio — Venko</title>
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 24 24"><polyline points="3 6 9 12 13 8 21 17"/><polyline points="21 12 21 17 16 17"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="11"/><line x1="12" y1="21" x2="12" y2="4"/><line x1="19" y1="21" x2="19" y2="15"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="10" x2="13" y2="10"/><line x1="13" y1="10" x2="13" y2="21"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="10" cy="7" r="2.4"/><line x1="4" y1="14" x2="20" y2="14"/><circle cx="16" cy="14" r="2.4"/><line x1="4" y1="21" x2="20" y2="21"/><circle cx="8" cy="21" r="2.4"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/><path d="M1.5 9a15 15 0 0 1 21 0"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+</defs></svg>
+
+<aside>
+  <div class="brand"><svg class="icon"><use href="#i-wifi"/></svg> QoE Studio</div>
+  <nav>
+    <button data-view="matrix" aria-current="true"><svg class="icon"><use href="#i-grid"/></svg> Capacidade</button>
+    <button data-view="contention"><svg class="icon"><use href="#i-trend"/></svg> Contenção</button>
+    <button data-view="constraint"><svg class="icon"><use href="#i-bars"/></svg> Restrição</button>
+    <button data-view="plan"><svg class="icon"><use href="#i-plan"/></svg> Planta</button>
+    <button data-view="thresholds"><svg class="icon"><use href="#i-sliders"/></svg> Limiares</button>
+    <button data-view="datasets"><svg class="icon"><use href="#i-db"/></svg> Datasets</button>
+  </nav>
+  <div class="rail-foot">
+    <div id="poolSummary"></div>
+    <button class="toggle" id="themeBtn" style="margin-top:12px;width:100%">
+      <svg class="icon" style="width:15px;height:15px"><use href="#i-moon"/></svg> Tema
+    </button>
+  </div>
+</aside>
+
+<main>
+  <header class="page">
+    <div>
+      <h1 id="viewTitle">Capacidade por aplicação</h1>
+      <p class="sub" id="viewSub"></p>
+    </div>
+  </header>
+
+  <div class="controls">
+    <label for="appSel">Aplicação</label>
+    <select id="appSel"></select>
+    <button class="toggle" id="legacyBtn" aria-pressed="false">
+      <span class="dot"></span> Incluir datasets legacy
+    </button>
+  </div>
+
+  <div id="gates"></div>
+
+  <section id="view-matrix" class="view">
+    <div class="card">
+      <h2>Percentual de amostras que atendem ao requisito</h2>
+      <p class="hint">Cada célula é a fração de medições reais naquela posição, com aquele número
+        de dispositivos ativos, que satisfaz os quatro limiares simultaneamente. Passe o mouse para ver a contagem.</p>
+      <div id="matrix" class="matrix"></div>
+      <div class="legend">
+        <span>0%</span><span class="ramp" id="ramp"></span><span>100%</span>
+        <span style="margin-left:12px">célula vazia = menos de 5 amostras</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Tabela</h2>
+      <p class="hint">A mesma matriz em números.</p>
+      <div id="matrixTable"></div>
+    </div>
+  </section>
+
+  <section id="view-contention" class="view hide">
+    <div class="card">
+      <h2>Queda com dispositivos simultâneos</h2>
+      <p class="hint">O desenho experimental <code>combo</code> (A/B/C/AB/AC/BC/ABC) mede a mesma posição
+        com 1, 2 e 3 clientes competindo. Mediana por posição.</p>
+      <div class="controls" style="margin-bottom:12px">
+        <label for="metricSel">Métrica</label>
+        <select id="metricSel">
+          <option value="dn">Download (Mbps)</option>
+          <option value="up">Upload (Mbps)</option>
+          <option value="lat">Latência (ms)</option>
+          <option value="jit">Jitter (ms)</option>
+        </select>
+      </div>
+      <div class="chartwrap"><canvas id="cContention"></canvas><div class="tooltip" id="tContention"></div></div>
+      <div class="serieskey" id="kContention"></div>
+    </div>
+  </section>
+
+  <section id="view-constraint" class="view hide">
+    <div class="card">
+      <h2>Qual métrica reprova mais</h2>
+      <p class="hint">Percentual de amostras que falham em cada um dos quatro limiares, por posição.
+        A barra mais alta é o gargalo — é o que adianta corrigir ali.</p>
+      <div class="chartwrap"><canvas id="cConstraint"></canvas><div class="tooltip" id="tConstraint"></div></div>
+      <div class="serieskey" id="kConstraint"></div>
+    </div>
+  </section>
+
+  <section id="view-plan" class="view hide">
+    <div class="card">
+      <h2>Pontos medidos</h2>
+      <p class="hint">Posições reais de medição, em escala, sem interpolação. Com tão poucos pontos não há
+        base para um mapa de calor — os vazios são onde falta coletar, não onde o sinal é ruim.</p>
+      <div id="plans"></div>
+    </div>
+  </section>
+
+  <section id="view-thresholds" class="view hide">
+    <div class="card">
+      <h2>Definição de QoE</h2>
+      <p class="hint">Limiares de download, upload, latência e jitter por aplicação, explícitos e
+        editáveis aqui. Tudo recalcula ao vivo.</p>
+      <div class="sliders" id="sliders"></div>
+    </div>
+  </section>
+
+  <section id="view-datasets" class="view hide">
+    <div class="card">
+      <h2>Datasets encontrados no repositório</h2>
+      <p class="hint">Varredura automática de <code>data/</code>, incluindo zips. Ligue ou desligue cada
+        um; tudo abaixo recalcula.</p>
+      <div id="dsTable"></div>
+    </div>
+  </section>
+</main>
+
+<script src="graficos.js?v=1"></script>
+<script src="studio.js?v=1"></script>
+
+</body>
+</html>
