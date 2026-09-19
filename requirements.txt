@@ -12,3 +12,4 @@ matplotlib
 xgboost
 mlflow
 skops
+shap

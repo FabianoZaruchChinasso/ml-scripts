@@ -339,6 +339,68 @@ python3 src/ml/compare_protocols.py \
   --csv data/metrics-20260630-out.csv,data/metrics-office-20260722-out.csv \
   --target speedtest_down_mbps
 
+# Regressão com beeswarms SHAP (um por modelo/alvo, em res/shap/)
+python3 src/ml/regression_benchmark.py \
+  --csv data/metrics-20260630-out.csv,data/metrics-office-20260722-out.csv \
+  --targets speedtest_down_mbps --shap
+
+# Só os modelos de árvore (rápido), com um beeswarm por fold também
+python3 src/ml/regression_benchmark.py \
+  --csv data/metrics-20260630-out.csv,data/metrics-office-20260722-out.csv \
+  --targets speedtest_down_mbps --shap --shap-models rf,XGB --shap-per-fold
+
 # Suíte de testes do core
 python3 -m unittest tests.test_ml_core -v
 ```
+
+---
+
+## 8. SHAP no benchmark de regressão (adicionado em 2026-09-17)
+
+O benchmark respondia **quão bem** cada regressor generaliza para um site novo, mas nunca **quais
+features** movem a predição — não dava para ver se `rf` e `XGB` concordam sobre a física ou se um
+modelo está apoiado numa feature que só funciona em um site.
+
+### 8.1 `src/ml/core/explain.py` (novo)
+
+`shap` e `matplotlib` são importados **dentro** das funções: uma execução sem `--shap` não exige
+nenhum dos dois. Com `--shap` e sem o pacote, `require_shap()` falha antes do treino, com uma
+mensagem só, em vez de um WARNING por fold.
+
+- `explain_fold` — Explanation das linhas de **teste** (fora do site) de um fold já treinado.
+  `TreeExplainer` (exato, `tree_path_dependent`) para `rf`/`extra_trees`/`hist_gb`/`XGB`;
+  `PermutationExplainer` com background amostrado do treino para o `mlp`. O caminho do `hist_gb` tem
+  fallback para o permutation, porque o suporte a `HistGradientBoosting` é a parte mais frágil entre
+  versões do shap — uma atualização não pode derrubar o benchmark.
+- Como todo modelo é um `Pipeline`, o explainer recebe `fitted[:-1].transform(X)` (o que o estimador
+  vê) enquanto a **cor** do beeswarm usa `fitted[:1].transform(X)` — pós-imputação, pré-escala — para
+  ficar em unidades físicas (dBm, us, Mbps) também no `mlp`. `RobustScaler` é monótono por feature,
+  então a ordem baixo->alto da cor se mantém. Onde o valor era NaN, a cor mostra a mediana imputada.
+- `sample_rows` usa a mesma semente para todos os modelos: todos são explicados sobre EXATAMENTE as
+  mesmas linhas, então beeswarms de modelos diferentes são comparáveis ponto a ponto.
+
+### 8.2 Agrupado por padrão, por fold sob demanda
+
+Cada fold treina seu próprio modelo, então cada um gera sua própria Explanation. O padrão empilha as
+Explanations dos folds num beeswarm por modelo/alvo: todo ponto é fora do site, e todos os folds
+predizem o mesmo alvo na mesma unidade (Mbps / ms), então os valores são comensuráveis.
+
+**O gráfico agrupado é o efeito TÍPICO ENTRE SITES, não o de um modelo.** Cada bloco de linhas vem de
+um fold diferente, com seu próprio base value (o beeswarm plota só os valores, então isso não
+distorce a figura). Uma feature no topo do ranking mas sem separação de cor indica que o agrupamento
+está achatando discordância entre folds — reveja com `--shap-per-fold`, que grava os 7 beeswarms
+individuais (`n_modelos x n_sites` PNGs, por isso não é o padrão).
+
+### 8.3 CLI e saída
+
+`--shap`, `--shap-dir` (default `res/shap`), `--shap-per-fold`, `--shap-models`, `--shap-max-samples`
+(300 linhas por fold; `0` = todas), `--shap-background` (100), `--shap-max-display` (20).
+
+```
+res/shap/<alvo>/<modelo>_beeswarm.png                    # folds agrupados
+res/shap/<alvo>/folds/<modelo>_<site>_beeswarm.png       # só com --shap-per-fold
+res/shap/<alvo>/mean_abs_shap.csv                        # model, rank, feature, mean_abs_shap
+```
+
+Toda chamada de shap fica dentro de `try/except`: uma falha de explicação vira um WARNING e nunca
+custa as tabelas de r2/rmse do run. `evaluate_target` passou a retornar `(results, shap_ranking)`.

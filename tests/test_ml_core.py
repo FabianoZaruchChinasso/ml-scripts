@@ -480,5 +480,71 @@ class TestDenormaliseTargets(unittest.TestCase):
     # onde a responsabilidade fica, para que main() nao regrida silenciosamente
 
 
+import importlib.util
+
+from ml.core.explain import ShapConfig, mean_abs_shap_frame, resolve_shap_models, sample_rows
+
+HAS_SHAP = importlib.util.find_spec('shap') is not None
+
+
+class TestShapHelpers(unittest.TestCase):
+  def test_ranking_orders_by_mean_absolute_value(self):
+    # 'b' tem o maior |SHAP| médio (3.0) apesar de ser negativo na primeira linha.
+    ranking = mean_abs_shap_frame(np.array([[1.0, -5.0], [3.0, 1.0]]), ['a', 'b'])
+    self.assertEqual(list(ranking['feature']), ['b', 'a'])
+    self.assertEqual(list(ranking['rank']), [1, 2])
+    self.assertAlmostEqual(ranking['mean_abs_shap'].iloc[0], 3.0)
+
+  def test_ranking_rejects_misaligned_feature_names(self):
+    # Sem esta checagem os nomes sairiam deslocados das colunas, sem erro.
+    with self.assertRaises(ValueError) as ctx:
+      mean_abs_shap_frame(np.zeros((4, 3)), ['a', 'b'])
+    self.assertIn('desalinhados', str(ctx.exception))
+
+  def test_resolve_keeps_training_order_not_cli_order(self):
+    available = ['rf', 'extra_trees', 'hist_gb', 'mlp', 'XGB']
+    self.assertEqual(resolve_shap_models(['XGB', 'rf'], available), ('rf', 'XGB'))
+    self.assertEqual(resolve_shap_models(None, available), tuple(available))
+
+  def test_resolve_rejects_unknown_model(self):
+    with self.assertRaises(ValueError) as ctx:
+      resolve_shap_models(['lightgbm'], ['rf', 'XGB'])
+    self.assertIn('lightgbm', str(ctx.exception))
+
+  def test_sampling_is_identical_across_models(self):
+    # Todos os modelos precisam ser explicados sobre as MESMAS linhas, senão os
+    # beeswarms de modelos diferentes não são comparáveis ponto a ponto.
+    X = pd.DataFrame({'f': range(100)})
+    first = sample_rows(X, 10, seed=42)
+    second = sample_rows(X, 10, seed=42)
+    self.assertEqual(list(first.index), list(second.index))
+    self.assertEqual(len(first), 10)
+    self.assertEqual(len(sample_rows(X, 0, seed=42)), 100)  # 0 = todas as linhas
+
+  @unittest.skipUnless(HAS_SHAP, 'shap não instalado neste interpretador')
+  def test_tree_explanation_has_one_value_per_cell(self):
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+
+    from ml.core.explain import explain_fold
+
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(60, 3)), columns=['a', 'b', 'c'])
+    y = pd.Series(X['a'] * 2.0 + rng.normal(scale=0.1, size=60))
+    fitted = Pipeline([
+      ('imputer', SimpleImputer(strategy='median')),
+      ('reg', RandomForestRegressor(n_estimators=10, random_state=0)),
+    ]).fit(X, y)
+
+    config = ShapConfig(models=('rf',), out_dir='/tmp', max_samples=20, seed=42)
+    explanation = explain_fold(fitted, X, X, 'rf', config)
+    self.assertEqual(explanation.values.shape, (20, 3))
+    self.assertEqual(list(explanation.feature_names), ['a', 'b', 'c'])
+    # 'a' é o único sinal real; tem de liderar o ranking.
+    ranking = mean_abs_shap_frame(explanation.values, explanation.feature_names)
+    self.assertEqual(ranking['feature'].iloc[0], 'a')
+
+
 if __name__ == '__main__':
   unittest.main()

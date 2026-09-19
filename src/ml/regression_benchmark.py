@@ -15,8 +15,17 @@ from xgboost import XGBRegressor
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from ml.core.data import SITE_COLUMN, load_datasets, validate_columns
+from ml.core.explain import (
+  ShapConfig,
+  concat_explanations,
+  explain_fold,
+  mean_abs_shap_frame,
+  require_shap,
+  resolve_shap_models,
+  save_beeswarm,
+)
 from ml.core.metrics import assert_comparable_scales, regression_metrics
-from ml.core.reporting import format_fold_plan, format_per_site_table
+from ml.core.reporting import format_fold_plan, format_per_site_table, format_shap_ranking
 from ml.core.splits import outer_logo_folds
 
 
@@ -153,7 +162,7 @@ def build_models(seed: int):
   }
 
 
-def evaluate_target(df, features, target, models, group_level):
+def evaluate_target(df, features, target, models, group_level, shap_config=None):
   valid = df[target].notna()
   dropped = (~valid).sum()
   if dropped:
@@ -170,12 +179,48 @@ def evaluate_target(df, features, target, models, group_level):
                          group_level=group_level))
 
   rows = []
+  shap_rankings = []
   for name, model in models.items():
+    fold_explanations = []
     for fold in folds:
       fitted = clone(model).fit(fold.X_train, fold.y_train)
       scores = regression_metrics(fold.y_test.to_numpy(), fitted.predict(fold.X_test))
       rows.append({'model': name, 'test_site': fold.test_site, **scores})
-  return pd.DataFrame(rows)
+      if shap_config is not None and shap_config.wants(name):
+        # Uma falha do shap nunca pode custar as tabelas de r2/rmse do fold.
+        try:
+          explanation = explain_fold(fitted, fold.X_train, fold.X_test, name, shap_config)
+          fold_explanations.append(explanation)
+          if shap_config.per_fold:
+            save_beeswarm(
+              explanation,
+              f'{target} - {name} - fold test_site={fold.test_site}',
+              os.path.join(shap_config.out_dir, target, 'folds',
+                           f'{name}_{fold.test_site}_beeswarm.png'),
+              shap_config.max_display)
+        except Exception as error:
+          print(f'WARNING: shap falhou em {name}/{target}/{fold.test_site}: {error}')
+    if fold_explanations:
+      try:
+        pooled = concat_explanations(fold_explanations)
+        save_beeswarm(
+          pooled,
+          f'{target} - {name} - linhas fora do site, {len(fold_explanations)} folds agrupados',
+          os.path.join(shap_config.out_dir, target, f'{name}_beeswarm.png'),
+          shap_config.max_display)
+        ranking = mean_abs_shap_frame(pooled.values, pooled.feature_names)
+        ranking.insert(0, 'model', name)
+        shap_rankings.append(ranking)
+      except Exception as error:
+        print(f'WARNING: shap agrupado falhou em {name}/{target}: {error}')
+
+  shap_ranking = pd.concat(shap_rankings, ignore_index=True) if shap_rankings else None
+  if shap_ranking is not None:
+    csv_path = os.path.join(shap_config.out_dir, target, 'mean_abs_shap.csv')
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    shap_ranking.to_csv(csv_path, index=False)
+    print(f'wrote {csv_path}')
+  return pd.DataFrame(rows), shap_ranking
 
 
 def parse_args():
@@ -197,6 +242,20 @@ def parse_args():
   )
   parser.add_argument("--seed", type=int, default=42, help="Random seed")
   parser.add_argument("--use-stats", action='store_true', default=False, help="Use stats feat")
+  parser.add_argument('--shap', action='store_true', default=False,
+                      help='Calcula valores SHAP e grava um beeswarm por modelo/alvo')
+  parser.add_argument('--shap-dir', default='res/shap',
+                      help='Diretório raiz dos artefatos SHAP (default: res/shap)')
+  parser.add_argument('--shap-per-fold', action='store_true', default=False,
+                      help='Além do beeswarm agrupado, grava um por fold (n_modelos x n_sites PNGs)')
+  parser.add_argument('--shap-models', default=None,
+                      help='Subconjunto de modelos a explicar, separado por vírgula (default: todos)')
+  parser.add_argument('--shap-max-samples', type=int, default=300,
+                      help='Linhas de teste explicadas por fold, mesmas para todos os modelos (0 = todas)')
+  parser.add_argument('--shap-background', type=int, default=100,
+                      help='Linhas de treino usadas como background do permutation explainer (mlp)')
+  parser.add_argument('--shap-max-display', type=int, default=20,
+                      help='Features mostradas no beeswarm')
   parser.add_argument('--test-size', type=float, default=None,
                       help='IGNORED under leave-one-site-out; accepted only to warn')
   parser.add_argument('--cv-folds', type=int, default=None,
@@ -242,6 +301,25 @@ def main():
   validate_columns(df, targets, 'target')
 
   models = build_models(args.seed)
+
+  shap_config = None
+  if args.shap:
+    require_shap()
+    requested = parse_csv_list(args.shap_models) if args.shap_models is not None else None
+    shap_config = ShapConfig(
+      models=resolve_shap_models(requested, models.keys()),
+      out_dir=args.shap_dir,
+      per_fold=args.shap_per_fold,
+      max_samples=max(args.shap_max_samples, 0),
+      background=args.shap_background,
+      max_display=args.shap_max_display,
+      seed=args.seed,
+    )
+    print(f'SHAP: {list(shap_config.models)} -> {args.shap_dir}'
+          f"{' (também por fold)' if args.shap_per_fold else ''}")
+  elif args.shap_models is not None or args.shap_per_fold:
+    print('WARNING: as flags --shap-* são ignoradas sem --shap.')
+
   print(f'Dataset rows: {len(df)}')
   print(f'Sites: {sorted(df[SITE_COLUMN].unique())}')
   print(f'Group level: {args.group_level}')
@@ -250,9 +328,12 @@ def main():
   for target in targets:
     print('\n' + '=' * 90)
     print(f'Target: {target}')
-    results = evaluate_target(df, features, target, models, args.group_level)
+    results, shap_ranking = evaluate_target(df, features, target, models, args.group_level,
+                                            shap_config)
     print(format_per_site_table(results, 'r2'))
     print(format_per_site_table(results, 'rmse'))
+    if shap_ranking is not None:
+      print(format_shap_ranking(shap_ranking, target))
 
 
 if __name__ == "__main__":

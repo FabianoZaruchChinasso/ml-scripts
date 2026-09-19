@@ -36,3 +36,24 @@ def format_per_site_table(results: pd.DataFrame, metric: str) -> str:
   n_sites = pivot.shape[1]
   header = f'Per-site {metric} (n_sites={n_sites}; spread matters more than the mean)'
   return f'{header}\n' + summary.to_string(float_format=lambda x: f'{x:.5f}')
+
+
+def format_shap_ranking(ranking: pd.DataFrame, target: str, top_n: int = 10) -> str:
+  """Top features por |SHAP| médio, um bloco por modelo.
+
+  Os valores estão na unidade do alvo (Mbps / ms): são o quanto a feature move a
+  predição, não uma porcentagem.
+  """
+  if ranking is None or ranking.empty:
+    return f'Sem ranking SHAP para {target} (nenhuma explicação foi concluída).'
+  required = {'model', 'rank', 'feature', 'mean_abs_shap'}
+  missing = sorted(required - set(ranking.columns))
+  if missing:
+    raise ValueError(f'ranking SHAP sem as colunas {missing}')
+  lines = [f'Top {top_n} features por |SHAP| médio — {target} (unidade do alvo)']
+  for model, group in ranking.groupby('model', sort=False):
+    top = group.nsmallest(top_n, 'rank')[['rank', 'feature', 'mean_abs_shap']]
+    lines.append(f'  model={model}')
+    table = top.to_string(index=False, float_format=lambda x: f'{x:.5f}')
+    lines.extend(f'  {line}' for line in table.splitlines())
+  return '\n'.join(lines)
