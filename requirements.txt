@@ -12,3 +12,6 @@ matplotlib
 xgboost
 mlflow
 skops
+fastapi
+uvicorn
+pillow

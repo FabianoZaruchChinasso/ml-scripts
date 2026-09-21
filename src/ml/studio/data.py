@@ -12,6 +12,8 @@ import zipfile
 
 import pandas as pd
 
+from ml.studio.plans import montar_plantas
+
 TARGETS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
 
 # A geracao de esquema e o que separa `legacy_` do modelo de colunas atual.
@@ -109,6 +111,17 @@ def discover() -> list:
   return found
 
 
+_descobertos = None
+
+
+def descobertos() -> list:
+  """discover() uma vez por processo: reler o zip de 52 MB a cada requisicao travaria as views."""
+  global _descobertos
+  if _descobertos is None:
+    _descobertos = discover()
+  return _descobertos
+
+
 def _superseded(datasets: list) -> dict:
   """Marca datasets cujas linhas estao inteiras dentro de outro (0817 dentro de 0827)."""
   verdict = {}
@@ -129,7 +142,7 @@ def _superseded(datasets: list) -> dict:
 
 
 def build_payload() -> dict:
-  datasets = discover()
+  datasets = descobertos()
   superseded = _superseded(datasets)
   # Fingerprint igual = os mesmos alvos byte a byte. Manter os dois ligados
   # duplica o peso de cada amostra sem avisar.
@@ -218,9 +231,12 @@ def build_payload() -> dict:
         'routerX': float(row['router_x']), 'routerY': float(row['router_y']),
       }
 
+  plantas, plantas_avisos = montar_plantas(envelopes)
   return {
     'datasets': descriptors,
     'rows': rows,
     'buildings': {k: {'label': v['label']} for k, v in BUILDINGS.items()},
     'envelopes': envelopes,
+    'plantas': plantas,
+    'plantasAvisos': plantas_avisos,
   }

@@ -1,0 +1,344 @@
+{
+  "colunas": {
+    "AP_channel": {
+      "classe": "tr069",
+      "parametro": "Device.WiFi.Radio.{i}.Channel"
+    },
+    "RSSI": {
+      "classe": "cliente"
+    },
+    "_time": {
+      "classe": "identificador"
+    },
+    "bssid": {
+      "classe": "identificador"
+    },
+    "channel_width": {
+      "classe": "tr069"
+    },
+    "client_ID": {
+      "classe": "identificador"
+    },
+    "client_id": {
+      "classe": "identificador"
+    },
+    "client_mode": {
+      "classe": "tr069",
+      "parametro": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.OperatingStandard"
+    },
+    "client_name": {
+      "classe": "identificador"
+    },
+    "client_opportunity_medium_use": {
+      "classe": "cliente"
+    },
+    "combo": {
+      "classe": "identificador"
+    },
+    "distance_m": {
+      "classe": "geometria"
+    },
+    "house_x0": {
+      "classe": "geometria"
+    },
+    "house_y0": {
+      "classe": "geometria"
+    },
+    "house_z0": {
+      "classe": "geometria"
+    },
+    "humidity_pct": {
+      "classe": "ambiente"
+    },
+    "jitter_ms": {
+      "classe": "alvo"
+    },
+    "latency_ms": {
+      "classe": "alvo"
+    },
+    "link_speed_mbps": {
+      "classe": "cliente"
+    },
+    "local": {
+      "classe": "identificador"
+    },
+    "local_test": {
+      "classe": "identificador"
+    },
+    "mac": {
+      "classe": "identificador"
+    },
+    "n_clients": {
+      "classe": "identificador"
+    },
+    "obstacles": {
+      "classe": "geometria"
+    },
+    "old_client_id": {
+      "classe": "identificador"
+    },
+    "qoe_dw_score": {
+      "classe": "alvo"
+    },
+    "radio": {
+      "classe": "tr069",
+      "parametro": "Device.WiFi.Radio.{i}.OperatingFrequencyBand"
+    },
+    "related_distance": {
+      "classe": "geometria"
+    },
+    "router_model": {
+      "classe": "identificador"
+    },
+    "router_rx_bytes": {
+      "classe": "tr069",
+      "vazamento": true
+    },
+    "router_rx_packets": {
+      "classe": "tr069",
+      "vazamento": true
+    },
+    "router_tx_bytes": {
+      "classe": "tr069",
+      "vazamento": true
+    },
+    "router_tx_packets": {
+      "classe": "tr069",
+      "vazamento": true
+    },
+    "router_x": {
+      "classe": "geometria"
+    },
+    "router_y": {
+      "classe": "geometria"
+    },
+    "router_z": {
+      "classe": "geometria"
+    },
+    "run_id": {
+      "classe": "identificador"
+    },
+    "session_id": {
+      "classe": "identificador"
+    },
+    "signal_level": {
+      "classe": "cliente"
+    },
+    "site_survey_strongest_ssid": {
+      "classe": "identificador"
+    },
+    "speedtest_down_mbps": {
+      "classe": "alvo"
+    },
+    "speedtest_up_mbps": {
+      "classe": "alvo"
+    },
+    "ssid": {
+      "classe": "identificador"
+    },
+    "station_x": {
+      "classe": "geometria"
+    },
+    "station_y": {
+      "classe": "geometria"
+    },
+    "station_z": {
+      "classe": "geometria"
+    },
+    "stats_80211_client_ampdu_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_ampdu_subframes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_amsdu_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_amsdu_msdu_total": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_assoc_ap": {
+      "classe": "identificador"
+    },
+    "stats_80211_client_data": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_mac_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_mpdu_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_msdu_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_payload_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_qos_data": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_raw": {
+      "classe": "identificador"
+    },
+    "stats_80211_client_retry_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_retry_flow_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_client_retry_top_flow_key": {
+      "classe": "identificador"
+    },
+    "stats_80211_client_total_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_ampdu_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_ampdu_subframes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_amsdu_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_amsdu_msdu_total": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_beamforming_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_ctrl_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_data_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_data_frames_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_data_retry_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_elapsed_seconds": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_filtered_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_mac_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_mac_throughput_mbps": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_mgmt_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_mpdu_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_msdu_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_msdu_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_payload_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_payload_throughput_mbps": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_qos_data": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_retry_bytes": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_retry_flow_count": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_retry_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_retry_frames_pct": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_global_retry_top_flow_key": {
+      "classe": "identificador"
+    },
+    "stats_80211_global_timestamp": {
+      "classe": "identificador"
+    },
+    "stats_80211_global_total_frames": {
+      "classe": "sniffer",
+      "vazamento": true
+    },
+    "stats_80211_raw": {
+      "classe": "identificador"
+    },
+    "stored_at": {
+      "classe": "identificador"
+    },
+    "temperature_c": {
+      "classe": "ambiente"
+    }
+  },
+  "prefixos": {
+    "download_": {
+      "classe": "cliente",
+      "vazamento": true
+    },
+    "router_": {
+      "classe": "tr069"
+    },
+    "site_survey_": {
+      "classe": "cliente"
+    },
+    "stats_80211_": {
+      "classe": "sniffer"
+    },
+    "upload_": {
+      "classe": "cliente",
+      "vazamento": true
+    }
+  }
+}

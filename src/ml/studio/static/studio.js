@@ -184,15 +184,7 @@
   /* ---------------- planta ---------------- */
   function renderPlan() {
     const rows = activeRows().filter((r) => r.x != null);
-    const host = $('#plans');
-    if (!rows.length) { host.innerHTML = '<p class="hint">Nenhum dataset com geometria está ativo.</p>'; return; }
-    host.innerHTML = '';
-    hits.plan = {};
-    // Duas passadas: monta TODO o DOM antes de desenhar. Desenhar durante a
-    // montagem mede o canvas enquanto ele ainda e o unico filho do grid — ele
-    // fica com backing store da largura inteira e depois encolhe para meia
-    // coluna, o que achata os circulos em elipses.
-    const pending = [];
+    const predios = [];
     Object.entries(state.data.envelopes).forEach(([b, env]) => {
       const mine = rows.filter((r) => r.b === b);
       if (!mine.length) return;
@@ -206,19 +198,17 @@
         const pct = 100 * g.rows.filter((r) => meets(r, state.thr)).length / g.rows.length;
         return { x: g.x, y: g.y, n: g.rows.length, value: pct, label: g.p, color: rampColor(pct) };
       });
-      const wrap = document.createElement('div');
-      wrap.innerHTML = `<h2 style="font-size:13px;margin:0 0 8px">${state.data.buildings[b].label}
-        <span style="color:var(--ink-muted);font-weight:400">· ${env.w}×${env.h} cm · ${points.length} pontos</span></h2>
-        <div class="chartwrap"><canvas></canvas><div class="tooltip"></div></div>`;
-      host.appendChild(wrap);
-      pending.push({ b, env, points, wrap });
+      predios.push({ b, label: state.data.buildings[b].label, env, points,
+                     planta: (state.data.plantas || {})[b] || null });
     });
-    pending.forEach(({ b, env, points, wrap }) => {
-      const canvas = wrap.querySelector('canvas');
-      const tip = wrap.querySelector('.tooltip');
-      hits.plan[b] = V.drawFloorPlan(canvas, { height: 460, envelope: env, points });
-      V.attachTooltip(canvas, tip, () => hits.plan[b],
-        (h) => `<b>${h.label}</b>${Math.round(h.value)}% atende · ${h.at}`);
+    V.views.planta.render({
+      predios,
+      avisos: state.data.plantasAvisos || [],
+      atualizarPlantas: (plantas, avisos) => {
+        state.data.plantas = plantas;
+        state.data.plantasAvisos = avisos;
+        renderAll();
+      },
     });
   }
 
@@ -269,6 +259,9 @@
     renderPool(); renderGates(); renderMatrix();
     if (state.view === 'contention') renderContention();
     if (state.view === 'constraint') renderConstraint();
+    if (state.view === 'features') {
+      V.views.features.render({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]) });
+    }
     if (state.view === 'plan') renderPlan();
     if (state.view === 'datasets') renderDatasets();
   }
@@ -277,7 +270,8 @@
     matrix: ['Capacidade por aplicação', 'QoE não é uma nota: é o que dá para fazer aqui, com esta quantidade de gente na rede.'],
     contention: ['Contenção', 'A mesma posição medida com 1, 2 e 3 clientes competindo.'],
     constraint: ['Restrição dominante', 'Qual das quatro métricas reprova mais em cada posição.'],
-    plan: ['Planta baixa', 'Pontos realmente medidos, em escala. Sem interpolação.'],
+    features: ['Features', 'O que dá para levar para produção a partir do TR-069.'],
+    plan: ['Planta baixa', 'Pontos realmente medidos, sobre a planta do prédio quando houver. Sem interpolação.'],
     thresholds: ['Limiares', 'Limiares de QoE por aplicação, explícitos e editáveis.'],
     datasets: ['Datasets', 'Varredura automática do repositório, com o interruptor de legacy.'],
   };
