@@ -141,3 +141,43 @@ input[type=range] { width: 100%; accent-color: var(--s1); }
 /* Plantas lado a lado: os comodos sao estreitos e altos, entao duas colunas
    aproveitam muito melhor a largura do que um empilhamento. */
 #plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; }
+
+/* ---------- view Features ---------- */
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chip { font-size: 12px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px;
+        padding: 3px 10px; background: var(--surface-1); }
+.btn, .btn-pri { font: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); }
+.btn-pri { border: 1px solid var(--s1); background: var(--s1); color: #fff; font-weight: 600; }
+.btn-pri:disabled { opacity: .55; cursor: progress; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.card-head .status { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
+.frow { display: grid; grid-template-columns: minmax(180px, 1.5fr) .8fr 1fr auto; gap: 10px;
+        align-items: center; padding: 7px 0; border-top: 1px solid var(--grid); font-size: 12.5px; }
+.bar { display: inline-block; height: 7px; border-radius: 4px; background: var(--seq-300);
+       vertical-align: middle; margin-right: 6px; }
+tr.dim td { color: var(--ink-muted); }
+td.good { color: var(--good); font-weight: 600; }
+.tag.leak { border-color: var(--critical); color: var(--critical); }
+.tag.ok { border-color: var(--good); color: var(--good); }
+.tag.mid { border-color: var(--warning); color: var(--ink-2); }
+.tag.lab { color: var(--ink-muted); }
+.stale { opacity: .45; }
+details.fold { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
+               padding: 11px 16px; margin-bottom: 10px; }
+details.fold summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+details.fold summary span { font-weight: 400; color: var(--ink-2); }
+details.fold .inner { margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+
+/* ---------- planta ---------- */
+#plans.paisagem { grid-template-columns: 1fr; }
+.plan-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.plan-head h2 { font-size: 13px; margin: 0; }
+.plan-head h2 span { color: var(--ink-muted); font-weight: 400; }
+.plan-aviso { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2);
+              padding: 6px 10px; border-left: 3px solid var(--warning); border-radius: 6px; margin-bottom: 8px;
+              background: color-mix(in srgb, var(--warning) 8%, transparent); }
+.plan-aviso .icon { stroke: var(--warning); width: 15px; height: 15px; }
+.cal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.cal-foto canvas { cursor: crosshair; }
+.btn:disabled { opacity: .5; cursor: default; }

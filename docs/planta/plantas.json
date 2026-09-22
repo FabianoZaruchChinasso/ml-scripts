@@ -1,0 +1,30 @@
+{
+  "casa": {
+    "foto": {
+      "arquivo": "casa_roni_planta_baixa.jpeg",
+      "cantos": [
+        [
+          60.0,
+          1011.5
+        ],
+        [
+          310.0,
+          1013.5
+        ],
+        [
+          338.0,
+          129.5
+        ],
+        [
+          100.0,
+          123.5
+        ]
+      ]
+    },
+    "paredes": {
+      "arquivo": "Coordenadas_CSV_2D_casa_roni_v2.csv",
+      "eixo_x": "horizontal",
+      "origem": "inferior-esquerdo"
+    }
+  }
+}
