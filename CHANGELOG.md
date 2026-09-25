@@ -1,3 +1,50 @@
+# Changelog — QoE Studio: folds por local de coleta e ambiente
+
+**Data:** 2026-09-25
+
+## Folds por local de coleta (prédio) em vez de cômodo
+
+A view Features passou a deixar um **local de coleta inteiro** de fora por fold (`casa`,
+`cowork-pedra-branca`, `hotmilk`), em vez de um cômodo. Com folds por cômodo, os outros cômodos do
+mesmo prédio ficavam no treino — mesmo roteador, mesmo ambiente, mesmo dia de coleta — e o R² saía
+inflado. Medido em `speedtest_down_mbps` sobre `0827` + `0917-fix` + `0921-distcalc` (1.071 linhas):
+
+| esquema | atual | TR-069 | tudo |
+|---|---|---|---|
+| KFold aleatório | +0,84 | +0,88 | +0,92 |
+| por cômodo (antigo) | −1,95 | +0,27 | +0,68 |
+| mesmo cômodo de teste, sem o próprio prédio no treino | −6,69 | −4,34 | −2,53 |
+| **por local de coleta (novo)** | −2,62 | −1,26 | −0,70 |
+| por local de coleta, R² pooled | −0,09 | +0,07 | +0,25 |
+
+A linha "sem o próprio prédio" usa o mesmo teste da linha por cômodo: a diferença entre as duas é
+o vazamento. Com 3 locais a média por fold é instável (o fold `casa` tem pouca variância no alvo),
+então o teto agora também traz **R² pooled** e **MAE** sobre todas as previsões fora do fold.
+
+## Hotmilk e flag de ambiente
+
+- `core/sites.py`: `hotmilk-*` vira o prédio `hotmilk`; `quarto-marcelo` resolve para
+  `hotmilk-aquario`, como o `20260917-metrics-fix` já regravou. Antes essas linhas eram descartadas
+  pelo Studio.
+- `BUILDING_ENVIRONMENT` / `resolve_environment`: cada local é `domestico` (casa) ou `corporativo`
+  (cowork, hotmilk). O Studio tem um seletor **Ambiente** que filtra todas as views e a análise de
+  Features (`?ambiente=` na URL e na API).
+
+## Dedupe tolerante a ruído de float
+
+O fingerprint dos datasets arredonda os alvos em 6 casas. As versões `-fix`/`-distcalc` diferem da
+original em ~1e-14 e passavam como datasets distintos, ligados juntos por padrão — duplicando o peso
+das amostras e, via `quarto-marcelo`, colocando as mesmas medições em treino e teste.
+
+## Pendências
+
+- Os benchmarks de linha de comando (`regression_benchmark.py`, `classification_benchmark.py`,
+  `compare_protocols.py`) continuam com `--group-level position` por padrão.
+- O envelope do hotmilk (`house_x0`/`house_y0` = 410×1386) é idêntico ao da casa: conferir com a coleta.
+- Só 1 local doméstico: com o filtro Doméstico a análise de Features é recusada (LOGO precisa de 2).
+
+---
+
 # Changelog — Revisão Inicial dos Scripts de ML
 
 **Branch:** `Revisão-Inicial`

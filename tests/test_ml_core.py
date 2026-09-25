@@ -7,7 +7,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from ml.core.sites import resolve_site_id
+from ml.core.sites import BUILDING_ENVIRONMENT, ENVIRONMENTS, resolve_environment, resolve_site_id
 
 
 class TestResolveSiteId(unittest.TestCase):
@@ -35,6 +35,28 @@ class TestResolveSiteId(unittest.TestCase):
     mixed = pd.Series([1.0, 2.0, 3.0, 'cwpb-2m', 'cwpb-13m'])
     result = resolve_site_id(mixed, level='building')
     self.assertEqual(sorted(result.unique()), ['coworking', 'residencia'])
+
+  def test_hotmilk_is_its_own_building(self):
+    mixed = pd.Series(['sala', 'cwpb-1', 'hotmilk-copa', 'hotmilk-aquario-fora'])
+    result = resolve_site_id(mixed, level='building')
+    self.assertEqual(list(result), ['residencia', 'coworking', 'hotmilk', 'hotmilk'])
+
+  def test_hotmilk_positions_stay_distinct_at_position_level(self):
+    result = resolve_site_id(pd.Series(['hotmilk-copa', 'hotmilk-aquario', 'hotmilk-aquario-fora']))
+    self.assertEqual(result.nunique(), 3)
+
+  def test_old_hotmilk_label_resolves_to_corrected_position(self):
+    result = resolve_site_id(pd.Series(['quarto-marcelo', 'hotmilk-aquario']))
+    self.assertEqual(list(result), ['hotmilk-aquario', 'hotmilk-aquario'])
+
+  def test_environment_flags_domestic_and_corporate(self):
+    result = resolve_environment(pd.Series(['sala', 2.0, 'cwpb-2m', 'hotmilk-copa']))
+    self.assertEqual(list(result), ['domestico', 'domestico', 'corporativo', 'corporativo'])
+
+  def test_every_building_has_an_environment(self):
+    self.assertEqual(set(BUILDING_ENVIRONMENT.values()), set(ENVIRONMENTS))
+    for building in ('residencia', 'coworking', 'hotmilk'):
+      self.assertIn(building, BUILDING_ENVIRONMENT)
 
   def test_unknown_level_raises(self):
     with self.assertRaises(ValueError) as ctx:

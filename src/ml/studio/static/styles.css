@@ -162,6 +162,12 @@ td.good { color: var(--good); font-weight: 600; }
 .tag.ok { border-color: var(--good); color: var(--good); }
 .tag.mid { border-color: var(--warning); color: var(--ink-2); }
 .tag.lab { color: var(--ink-muted); }
+/* Ambiente do local de coleta: doméstico x corporativo. */
+.tag.amb-domestico { border-color: var(--s1); color: var(--s1); }
+.tag.amb-corporativo { border-color: var(--s3); color: var(--s3); }
+.amb-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 4px; vertical-align: middle; }
+.amb-dot.amb-domestico { background: var(--s1); }
+.amb-dot.amb-corporativo { background: var(--s3); }
 .stale { opacity: .45; }
 details.fold { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
                padding: 11px 16px; margin-bottom: 10px; }

@@ -13,11 +13,11 @@ from statistics import mean
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import r2_score
+from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.pipeline import Pipeline
 
 from ml.core import features as F
-from ml.core.sites import resolve_site_id
+from ml.core.sites import BUILDING_ENVIRONMENT, ENVIRONMENTS, resolve_site_id
 from ml.core.splits import outer_logo_folds
 
 TARGETS = ('speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms')
@@ -33,7 +33,11 @@ ARVORES = 200
 ARVORES_PROXY = 100
 CLASSES_FORA_DOS_AJUSTES = {'identificador', 'geometria', 'alvo'}
 CLASSES_AUXILIARES = {'sniffer', 'cliente', 'ambiente'}
-_INTERNAS = ('_ds', '_site')
+# `_site` é o grupo dos folds: o local de coleta (prédio). Deixar só um cômodo
+# de fora mantinha os outros cômodos do mesmo prédio no treino — mesmo roteador,
+# mesmo ambiente, mesmo dia — e inflava o R² (ver CHANGELOG).
+# `_pos` é o cômodo, só para exibição; `_amb` é doméstico/corporativo.
+_INTERNAS = ('_ds', '_site', '_pos', '_amb')
 
 
 @dataclass
@@ -46,10 +50,16 @@ class Conjunto:
   avisos: list = field(default_factory=list)
 
 
-def preparar(frames: dict, alvo: str, tabela: dict) -> Conjunto:
-  """Junta os frames, descarta linhas sem alvo/posição e calcula as derivadas."""
+def preparar(frames: dict, alvo: str, tabela: dict, ambiente: str = None) -> Conjunto:
+  """Junta os frames, descarta linhas sem alvo/local e calcula as derivadas.
+
+  `ambiente` ('domestico' ou 'corporativo') restringe o conjunto a esse tipo de
+  local de coleta; None mantém todos.
+  """
   if alvo not in TARGETS:
     raise ValueError(f'alvo {alvo!r} desconhecido; esperado um de {list(TARGETS)}')
+  if ambiente is not None and ambiente not in ENVIRONMENTS:
+    raise ValueError(f'ambiente {ambiente!r} desconhecido; esperado um de {list(ENVIRONMENTS)}')
   if not frames:
     raise ValueError('nenhum dataset não-legacy ativo')
   avisos = []
@@ -61,17 +71,25 @@ def preparar(frames: dict, alvo: str, tabela: dict) -> Conjunto:
     avisos.append(f'{sem_alvo} linhas sem {alvo} descartadas')
   df = df[df[alvo].notna()]
 
-  posicoes = {}
+  posicoes, predios = {}, {}
+  desconhecidos = []
   for valor in df['local'].dropna().unique():
     try:
       posicoes[valor] = resolve_site_id(pd.Series([valor])).iloc[0]
+      predios[valor] = resolve_site_id(pd.Series([valor]), level='building').iloc[0]
     except ValueError:
-      pass
+      desconhecidos.append(str(valor))
   fora = int((~df['local'].isin(list(posicoes))).sum())
   if fora:
-    avisos.append(f'{fora} linhas com local desconhecido em core/sites.py descartadas')
+    avisos.append(f'{fora} linhas com local desconhecido em core/sites.py descartadas: '
+                  f'{sorted(desconhecidos)}')
   df = df[df['local'].isin(list(posicoes))].reset_index(drop=True)
-  df['_site'] = df['local'].map(posicoes)
+  df = df.assign(_site=df['local'].map(predios), _pos=df['local'].map(posicoes))
+  df['_amb'] = df['_site'].map(BUILDING_ENVIRONMENT)
+  if ambiente is not None:
+    df = df[df['_amb'] == ambiente].reset_index(drop=True)
+    if df.empty:
+      raise ValueError(f'nenhuma linha de ambiente {ambiente!r} nos datasets ativos')
 
   df, avisos_derivadas = F.aplicar_derivadas(df)
   avisos += avisos_derivadas
@@ -161,7 +179,9 @@ def inventario(conj: Conjunto) -> dict:
     'alvo': alvo,
     'datasets': conj.datasets,
     'n_linhas': int(len(df)),
-    'posicoes': sorted(df['_site'].unique()),
+    'locais': sorted(df['_site'].unique()),
+    'posicoes': sorted(df['_pos'].unique()),
+    'ambientes': {k: int(v) for k, v in df.groupby('_amb')['_site'].nunique().items()},
     'colunas': colunas,
     'candidatas': candidatas,
     'sem_classificacao': sem_classificacao,
@@ -208,25 +228,40 @@ def _modelo(arvores: int) -> Pipeline:
   ])
 
 
-def r2_por_posicao(df, colunas, y_col, vazadas, arvores=None, min_teste=1, min_treino=1) -> dict:
+def _logo(df, colunas, y_col, vazadas, arvores=None, min_teste=1, min_treino=1):
+  """LOGO por local de coleta. Devolve (R² por local, y real, y previsto fora do fold)."""
   assert_sem_vazamento(colunas, vazadas)
   if not colunas:
-    return {}
+    return {}, [], []
   sub = df[df[y_col].notna()].reset_index(drop=True)
   X = matriz(sub, colunas)
   y = sub[y_col].astype(float)
-  resultado = {}
+  por_local, reais, previstos = {}, [], []
   for fold in outer_logo_folds(X, y, sub['_site']):
     if len(fold.y_test) < min_teste or len(fold.y_train) < min_treino:
       continue
-    modelo = _modelo(arvores or ARVORES).fit(fold.X_train, fold.y_train)
-    resultado[fold.test_site] = float(r2_score(fold.y_test, modelo.predict(fold.X_test)))
-  return resultado
+    previsto = _modelo(arvores or ARVORES).fit(fold.X_train, fold.y_train).predict(fold.X_test)
+    por_local[fold.test_site] = float(r2_score(fold.y_test, previsto))
+    reais.extend(fold.y_test.tolist())
+    previstos.extend(previsto.tolist())
+  return por_local, reais, previstos
 
 
-def _resumo(por_posicao: dict, n: int) -> dict:
-  return {'n': n, 'media': round(mean(por_posicao.values()), 4) if por_posicao else None,
-          'por_posicao': {s: round(v, 4) for s, v in sorted(por_posicao.items())}}
+def r2_por_local(df, colunas, y_col, vazadas, arvores=None, min_teste=1, min_treino=1) -> dict:
+  return _logo(df, colunas, y_col, vazadas, arvores, min_teste, min_treino)[0]
+
+
+def _resumo(logo, n: int) -> dict:
+  """Média por local, mais R² e MAE sobre todas as previsões fora do fold.
+
+  Com poucos locais a média dos R² por fold é dominada pelo local de menor
+  variância do alvo; o R² pooled e o MAE não têm esse problema.
+  """
+  por_local, reais, previstos = logo
+  return {'n': n, 'media': round(mean(por_local.values()), 4) if por_local else None,
+          'pooled': round(float(r2_score(reais, previstos)), 4) if len(reais) > 1 else None,
+          'mae': round(float(mean_absolute_error(reais, previstos)), 4) if reais else None,
+          'por_local': {s: round(v, 4) for s, v in sorted(por_local.items())}}
 
 
 def _leitura(r2: float) -> str:
@@ -235,12 +270,16 @@ def _leitura(r2: float) -> str:
   return 'parcial' if r2 >= PROXY_PARCIAL else 'laboratorio'
 
 
-_POUCAS_POSICOES = re.compile(r'only (\d+) sites available')
+_POUCOS_LOCAIS = re.compile(r'only (\d+) sites available')
 
 
 def ajuste(conj: Conjunto, inv: dict) -> dict:
   inicio = time.time()
   df, alvo = conj.df, conj.alvo
+  if df['_site'].nunique() < 2:
+    raise ValueError(f'o conjunto tem só {df["_site"].nunique()} local de coleta '
+                     f'({", ".join(sorted(df["_site"].unique()))}); deixar um local de fora '
+                     'precisa de pelo menos 2. Ligue datasets de outro local ou mude o ambiente.')
   ok = elegiveis(inv)
   por_nome = {c['coluna']: c for c in inv['colunas']}
   vazadas = [c['coluna'] for c in inv['colunas'] if c['vazamento']]
@@ -249,19 +288,19 @@ def ajuste(conj: Conjunto, inv: dict) -> dict:
   avisos = []
   with warnings.catch_warnings(record=True) as capturados:
     warnings.simplefilter('always')
-    brutos = {nome: r2_por_posicao(df, cols, alvo, vazadas)
+    brutos = {nome: _logo(df, cols, alvo, vazadas)
               for nome, cols in (('atual', atual), ('tr069', tr069), ('tudo', ok))}
     teto = {nome: _resumo(brutos[nome], n) for nome, n in
             (('atual', len(atual)), ('tr069', len(tr069)), ('tudo', len(ok)))}
 
     ganho = []
-    base = brutos['atual']
+    base = brutos['atual'][0]
     if base:
       for coluna in [c for c in inv['candidatas'] if c in ok]:
-        r = r2_por_posicao(df, atual + [coluna], alvo, vazadas)
+        r = r2_por_local(df, atual + [coluna], alvo, vazadas)
         deltas = [r[s] - base[s] for s in base if s in r]
         ganho.append({'coluna': coluna, 'delta': round(mean(deltas), 4),
-                      'melhora': sum(d > 0 for d in deltas), 'posicoes': len(deltas)})
+                      'melhora': sum(d > 0 for d in deltas), 'locais': len(deltas)})
     ganho.sort(key=lambda g: -g['delta'])
 
     proxy = []
@@ -271,7 +310,7 @@ def ajuste(conj: Conjunto, inv: dict) -> dict:
     if auxiliares and not tr069:
       avisos.append('nenhuma coluna TR-069 elegível: proxies não calculados')
     for c in auxiliares[:MAX_PROXIES] if tr069 else []:
-      r = r2_por_posicao(df, tr069, c['coluna'], vazadas, arvores=ARVORES_PROXY, min_teste=5, min_treino=20)
+      r = r2_por_local(df, tr069, c['coluna'], vazadas, arvores=ARVORES_PROXY, min_teste=5, min_treino=20)
       if not r:
         continue
       valores = list(r.values())
@@ -281,12 +320,12 @@ def ajuste(conj: Conjunto, inv: dict) -> dict:
                     'leitura': _leitura(media), 'parece_tr069': min(valores) >= PROXY_TR069})
 
   for aviso in capturados:
-    casou = _POUCAS_POSICOES.search(str(aviso.message))
+    casou = _POUCOS_LOCAIS.search(str(aviso.message))
     if casou:
-      avisos.append(f'só {casou.group(1)} posições: a dispersão por posição não é interpretável '
-                    'e a estimativa é instável')
+      avisos.append(f'só {casou.group(1)} locais de coleta: a dispersão por local não é '
+                    'interpretável e a estimativa é instável')
   return {
-    'alvo': alvo, 'datasets': conj.datasets, 'posicoes': inv['posicoes'],
+    'alvo': alvo, 'datasets': conj.datasets, 'locais': inv['locais'], 'posicoes': inv['posicoes'],
     'teto': teto, 'ganho': ganho, 'proxy': proxy,
     'avisos': sorted(set(avisos)), 'segundos': round(time.time() - inicio, 1),
   }

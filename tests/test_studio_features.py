@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -7,6 +8,8 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
+from ml.studio import data as SD
 from ml.studio import features as SF
 
 TABELA = {
@@ -24,7 +27,7 @@ TABELA = {
   },
 }
 
-LOCAIS = ['sala', 'quarto', 'suite', 'cwpb-1', 'cwpb-2']
+LOCAIS = ['sala', 'quarto', 'suite', 'cwpb-1', 'cwpb-2', 'hotmilk-copa', 'hotmilk-aquario']
 
 
 def frame(locais=LOCAIS, linhas_por_local=12, seed=0):
@@ -74,11 +77,38 @@ class TestPreparar(Base):
     self.assertEqual(len(conj.df), len(f) - 1)
     self.assertTrue(any('1 linhas sem' in a for a in conj.avisos))
 
-  def test_posicoes_e_dataset_de_origem(self):
+  def test_fold_e_o_local_de_coleta_e_posicao_fica_para_exibicao(self):
     conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
-    self.assertEqual(sorted(conj.df['_site'].unique()),
-                     ['cwpb-1', 'cwpb-2', 'res-quarto', 'res-sala', 'res-suite'])
+    self.assertEqual(sorted(conj.df['_site'].unique()), ['coworking', 'hotmilk', 'residencia'])
+    self.assertEqual(sorted(conj.df['_pos'].unique()),
+                     ['cwpb-1', 'cwpb-2', 'hotmilk-aquario', 'hotmilk-copa',
+                      'res-quarto', 'res-sala', 'res-suite'])
     self.assertEqual(set(conj.df['_ds']), {'a.csv'})
+
+  def test_ambiente_de_cada_linha(self):
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
+    por_local = conj.df.groupby('_site')['_amb'].unique().map(list).to_dict()
+    self.assertEqual(por_local, {'residencia': ['domestico'], 'coworking': ['corporativo'],
+                                 'hotmilk': ['corporativo']})
+
+  def test_filtro_de_ambiente(self):
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA, 'corporativo')
+    self.assertEqual(sorted(conj.df['_site'].unique()), ['coworking', 'hotmilk'])
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA, 'domestico')
+    self.assertEqual(sorted(conj.df['_site'].unique()), ['residencia'])
+
+  def test_ambiente_desconhecido_levanta(self):
+    with self.assertRaises(ValueError):
+      SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA, 'industrial')
+
+  def test_ambiente_sem_linhas_levanta(self):
+    with self.assertRaises(ValueError):
+      SF.preparar({'a.csv': frame(locais=['sala', 'quarto'])}, 'speedtest_down_mbps', TABELA,
+                  'corporativo')
+
+  def test_local_desconhecido_e_nomeado_no_aviso(self):
+    conj = SF.preparar({'a.csv': frame(locais=['sala', 'garagem'])}, 'speedtest_down_mbps', TABELA)
+    self.assertTrue(any("['garagem']" in a for a in conj.avisos))
 
   def test_alvo_desconhecido_levanta(self):
     with self.assertRaises(ValueError):
@@ -134,23 +164,83 @@ class TestAjuste(Base):
   def test_vazamento_nunca_chega_ao_ajuste(self):
     conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
     with self.assertRaises(AssertionError):
-      SF.r2_por_posicao(conj.df, ['router_snr', 'router_tx_bytes'], 'speedtest_down_mbps',
+      SF.r2_por_local(conj.df, ['router_snr', 'router_tx_bytes'], 'speedtest_down_mbps',
                         ['router_tx_bytes'])
 
   def test_ajuste_completo(self):
     conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
     aj = SF.ajuste(conj, SF.inventario(conj))
     self.assertEqual(set(aj['teto']), {'atual', 'tr069', 'tudo'})
-    self.assertEqual(len(aj['teto']['tudo']['por_posicao']), 5)
-    self.assertTrue(all(g['posicoes'] == 5 for g in aj['ganho']))
+    self.assertEqual(set(aj['teto']['tudo']['por_local']), {'coworking', 'hotmilk', 'residencia'})
+    self.assertEqual(aj['locais'], ['coworking', 'hotmilk', 'residencia'])
+    self.assertTrue(all(g['locais'] == 3 for g in aj['ganho']))
     canal = next(p for p in aj['proxy'] if p['coluna'] == 'AP_channel')
     self.assertTrue(canal['parece_tr069'])
-    self.assertEqual(aj['avisos'], [])
+    self.assertEqual(aj['avisos'], ['só 3 locais de coleta: a dispersão por local não é '
+                                    'interpretável e a estimativa é instável'])
 
-  def test_poucas_posicoes_vira_aviso(self):
-    conj = SF.preparar({'a.csv': frame(locais=['sala', 'quarto', 'suite'])}, 'speedtest_down_mbps', TABELA)
+  def test_resumo_traz_pooled_e_mae(self):
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
+    tudo = SF.ajuste(conj, SF.inventario(conj))['teto']['tudo']
+    self.assertIsNotNone(tudo['pooled'])
+    self.assertGreater(tudo['mae'], 0)
+
+  def test_nenhum_predio_aparece_no_treino_e_no_teste(self):
+    # Com folds por cômodo, sala sairia para teste com quarto/suíte no treino.
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
+    vistos = []
+    original = SF.outer_logo_folds
+
+    def espiao(X, y, grupos):
+      folds = original(X, y, grupos)
+      vistos.extend(folds)
+      return folds
+    SF.outer_logo_folds = espiao
+    try:
+      SF.r2_por_local(conj.df, ['router_snr'], 'speedtest_down_mbps', [])
+    finally:
+      SF.outer_logo_folds = original
+    self.assertEqual(len(vistos), 3)
+    for fold in vistos:
+      self.assertNotIn(fold.test_site, fold.train_sites)
+
+  def test_ambiente_com_um_local_so_recusa_o_ajuste(self):
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA, 'domestico')
+    with self.assertRaises(ValueError) as ctx:
+      SF.ajuste(conj, SF.inventario(conj))
+    self.assertIn('só 1 local de coleta', str(ctx.exception))
+
+  def test_poucos_locais_vira_aviso(self):
+    conj = SF.preparar({'a.csv': frame(locais=['sala', 'quarto', 'cwpb-1'])}, 'speedtest_down_mbps', TABELA)
     aj = SF.ajuste(conj, SF.inventario(conj))
-    self.assertTrue(any(a.startswith('só 3 posições') for a in aj['avisos']))
+    self.assertTrue(any(a.startswith('só 2 locais de coleta') for a in aj['avisos']))
+
+
+class TestDados(unittest.TestCase):
+  def test_ambiente_do_studio_bate_com_o_core(self):
+    for predio, meta in SD.BUILDINGS.items():
+      for posicao in meta['positions']:
+        core = resolve_site_id(pd.Series([posicao]), level='building').iloc[0]
+        self.assertEqual(BUILDING_ENVIRONMENT[core], meta['ambiente'], f'{predio}/{posicao}')
+
+  def test_rotulo_antigo_do_hotmilk_vira_a_posicao_corrigida(self):
+    self.assertEqual(SD.POSITION_LABELS['quarto-marcelo'], 'hotmilk-aquario')
+    self.assertEqual(SD._building_of('quarto-marcelo'), 'hotmilk')
+
+  def test_versoes_com_ruido_de_float_sao_duplicatas(self):
+    base = frame()[['local'] + list(SD.TARGETS)]
+    ruido = base.copy()
+    ruido[list(SD.TARGETS)] += 1e-14
+    with tempfile.TemporaryDirectory() as pasta:
+      base.to_csv(os.path.join(pasta, 'a-fix.csv'), index=False)
+      ruido.to_csv(os.path.join(pasta, 'a.csv'), index=False)
+      antes = SD.DATA_DIR
+      SD.DATA_DIR = pasta
+      try:
+        achados = {d['id']: d for d in SD.discover()}
+      finally:
+        SD.DATA_DIR = antes
+    self.assertEqual(achados['a-fix.csv']['fingerprint'], achados['a.csv']['fingerprint'])
 
 
 if __name__ == '__main__':

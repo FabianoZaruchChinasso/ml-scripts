@@ -12,6 +12,7 @@ import zipfile
 
 import pandas as pd
 
+from ml.core.sites import CORPORATE, DOMESTIC
 from ml.studio.plans import montar_plantas
 
 TARGETS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
@@ -23,19 +24,34 @@ CURRENT_MARKERS = ['combo', 'n_clients', 'station_x', 'house_x0']
 DATA_DIR = 'data'
 
 # O prefixo `cwpb` deixou de distinguir predio: e o mapa explicito que manda.
-# Os coletores sao donos deste bloco.
+# Os coletores sao donos deste bloco. `ambiente` precisa bater com
+# core/sites.BUILDING_ENVIRONMENT (o teste garante).
 BUILDINGS = {
   'casa': {
     'label': 'Casa',
+    'ambiente': DOMESTIC,
     'positions': ['sala', 'quarto', 'suite', '1', '2', '3'],
   },
   'cowork-pedra-branca': {
     'label': 'Cowork Pedra Branca',
+    'ambiente': CORPORATE,
     'positions': ['cwpb-1', 'cwpb-2', 'cwpb-2m', 'cwpb-10m', 'cwpb-10m-2a', 'cwpb-13m'],
+  },
+  'hotmilk': {
+    'label': 'Hotmilk',
+    'ambiente': CORPORATE,
+    'positions': ['hotmilk-copa', 'hotmilk-aquario', 'hotmilk-aquario-fora', 'quarto-marcelo'],
   },
 }
 
-POSITION_LABELS = {'1': 'sala', '2': 'quarto', '3': 'suite'}
+AMBIENTES = {DOMESTIC: 'Doméstico', CORPORATE: 'Corporativo'}
+
+# quarto-marcelo: rotulo antigo que o 20260917-metrics-fix regravou como hotmilk-aquario.
+POSITION_LABELS = {'1': 'sala', '2': 'quarto', '3': 'suite', 'quarto-marcelo': 'hotmilk-aquario'}
+
+# Casas decimais do fingerprint. As versoes -fix/-distcalc recalculam os alvos
+# e diferem da original em ~1e-14: sem arredondar, o dedupe nao as reconhece.
+FINGERPRINT_DECIMALS = 6
 
 
 def _canonical_local(local_value) -> str:
@@ -97,7 +113,8 @@ def discover() -> list:
       continue
     if 'local' not in frame.columns or not all(t in frame.columns for t in TARGETS):
       continue
-    digest = hashlib.sha256(pd.util.hash_pandas_object(frame[TARGETS], index=False).values.tobytes())
+    alvos = frame[TARGETS].round(FINGERPRINT_DECIMALS)
+    digest = hashlib.sha256(pd.util.hash_pandas_object(alvos, index=False).values.tobytes())
     found.append({
       'id': name,
       'path': path,
@@ -130,7 +147,7 @@ def _superseded(datasets: list) -> dict:
     if not item.get('usable'):
       continue
     frame = item['_frame']
-    keys = set(map(tuple, frame[TARGETS].round(6).astype(str).values))
+    keys = set(map(tuple, frame[TARGETS].round(FINGERPRINT_DECIMALS).astype(str).values))
     keyed[item['id']] = keys
   for a, keys_a in keyed.items():
     for b, keys_b in keyed.items():
@@ -144,7 +161,7 @@ def _superseded(datasets: list) -> dict:
 def build_payload() -> dict:
   datasets = descobertos()
   superseded = _superseded(datasets)
-  # Fingerprint igual = os mesmos alvos byte a byte. Manter os dois ligados
+  # Fingerprint igual = os mesmos alvos ate a 6a casa. Manter os dois ligados
   # duplica o peso de cada amostra sem avisar.
   seen_fingerprints = {}
   duplicate_of = {}
@@ -235,7 +252,8 @@ def build_payload() -> dict:
   return {
     'datasets': descriptors,
     'rows': rows,
-    'buildings': {k: {'label': v['label']} for k, v in BUILDINGS.items()},
+    'buildings': {k: {'label': v['label'], 'ambiente': v['ambiente']} for k, v in BUILDINGS.items()},
+    'ambientes': AMBIENTES,
     'envelopes': envelopes,
     'plantas': plantas,
     'plantasAvisos': plantas_avisos,
