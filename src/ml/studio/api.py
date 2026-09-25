@@ -55,7 +55,11 @@ def _tabela():
     return {'prefixos': {}, 'colunas': {}}, f'tabela de classificação ilegível: {erro}'
 
 
-def _conjunto(ds: str, alvo: str):
+def _ambiente(ambiente: str) -> Optional[str]:
+  return None if ambiente in ('', 'todos') else ambiente
+
+
+def _conjunto(ds: str, alvo: str, ambiente: str = ''):
   pedidos = [x for x in ds.split(',') if x]
   por_id = {d['id']: d for d in descobertos() if d.get('usable')}
   desconhecidos = [x for x in pedidos if x not in por_id]
@@ -65,7 +69,7 @@ def _conjunto(ds: str, alvo: str):
   legacy = [x for x in pedidos if por_id[x]['generation'] != 'current']
   tabela, erro_tabela = _tabela()
   try:
-    conj = studio_features.preparar(frames, alvo, tabela)
+    conj = studio_features.preparar(frames, alvo, tabela, _ambiente(ambiente))
   except ValueError as erro:
     raise HTTPException(422, str(erro))
   if legacy:
@@ -74,17 +78,18 @@ def _conjunto(ds: str, alvo: str):
 
 
 @app.get('/api/features/inventario')
-def features_inventario(ds: str = '', alvo: str = 'speedtest_down_mbps'):
-  conj, erro_tabela = _conjunto(ds, alvo)
+def features_inventario(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = ''):
+  conj, erro_tabela = _conjunto(ds, alvo, ambiente)
   inv = studio_features.inventario(conj)
   inv['tabela_erro'] = erro_tabela
   return inv
 
 
 @app.get('/api/features/ajuste')
-def features_ajuste(ds: str = '', alvo: str = 'speedtest_down_mbps'):
-  conj, _ = _conjunto(ds, alvo)
-  chave = (tuple(conj.datasets), alvo, core_features.versao_tabela(), core_features.CATALOGO_VERSAO)
+def features_ajuste(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = ''):
+  conj, _ = _conjunto(ds, alvo, ambiente)
+  chave = (tuple(conj.datasets), alvo, _ambiente(ambiente), core_features.versao_tabela(),
+           core_features.CATALOGO_VERSAO)
   if chave not in _ajustes:
     try:
       _ajustes[chave] = studio_features.ajuste(conj, studio_features.inventario(conj))

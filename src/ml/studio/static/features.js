@@ -24,9 +24,9 @@
                aj: null, ajKey: null, ajHora: null, ajErro: null, rodando: false, inicio: 0,
                relogio: null, salvarErro: null, hits: null, abertos: [] };
 
-  const chave = () => st.ctx.enabledIds.slice().sort().join(',') + '|' + st.alvo;
+  const chave = () => st.ctx.enabledIds.slice().sort().join(',') + '|' + st.alvo + '|' + st.ctx.ambiente;
   const query = () => 'ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
-    '&alvo=' + encodeURIComponent(st.alvo);
+    '&alvo=' + encodeURIComponent(st.alvo) + '&ambiente=' + encodeURIComponent(st.ctx.ambiente);
 
   async function pedir(url, opts) {
     const r = await fetch(url, opts);
@@ -91,7 +91,7 @@
     if (st.aj && st.ajKey === chave()) {
       st.aj.proxy.filter((p) => p.parece_tr069).forEach((p) => {
         html += gate('warning', `<code>${esc(p.coluna)}</code> parece ser TR-069`,
-          `O TR-069 reconstrói esta coluna com R² ≥ 0,99 em todas as posições (média ${num(p.r2, 2)}).`,
+          `O TR-069 reconstrói esta coluna com R² ≥ 0,99 em todos os locais de coleta (média ${num(p.r2, 2)}).`,
           `<div style="margin-top:8px"><button class="btn" data-acao="reclassificar" data-col="${esc(p.coluna)}">Reclassificar como TR-069</button></div>`);
       });
     }
@@ -110,16 +110,17 @@
 
   function leituraTeto(aj) {
     const t = aj.teto;
-    const n = aj.posicoes.length;
+    const n = aj.locais.length;
     if (t.atual.media == null) return 'Nenhuma feature do modelo atual está disponível neste conjunto.';
     const d = t.tr069.media - t.atual.media;
-    const melhora = Object.keys(t.atual.por_posicao)
-      .filter((s) => t.tr069.por_posicao[s] > t.atual.por_posicao[s]).length;
+    const melhora = Object.keys(t.atual.por_local)
+      .filter((s) => t.tr069.por_local[s] > t.atual.por_local[s]).length;
     const dt = t.tudo.media - t.tr069.media;
-    return `Todo o TR-069 rende <b>${sinal(d)}</b> sobre o modelo atual e melhora ${melhora} de ${n} posições. ` +
+    return `Todo o TR-069 rende <b>${sinal(d)}</b> sobre o modelo atual e melhora ${melhora} de ${n} locais de coleta. ` +
       (Math.abs(dt) < 0.02 ? `Somar as auxiliares não muda o teto (${num(t.tudo.media, 3)}). `
         : `Somar as auxiliares leva a ${num(t.tudo.media, 3)} (${sinal(dt)}). `) +
-      `Com ${n} posições, diferenças abaixo de ~0,02 são ruído.`;
+      `R² pooled (todas as previsões fora do fold juntas): atual ${num(t.atual.pooled, 3)} · TR-069 ${num(t.tr069.pooled, 3)} · tudo ${num(t.tudo.pooled, 3)}. ` +
+      `Com só ${n} locais de coleta, a média por local é instável: um local de pouca variância no alvo derruba o R² dele sozinho.`;
   }
 
   function cardTeto() {
@@ -131,13 +132,13 @@
     else if (st.aj) status = 'desatualizado: o conjunto ou o alvo mudou';
     let corpo = '<p class="hint">Clique em <b>Rodar análise</b>. Leva cerca de 75 s com os dados atuais.</p>';
     if (st.aj) {
-      const pos = st.aj.posicoes;
+      const locais = st.aj.locais;
       corpo = `<div class="${atual ? '' : 'stale'}"><div class="chartwrap"><canvas id="fTeto"></canvas><div class="tooltip" id="fTetoTip"></div></div>
-        <div class="serieskey">${pos.map((p, i) => `<span><i style="background:var(--s${i % 5 + 1})"></i>${esc(p)}</span>`).join('')}</div>
+        <div class="serieskey">${locais.map((p, i) => `<span><i style="background:var(--s${i % 5 + 1})"></i>${esc(p)}</span>`).join('')}</div>
         <p style="margin:12px 0 0;font-size:13px">${leituraTeto(st.aj)}</p></div>`;
     }
     return `<div class="card"><div class="card-head"><div><h2>Teto de desempenho</h2>
-      <p class="hint">R² LOGO do alvo com três conjuntos de features. Cada ponto é uma posição deixada de fora; a barra vertical é a média.</p></div>
+      <p class="hint">R² do alvo com três conjuntos de features, deixando um <b>local de coleta</b> (prédio) inteiro de fora por vez. Cada ponto é um local; a barra vertical é a média. Folds por cômodo deixavam os outros cômodos do mesmo prédio no treino e inflavam o R².</p></div>
       <div style="text-align:right"><button class="btn-pri" data-acao="rodar"${st.rodando ? ' disabled' : ''}>Rodar análise</button>
       <div class="status">${status}</div></div></div>${corpo}</div>`;
   }
@@ -147,8 +148,8 @@
     if (!canvas || !st.aj) return;
     const aj = st.aj;
     const linhas = [['atual', 'Modelo atual'], ['tr069', 'TR-069 completo'], ['tudo', 'Tudo']].map(([k, rotulo]) => ({
-      label: rotulo, sub: `${aj.teto[k].n} features`, mean: aj.teto[k].media,
-      points: aj.posicoes.map((p, i) => ({ key: p, v: aj.teto[k].por_posicao[p], color: cssv('--s' + (i % 5 + 1)) }))
+      label: rotulo, sub: `${aj.teto[k].n} feat. · pooled ${num(aj.teto[k].pooled, 2)} · MAE ${num(aj.teto[k].mae, 1)}`, mean: aj.teto[k].media,
+      points: aj.locais.map((p, i) => ({ key: p, v: aj.teto[k].por_local[p], color: cssv('--s' + (i % 5 + 1)) }))
         .filter((p) => p.v != null),
     }));
     st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, 2), fmtMean: (v) => num(v, 3) });
@@ -172,14 +173,14 @@
     const linha = (c) => {
       const g = ganho[c.coluna];
       const cel = c.vazamento ? '<td class="num" colspan="2">fora dos ajustes</td>'
-        : g ? `<td class="num">${sinal(g.delta)}</td><td class="num${g.melhora === g.posicoes ? ' good' : ''}">${g.melhora}/${g.posicoes}</td>`
+        : g ? `<td class="num">${sinal(g.delta)}</td><td class="num${g.melhora === g.locais ? ' good' : ''}">${g.melhora}/${g.locais}</td>`
           : '<td class="num">–</td><td class="num">–</td>';
       const t = c.vazamento ? `<span class="tag leak" title="${VAZAMENTO}">${c.derivada ? 'vazamento herdado' : 'vazamento'}</span>` : tipo(c);
       return `<tr${c.vazamento ? ' class="dim"' : ''}><td><code>${esc(c.coluna)}</code></td><td>${t}</td>
         <td class="num">${pct(c.cobertura)}</td><td>${c.rho == null ? '–' : barra(c.rho, c.vazamento ? 'var(--grid)' : '') + num(c.rho, 2)}</td>${cel}</tr>`;
     };
     return `<div class="card"><h2>Candidatas TR-069 fora do modelo</h2>
-      <p class="hint">Ganho é o ΔR² LOGO médio ao somar a coluna às features atuais. Abaixo de ~0,01 é ruído; "melhora" diz se o ganho é consistente entre posições.</p>
+      <p class="hint">Ganho é o ΔR² médio (um local de coleta de fora por vez) ao somar a coluna às features atuais. Abaixo de ~0,01 é ruído; "melhora" diz se o ganho é consistente entre locais.</p>
       ${lista.length ? `<table><thead><tr><th>Coluna</th><th>Tipo</th><th class="num">Cobertura</th><th>|ρ| com o alvo</th><th class="num">Ganho</th><th class="num">Melhora</th></tr></thead>
       <tbody>${limpas.concat(vazadas).map(linha).join('')}</tbody></table>` : '<p class="hint">Nenhuma coluna TR-069 fora do modelo neste conjunto.</p>'}</div>`;
   }
@@ -190,7 +191,7 @@
       const idem = {};
       inv.grupos_identicos.forEach((g) => g.forEach((c) => { idem[c] = g.filter((x) => x !== c); }));
       const cor = { alcancavel: 'var(--good)', parcial: 'var(--warning)', laboratorio: 'var(--axis)' };
-      corpo = st.aj.proxy.length ? `<div class="${st.ajKey === chave() ? '' : 'stale'}"><table><thead><tr><th>Auxiliar</th><th>Fonte</th><th class="num">|ρ| com o alvo</th><th>R² do proxy</th><th class="num">Faixa por posição</th><th>Leitura</th></tr></thead><tbody>` +
+      corpo = st.aj.proxy.length ? `<div class="${st.ajKey === chave() ? '' : 'stale'}"><table><thead><tr><th>Auxiliar</th><th>Fonte</th><th class="num">|ρ| com o alvo</th><th>R² do proxy</th><th class="num">Faixa por local</th><th>Leitura</th></tr></thead><tbody>` +
         st.aj.proxy.map((p) => `<tr><td><code>${esc(p.coluna)}</code>${idem[p.coluna] ? `<div class="gate-msg">idêntica a <code>${esc(idem[p.coluna].join(', '))}</code></div>` : ''}</td>
           <td>${ROTULO[p.classe]}</td><td class="num">${num(p.rho, 2)}</td><td>${barra(p.r2, cor[p.leitura])}${num(p.r2, 2)}</td>
           <td class="num gate-msg">${num(p.min, 2)} a ${num(p.max, 2)}</td>
@@ -198,7 +199,7 @@
         : '<p class="hint">Nenhuma auxiliar elegível neste conjunto.</p>';
     }
     return `<div class="card"><h2>Auxiliares: o TR-069 consegue reconstruir?</h2>
-      <p class="hint">R² LOGO de "auxiliar ≈ f(todas as TR-069)". Alcançável ≥ 0,7 · parcial 0,3 a 0,7 · só laboratório &lt; 0,3. Um sinal alcançável ainda precisa de uma receita TR-069 que o reproduza, então vira ideia de derivada.</p>${corpo}</div>`;
+      <p class="hint">R² por local de coleta de "auxiliar ≈ f(todas as TR-069)". Alcançável ≥ 0,7 · parcial 0,3 a 0,7 · só laboratório &lt; 0,3. Um sinal alcançável ainda precisa de uma receita TR-069 que o reproduza, então vira ideia de derivada.</p>${corpo}</div>`;
   }
 
   function blocos(inv) {
@@ -232,7 +233,8 @@
     if (!st.inv) { host.innerHTML = '<p class="hint">Carregando inventário…</p>'; return; }
     const inv = st.inv;
     const porNome = Object.fromEntries(inv.colunas.map((c) => [c.coluna, c]));
-    $('#fChip').textContent = `${inv.datasets.join(', ')} · ${inv.n_linhas.toLocaleString('pt-BR')} amostras · ${inv.posicoes.length} posições`;
+    const amb = st.ctx.ambiente === 'todos' ? '' : ` · só ${st.ctx.ambientes[st.ctx.ambiente].toLowerCase()}`;
+    $('#fChip').textContent = `${inv.datasets.join(', ')} · ${inv.n_linhas.toLocaleString('pt-BR')} amostras · ${inv.locais.length} locais de coleta · ${inv.posicoes.length} posições${amb}`;
     host.innerHTML = gates(inv, porNome) + cardTeto() + cardCandidatas(inv) + cardProxy(inv) + blocos(inv);
     host.querySelectorAll('details.fold').forEach((d, i) => { d.open = !!st.abertos[i]; });
     desenharTeto();

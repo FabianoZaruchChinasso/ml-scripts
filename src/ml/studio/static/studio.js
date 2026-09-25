@@ -22,7 +22,7 @@
   const MIN_SAMPLES = 5;
 
   const state = { data: null, app: 'Chamada de vídeo', thr: null, legacy: false,
-                  enabled: {}, view: 'matrix', metric: 'dn' };
+                  enabled: {}, view: 'matrix', metric: 'dn', ambiente: 'todos' };
   const hits = {};
 
   const cssv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -31,9 +31,15 @@
   function meets(row, thr) {
     return row.dn >= thr.dn && row.up >= thr.up && row.lat <= thr.lat && row.jit <= thr.jit;
   }
+  const ambienteDe = (b) => state.data.buildings[b].ambiente;
   function activeRows() {
-    return state.data.rows.filter((r) => state.enabled[r.ds]);
+    return state.data.rows.filter((r) => state.enabled[r.ds]
+      && (state.ambiente === 'todos' || ambienteDe(r.b) === state.ambiente));
   }
+  const tagAmbiente = (b) => {
+    const a = ambienteDe(b);
+    return `<span class="tag amb-${a}">${state.data.ambientes[a]}</span>`;
+  };
   function positionsOf(rows) {
     const seen = new Map();
     rows.forEach((r) => { if (!seen.has(r.b + '|' + r.p)) seen.set(r.b + '|' + r.p, { b: r.b, p: r.p }); });
@@ -56,9 +62,11 @@
     const withN = rows.filter((r) => r.n != null).length;
 
     if (buildings.size < 2) {
-      gates.push({ sev: 'critical', title: 'Menos de 2 prédios no conjunto ativo',
-        msg: 'Leave-one-building-out fica indefinido e nenhum número aqui generaliza para um prédio novo.',
-        causes: ['Ligue um dataset do outro prédio na view Datasets.'] });
+      gates.push({ sev: 'critical', title: 'Menos de 2 locais de coleta no conjunto ativo',
+        msg: 'Os folds deixam um local de coleta de fora; com um só, a análise de Features fica indefinida e nenhum número aqui generaliza para um prédio novo.',
+        causes: state.ambiente === 'todos'
+          ? ['Ligue um dataset de outro prédio na view Datasets.']
+          : [`O filtro de ambiente (${state.data.ambientes[state.ambiente]}) deixou ${buildings.size} local de coleta. Mude para Todos ou ligue outro dataset.`] });
     }
     if (gens.size > 1) {
       gates.push({ sev: 'warning', title: 'Gerações de esquema misturadas',
@@ -81,8 +89,11 @@
       }
     });
     if (!gates.length) {
+      const porAmb = {};
+      buildings.forEach((b) => { porAmb[ambienteDe(b)] = (porAmb[ambienteDe(b)] || 0) + 1; });
+      const amb = Object.entries(porAmb).map(([a, n]) => `${n} ${state.data.ambientes[a].toLowerCase()}`).join(', ');
       gates.push({ sev: 'good', title: 'Conjunto ativo consistente',
-        msg: `${rows.length.toLocaleString('pt-BR')} amostras, ${buildings.size} prédios, ${positionsOf(rows).length} posições.`, causes: [] });
+        msg: `${rows.length.toLocaleString('pt-BR')} amostras, ${buildings.size} prédios (${amb}), ${positionsOf(rows).length} posições.`, causes: [] });
     }
     $('#gates').innerHTML = gates.map((g) => `
       <div class="gate ${g.sev}">
@@ -118,7 +129,7 @@
       [1, 2, 3].map((n) => `<div class="collab">${n} disp.</div>`).join('');
     data.forEach((r) => {
       const label = `${state.data.buildings[r.pos.b].label} · ${r.pos.p}`;
-      html += `<div class="rowlab">${label}</div>`;
+      html += `<div class="rowlab">${label} <span class="amb-dot amb-${ambienteDe(r.pos.b)}" title="${state.data.ambientes[ambienteDe(r.pos.b)]}"></span></div>`;
       r.cells.forEach((c) => {
         if (c.pct == null) {
           html += `<div class="cell" style="background:var(--grid);color:var(--ink-muted)" title="${c.n} amostras">–</div>`;
@@ -132,9 +143,9 @@
     el.innerHTML = html;
     $('#ramp').innerHTML = SEQ.map((s) => `<i style="background:var(${s})"></i>`).join('');
 
-    $('#matrixTable').innerHTML = `<table><thead><tr><th>Prédio</th><th>Posição</th>
+    $('#matrixTable').innerHTML = `<table><thead><tr><th>Prédio</th><th>Ambiente</th><th>Posição</th>
       <th class="num">1 disp.</th><th class="num">2 disp.</th><th class="num">3 disp.</th><th class="num">amostras</th></tr></thead><tbody>` +
-      data.map((r) => `<tr><td>${state.data.buildings[r.pos.b].label}</td><td>${r.pos.p}</td>` +
+      data.map((r) => `<tr><td>${state.data.buildings[r.pos.b].label}</td><td>${tagAmbiente(r.pos.b)}</td><td>${r.pos.p}</td>` +
         r.cells.map((c) => `<td class="num">${c.pct == null ? '–' : Math.round(c.pct) + '%'}</td>`).join('') +
         `<td class="num">${r.cells.reduce((a, c) => a + c.n, 0)}</td></tr>`).join('') + '</tbody></table>';
   }
@@ -238,7 +249,7 @@
         <td><span class="tag ${d.generation}">${d.generation}</span></td>
         <td class="num">${d.rows.toLocaleString('pt-BR')}</td>
         <td class="num">${d.columns}</td>
-        <td>${d.buildings.map((b) => state.data.buildings[b].label).join(', ') || '—'}</td>
+        <td>${d.buildings.map((b) => `${state.data.buildings[b].label} ${tagAmbiente(b)}`).join(', ') || '—'}</td>
         <td>${d.hasContention ? 'sim' : '—'}</td>
         <td style="color:var(--ink-muted)">${d.supersededBy ? 'contido em ' + d.supersededBy
           : d.duplicateOf ? 'idêntico a ' + d.duplicateOf : ''}</td>
@@ -251,8 +262,9 @@
     const rows = activeRows();
     const b = new Set(rows.map((r) => r.b)).size;
     const p = positionsOf(rows).length;
+    const amb = state.ambiente === 'todos' ? '' : `<br>só ${state.data.ambientes[state.ambiente].toLowerCase()}`;
     $('#poolSummary').innerHTML =
-      `<b>${rows.length.toLocaleString('pt-BR')}</b> amostras<br><b>${b}</b> prédios · <b>${p}</b> posições`;
+      `<b>${rows.length.toLocaleString('pt-BR')}</b> amostras<br><b>${b}</b> prédios · <b>${p}</b> posições${amb}`;
   }
 
   function renderAll() {
@@ -260,7 +272,8 @@
     if (state.view === 'contention') renderContention();
     if (state.view === 'constraint') renderConstraint();
     if (state.view === 'features') {
-      V.views.features.render({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]) });
+      V.views.features.render({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
+                                ambiente: state.ambiente, ambientes: state.data.ambientes });
     }
     if (state.view === 'plan') renderPlan();
     if (state.view === 'datasets') renderDatasets();
@@ -300,6 +313,11 @@
       });
     }
     state.thr = { ...PROFILES[state.app] };
+    // ?ambiente=domestico|corporativo abre o Studio já filtrado.
+    const amb = new URLSearchParams(location.search).get('ambiente');
+    if (amb && data.ambientes[amb]) state.ambiente = amb;
+    $('#ambSel').value = state.ambiente;
+    $('#ambSel').addEventListener('change', (e) => { state.ambiente = e.target.value; renderAll(); });
 
     $('#appSel').innerHTML = Object.keys(PROFILES).map((k) =>
       `<option${k === state.app ? ' selected' : ''}>${k}</option>`).join('') +
