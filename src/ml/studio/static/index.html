@@ -13,7 +13,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QoE Studio — Venko</title>
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
   <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><line x1="12" y1="20" x2="12.01" y2="20"/><path d="M1.5 9a15 15 0 0 1 21 0"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+  <symbol id="i-model" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="15" width="11" height="5" rx="1"/><line x1="17" y1="17.5" x2="21" y2="17.5"/><line x1="19" y1="15.5" x2="19" y2="19.5"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
 </defs></svg>
 
@@ -38,6 +39,7 @@
     <button data-view="contention"><svg class="icon"><use href="#i-trend"/></svg> Contenção</button>
     <button data-view="constraint"><svg class="icon"><use href="#i-bars"/></svg> Restrição</button>
     <button data-view="features"><svg class="icon"><use href="#i-layers"/></svg> Features</button>
+    <button data-view="modelos"><svg class="icon"><use href="#i-model"/></svg> Modelos</button>
     <button data-view="plan"><svg class="icon"><use href="#i-plan"/></svg> Planta</button>
     <button data-view="thresholds"><svg class="icon"><use href="#i-sliders"/></svg> Limiares</button>
     <button data-view="datasets"><svg class="icon"><use href="#i-db"/></svg> Datasets</button>
@@ -135,6 +137,20 @@
     <div id="fBody"></div>
   </section>
 
+  <section id="view-modelos" class="view hide">
+    <div class="controls">
+      <label for="mAlvo">Alvo</label>
+      <select id="mAlvo">
+        <option value="speedtest_down_mbps">Download (Mbps)</option>
+        <option value="speedtest_up_mbps">Upload (Mbps)</option>
+        <option value="latency_ms">Latência (ms)</option>
+        <option value="jitter_ms">Jitter (ms)</option>
+      </select>
+    </div>
+    <div id="mBody"></div>
+    <div id="pBody"></div>
+  </section>
+
   <section id="view-plan" class="view hide">
     <div class="card">
       <h2>Pontos medidos</h2>
@@ -170,9 +186,11 @@
 </main>
 
 <script src="graficos.js?v=3"></script>
-<script src="features.js?v=3"></script>
+<script src="features.js?v=5"></script>
+<script src="modelos.js?v=9"></script>
+<script src="paralelos.js?v=3"></script>
 <script src="planta.js?v=3"></script>
-<script src="studio.js?v=3"></script>
+<script src="studio.js?v=5"></script>
 
 </body>
 </html>

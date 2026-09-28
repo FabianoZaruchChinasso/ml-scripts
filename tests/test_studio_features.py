@@ -216,6 +216,65 @@ class TestAjuste(Base):
     self.assertTrue(any(a.startswith('só 2 locais de coleta') for a in aj['avisos']))
 
 
+class TestModelos(Base):
+  def setUp(self):
+    super().setUp()
+    self.conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
+    self.inv = SF.inventario(self.conj, ['router_snr'])
+
+  def test_inventario_usa_o_modelo_informado(self):
+    por_nome = {c['coluna']: c for c in self.inv['colunas']}
+    self.assertTrue(por_nome['router_snr']['no_modelo'])
+    self.assertFalse(por_nome['router_signal_dbm']['no_modelo'])
+    self.assertIn('router_signal_dbm', self.inv['candidatas'])
+    self.assertEqual(self.inv['modelo'], ['router_snr'])
+
+  def test_avaliar_lista_ausentes_e_traz_mae_por_local(self):
+    r = SF.avaliar(self.conj, ['router_snr', 'nao_existe'], [])
+    self.assertEqual(r['ausentes'], ['nao_existe'])
+    self.assertEqual(r['n'], 1)
+    self.assertEqual(set(r['mae_por_local']), {'coworking', 'hotmilk', 'residencia'})
+
+  def test_avaliar_recusa_vazamento(self):
+    with self.assertRaises(AssertionError):
+      SF.avaliar(self.conj, ['router_snr', 'router_tx_bytes'], ['router_tx_bytes'])
+
+  def test_versao_com_vazamento_confirmado_e_avaliada_sem_ele(self):
+    r = SF.avaliar_versao(self.conj, ['router_snr', 'router_tx_bytes'], ['router_tx_bytes'])
+    self.assertEqual(r['removidas_por_vazamento'], ['router_tx_bytes'])
+    self.assertEqual(r['n'], 1)
+    c = SF.comparar(self.conj, self.inv, {'v1': ['router_snr', 'router_tx_bytes']}, 'v1')
+    self.assertEqual(c['versoes'][0]['removidas_por_vazamento'], ['router_tx_bytes'])
+
+  def test_ajuste_tira_vazamento_do_modelo_ativo_e_avisa(self):
+    inv = SF.inventario(self.conj, ['router_snr', 'router_tx_bytes'])
+    aj = SF.ajuste(self.conj, inv)
+    self.assertEqual(aj['teto']['atual']['n'], 1)
+    self.assertTrue(any('vazamento' in a for a in aj['avisos']))
+
+  def test_delta_por_local(self):
+    base = {'por_local': {'a': 0.5, 'b': 0.2}, 'pooled': 0.3, 'mae': 10.0}
+    novo = {'por_local': {'a': 0.6, 'b': 0.1}, 'pooled': 0.35, 'mae': 9.0}
+    d = SF.delta_por_local(novo, base)
+    self.assertEqual(d['por_local'], {'a': 0.1, 'b': -0.1})
+    self.assertEqual((d['melhora'], d['locais'], d['pooled'], d['mae']), (1, 2, 0.05, -1.0))
+
+  def test_comparar_traz_versoes_e_referencias(self):
+    c = SF.comparar(self.conj, self.inv, {'v1': ['router_snr'], 'v2': ['router_snr', 'router_signal_dbm']}, 'v1')
+    self.assertEqual([(v['nome'], v['ativo']) for v in c['versoes']], [('v1', True), ('v2', False)])
+    self.assertEqual(set(c['referencias']), {'tr069', 'tudo'})
+
+  def test_ajuste_inclui_versoes_que_nao_sao_a_ativa(self):
+    aj = SF.ajuste(self.conj, self.inv, {'v1': ['router_snr'], 'v2': ['router_snr', 'radio']})
+    self.assertEqual([v['nome'] for v in aj['versoes']], ['v2'])
+
+  def test_correlacoes_apontam_redundantes_e_separam_categoricas(self):
+    c = SF.correlacoes(self.conj.df, ['stats_80211_a', 'stats_80211_b', 'router_snr', 'radio'])
+    self.assertEqual(c['fora'], ['radio'])
+    self.assertEqual(len(c['matriz']), 3)
+    self.assertEqual([(r['a'], r['b']) for r in c['redundantes']], [('stats_80211_a', 'stats_80211_b')])
+
+
 class TestDados(unittest.TestCase):
   def test_ambiente_do_studio_bate_com_o_core(self):
     for predio, meta in SD.BUILDINGS.items():

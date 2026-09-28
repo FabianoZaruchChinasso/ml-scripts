@@ -271,9 +271,12 @@
     renderPool(); renderGates(); renderMatrix();
     if (state.view === 'contention') renderContention();
     if (state.view === 'constraint') renderConstraint();
-    if (state.view === 'features') {
-      V.views.features.render({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
+    const ctxAnalise = () => ({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
                                 ambiente: state.ambiente, ambientes: state.data.ambientes });
+    if (state.view === 'features') V.views.features.render(ctxAnalise());
+    if (state.view === 'modelos') {
+      V.views.modelos.render(ctxAnalise());
+      V.views.paralelos.render(ctxAnalise());
     }
     if (state.view === 'plan') renderPlan();
     if (state.view === 'datasets') renderDatasets();
@@ -284,6 +287,7 @@
     contention: ['Contenção', 'A mesma posição medida com 1, 2 e 3 clientes competindo.'],
     constraint: ['Restrição dominante', 'Qual das quatro métricas reprova mais em cada posição.'],
     features: ['Features', 'O que dá para levar para produção a partir do TR-069.'],
+    modelos: ['Modelos', 'Versões de modelo: comparar, montar e salvar. Folds por local de coleta.'],
     plan: ['Planta baixa', 'Pontos realmente medidos, sobre a planta do prédio quando houver. Sem interpolação.'],
     thresholds: ['Limiares', 'Limiares de QoE por aplicação, explícitos e editáveis.'],
     datasets: ['Datasets', 'Varredura automática do repositório, com o interruptor de legacy.'],

@@ -1,3 +1,161 @@
+# Changelog — Coletor sem zeros falsos e pendências dos dados no Studio
+
+**Data:** 2026-09-25
+
+## Coletor (`get-metrics.py`)
+
+- `router_opportunity_medium_use` e `client_opportunity_medium_use` ficam **vazios** quando o scan
+  de vizinhos falta ou não é legível, ou quando o canal do AP é ausente ou desconhecido. `0` passa a
+  significar só "scan existe e não há vizinho no canal". Antes os dois casos viravam 0.
+- A contagem foi para `src/medium_use.py`, testável sem o cliente do InfluxDB (`tests/test_medium_use.py`).
+- Datasets já coletados continuam com o comportamento antigo. O Studio os lista como "coletor antigo".
+
+## Limites e pendências dos dados (view Modelos; avisos também em Features)
+
+- **Locais de coleta:** quantos há no conjunto ativo (e quantos domésticos/corporativos) contra o
+  mínimo de 4. Abaixo disso, o Studio avisa que a leitura por local não é interpretável e que os
+  números mudam com a coleta em andamento. Com 1 só local doméstico, avisa que nada vale para
+  residências em geral.
+- **Contadores do roteador medidos na janela do teste?** (`router_tx/rx_duration_us`,
+  `router_tx_retries`, `router_tx_failed`, `router_rx_drop_misc`), com três respostas gravadas em
+  `column_provenance.json`:
+  - **Não sei** (estado atual): continuam nos ajustes, marcados como "não confirmado". Derivadas
+    deles herdam a marca, e o desenho automático começa sem eles.
+  - **Sim:** viram vazamento. Versões que os usam são avaliadas sem eles, e notas guardadas com eles
+    aparecem como "refazer".
+  - **Não:** liberados como qualquer coluna TR-069.
+- **Datasets do coletor antigo:** onde um 0 em `router_opportunity_medium_use` pode ser "sem medição".
+
+---
+
+# Changelog — QoE Studio: view Modelos (etapa 3, paralelos e derivadas)
+
+**Data:** 2026-09-25
+
+## Paralelos: laboratório × TR-069
+
+`studio/paralelos.py` + card na view Modelos. Para cada coluna fora do TR-069 (sniffer, cliente,
+manual, ambiente; numérica, sem vazamento, cobertura ≥ 70%; as 40 de maior |ρ| com o alvo):
+
+1. **Importa?** Ganho médio de R² ≥ 0,01 **e** melhora em todos os locais ao somá-la à versão base
+   (se já está na base, mede o efeito de tirá-la).
+2. **Reconstrói?** Todo o TR-069 prevê a coluna com R² ≥ 0,3 em **todos** os locais (folds por local).
+3. **Assinatura.** Spearman **dentro** de cada prédio com cada TR-069 numérica. Só conta como
+   consistente com |ρ| ≥ 0,3 e o mesmo sinal em todos os prédios onde a coluna varia.
+4. **Leitura:** candidata a receita / só laboratório / o TR-069 já carrega / sem paralelo.
+
+Campos constantes por posição (manuais) mostram o **n efetivo** (grupos independentes).
+
+## Desenhista de derivadas
+
+- `core/formulas.py`: fórmulas aritméticas sobre colunas brutas (`+ − * / **`, parênteses, `log10`,
+  `log`, `sqrt`, `abs`), analisadas por AST e **sem eval**. Qualquer outra construção é recusada.
+- `src/ml/core/derivadas.json`: derivadas desenhadas, com nome imutável, fórmula, inspiração e o
+  resultado do teste. Derivada de derivada não é aceita.
+- **Critério de aceite** (roda de novo no servidor ao salvar; o status nunca vem do navegador):
+  insumos TR-069, sem vazamento, ganho ≥ 0,01 com melhora em todos os locais e, com inspiração,
+  reconstrução com R² ≥ 0,3 em todos. Quem passa é **aprovada**; quem não passa é **hipótese**, fica
+  visível no editor e fora do teto, do ganho e do desenho automático.
+
+## Primeiro uso (download, base v2-tr069)
+
+- **Nenhuma candidata a receita** entre as 40 colunas.
+- `stats_80211_client_retry_overhead_pct` (sniffer): **o TR-069 já carrega**. Reconstrução com
+  R² ≥ 0,42 nos 3 locais, com assinatura consistente em `retry_por_pacote`.
+- `link_speed_mbps` (cliente) e `stats_80211_global_overhead_pct` (sniffer): **só laboratório**.
+  Melhoram o alvo nos 3 locais, mas o TR-069 não os reconstrói em prédio novo.
+- `taxa_phy_media = (router_tx_rate_mbps + router_rx_rate_mbps) / 2`, inspirada em
+  `link_speed_mbps`: reconstrói (R² 0,51 / 0,49 / 0,31), mas não melhora o download sobre a
+  v2-tr069. Salva como **hipótese**.
+
+---
+
+# Changelog — QoE Studio: view Modelos (etapa 2, desenho automático)
+
+**Data:** 2026-09-25
+
+## Desenhar melhor modelo TR-069
+
+- `studio/selecao.py`: seleção gulosa só entre TR-069 e derivadas TR-069 (critério: R² pooled,
+  folds por local de coleta; para quando o ganho < 0,005; até 12 features). Roda em thread
+  (`POST /api/modelos/desenhar`, progresso em `GET /api/modelos/desenhar/{id}`).
+- Duas notas: a **da seleção** (escolhe e avalia nos mesmos locais, otimista) e a **aninhada** (para
+  cada local, a seleção roda sem ele e o modelo é testado nele: a estimativa honesta). A página
+  mostra também quais features cada fold aninhado escolheu (estabilidade).
+- Opção "sem contadores brutos de volume" (`router_tx/rx_duration_us`, `router_tx_retries`,
+  `router_tx_failed`, `router_rx_drop_misc`); as versões por pacote continuam disponíveis.
+- Uma versão salva a partir do desenho guarda passos, parâmetros e as duas notas (`selecao`). A API só
+  aceita esse vínculo de um desenho que ela mesma rodou e com as mesmas features.
+- Versões desenhadas aparecem com a nota **aninhada** no alvo otimizado e marcadas como
+  **otimistas** nos demais e na comparação.
+
+## Primeiro uso (download, 3 locais)
+
+| versão | R² pooled | MAE (Mbps) |
+|---|---|---|
+| v1-legado (ativo) | −0,09 | 90,7 |
+| v1-sem-cliente | +0,06 | 80,7 |
+| v2-tr069 (aninhada, sem contadores de volume, 7 features) | −0,00 | 71,4 |
+| v2-tr069-volume (aninhada, com contadores, 6 features) | +0,13 | 65,0 |
+
+- A escolha é instável entre folds: nenhuma feature aparece nas 3 seleções aninhadas.
+- Boa parte da vantagem da `v2-tr069-volume` vem de `router_tx_duration_us` (ρ 0,70 com
+  `router_tx_bytes`, que já é vazamento). **Pendente:** confirmar com o coletor se os contadores de
+  duração são medidos na janela do teste. Se forem, são vazamento e a `v2-tr069-volume` deve ser descartada.
+- A versão ativa continua `v1-legado`: promover é decisão humana.
+
+## Outros
+
+- `main` com `min-width: 0`: a coluna principal encolhe e as tabelas largas rolam dentro do próprio card.
+
+---
+
+# Changelog — QoE Studio: view Modelos (etapa 1)
+
+**Data:** 2026-09-25
+
+## Versões de modelo
+
+- `src/ml/core/modelos.json` + `core/modelos.py`: registro de versões. Cada versão é uma lista de
+  features, imutável depois de salva, com descrição, origem e a avaliação dos 4 alvos da época
+  (datasets, ambiente, versão da tabela e do catálogo). O modelo treinado não é salvo: refaz-se a
+  partir da definição e, quando for para produção, vai para o MLflow.
+- Semente: `v1-legado` (o `MODELO_ATUAL`, ativo) e `v1-sem-cliente` (sem
+  `client_opportunity_medium_use`, a única feature fora do TR-069; ela conta vizinhos no scan do
+  cliente, `site_survey_client`, e só o canal vem do TR-069). Sem ela, download vai de R² pooled
+  −0,09 / MAE 90,7 para +0,06 / 80,7; latência e jitter pioram levemente.
+- A versão ativa substitui o `MODELO_ATUAL` como base do "ganho" e do "no modelo" na view Features.
+  O Teto de Features passa a mostrar todas as versões salvas.
+
+## View Modelos
+
+- Versões salvas (com "desatualizada" quando datasets, ambiente, tabela ou catálogo mudaram),
+  **Comparar** no conjunto ativo (R² ou MAE por local de coleta, mais TR-069 completo e Tudo),
+  **Montar modelo** a partir de uma versão (TR-069 bruta, TR-069 derivada e laboratório),
+  **Avaliar rascunho** contra a base local a local, **Salvar como nova versão**, **Tornar ativa** e
+  matriz de correlação Spearman das features do rascunho, com pares redundantes (|ρ| ≥ 0,9).
+- API: `GET /api/modelos`, `/api/modelos/comparar`, `/api/modelos/avaliar`; `POST /api/modelos` e
+  `/api/modelos/ativo` só a partir da própria máquina.
+
+## Derivadas TR-069 novas (catálogo 2026-09-25.1)
+
+`perda_percurso_db`, `eficiencia_espectral_tx`, `eficiencia_espectral_rx`, `vazao_esperada_por_mhz`,
+`descarte_por_pacote_rx`. Primeira leitura: não sobem o TR-069 completo (pooled 0,073 → 0,069) e
+`perda_percurso_db` é redundante com `router_signal_dbm` (ρ −0,92), porque `router_power_dbm` quase
+não varia nestes dados.
+
+## Outros
+
+- Avaliações trazem MAE por local de coleta além do R².
+- `mlruns/` no `.gitignore` (os scripts de MLflow gravam ali por padrão).
+
+## Achado para o coletor (não corrigido aqui)
+
+`get-metrics.py` grava `router_opportunity_medium_use = 0` quando o scan não existe, igual a "nenhum
+vizinho". Na residência, 47% das linhas têm 0; entre elas, 22% também não têm dados de estação.
+
+---
+
 # Changelog — QoE Studio: folds por local de coleta e ambiente
 
 **Data:** 2026-09-25
