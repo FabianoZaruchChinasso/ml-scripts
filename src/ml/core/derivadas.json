@@ -1,0 +1,60 @@
+{
+  "derivadas": {
+    "taxa_phy_media": {
+      "criado_em": "2026-09-25",
+      "descricao": "Média das taxas PHY de envio e recepção vistas pelo roteador: receita TR-069 para link_speed_mbps (cliente). Reconstrói link_speed_mbps com R² ≥ 0,3 nos 3 locais, mas não melhora o download sobre a v2-tr069.",
+      "formula": "(router_tx_rate_mbps + router_rx_rate_mbps) / 2",
+      "inspirada_em": "link_speed_mbps",
+      "status": "hipotese",
+      "teste": {
+        "alvo": "speedtest_down_mbps",
+        "ambiente": "todos",
+        "base": "v2-tr069",
+        "criterios": [
+          {
+            "criterio": "todos os insumos são TR-069",
+            "ok": true
+          },
+          {
+            "criterio": "nenhum insumo com vazamento",
+            "ok": true
+          },
+          {
+            "criterio": "ganho médio de R² ≥ 0,01 e melhora em todos os locais",
+            "ok": false
+          },
+          {
+            "criterio": "reconstrói link_speed_mbps com R² ≥ 0,3 em todos os locais",
+            "ok": true
+          }
+        ],
+        "datasets": [
+          "20260827-metrics.zip",
+          "20260917-metrics-fix.zip",
+          "20260921-metrics-distcalc.zip"
+        ],
+        "ganho": {
+          "locais": 3,
+          "mae": 2.35,
+          "media": -0.1461,
+          "melhora": 2,
+          "pooled": -0.0163,
+          "por_local": {
+            "coworking": 0.0012,
+            "hotmilk": 0.0001,
+            "residencia": -0.4395
+          }
+        },
+        "reconstrucao": {
+          "minimo": 0.3087,
+          "por_local": {
+            "coworking": 0.5103,
+            "hotmilk": 0.4926,
+            "residencia": 0.3087
+          }
+        },
+        "versao_tabela": "9a875df932db"
+      }
+    }
+  }
+}

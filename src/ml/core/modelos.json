@@ -1,0 +1,700 @@
+{
+  "ativo": "v1-legado",
+  "versoes": {
+    "v1-legado": {
+      "avaliacao": {
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 18.0569,
+          "mae_por_local": {
+            "coworking": 8.8771,
+            "hotmilk": 17.1851,
+            "residencia": 21.4713
+          },
+          "media": -0.0138,
+          "n": 14,
+          "pooled": 0.0678,
+          "por_local": {
+            "coworking": -0.1264,
+            "hotmilk": 0.0097,
+            "residencia": 0.0752
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 39.983,
+          "mae_por_local": {
+            "coworking": 7.9634,
+            "hotmilk": 68.1065,
+            "residencia": 24.6322
+          },
+          "media": 0.057,
+          "n": 14,
+          "pooled": -0.1265,
+          "por_local": {
+            "coworking": 0.2839,
+            "hotmilk": -0.1728,
+            "residencia": 0.0597
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 90.7386,
+          "mae_por_local": {
+            "coworking": 22.0005,
+            "hotmilk": 103.2096,
+            "residencia": 99.6874
+          },
+          "media": -2.6239,
+          "n": 14,
+          "pooled": -0.0909,
+          "por_local": {
+            "coworking": 0.7335,
+            "hotmilk": 0.0397,
+            "residencia": -8.645
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 68.6382,
+          "mae_por_local": {
+            "coworking": 25.5727,
+            "hotmilk": 115.691,
+            "residencia": 39.92
+          },
+          "media": -1.9741,
+          "n": 14,
+          "pooled": 0.1315,
+          "por_local": {
+            "coworking": 0.5565,
+            "hotmilk": -0.0611,
+            "residencia": -6.4178
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        }
+      },
+      "criado_em": "2026-09-25",
+      "descricao": "Modelo em produção até 2026-09-25 (MODELO_ATUAL). Inclui client_opportunity_medium_use, que não é TR-069.",
+      "features": [
+        "router_expected_throughput_mbps",
+        "router_noise",
+        "router_rx_drop_misc",
+        "router_rx_duration_us",
+        "router_rx_rate_mbps",
+        "router_signal_avg_dbm",
+        "router_signal_dbm",
+        "router_snr",
+        "router_tx_duration_us",
+        "router_tx_failed",
+        "router_tx_rate_mbps",
+        "router_tx_retries",
+        "router_opportunity_medium_use",
+        "client_opportunity_medium_use"
+      ],
+      "origem": "MODELO_ATUAL"
+    },
+    "v1-sem-cliente": {
+      "avaliacao": {
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 17.8878,
+          "mae_por_local": {
+            "coworking": 8.9635,
+            "hotmilk": 17.4236,
+            "residencia": 20.8719
+          },
+          "media": -0.0278,
+          "n": 13,
+          "pooled": 0.0542,
+          "por_local": {
+            "coworking": -0.1409,
+            "hotmilk": -0.0043,
+            "residencia": 0.0617
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 40.4537,
+          "mae_por_local": {
+            "coworking": 7.9251,
+            "hotmilk": 69.6588,
+            "residencia": 24.3038
+          },
+          "media": 0.0346,
+          "n": 13,
+          "pooled": -0.1401,
+          "por_local": {
+            "coworking": 0.2434,
+            "hotmilk": -0.1865,
+            "residencia": 0.047
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 80.7433,
+          "mae_por_local": {
+            "coworking": 23.0635,
+            "hotmilk": 102.8755,
+            "residencia": 78.0463
+          },
+          "media": -1.2707,
+          "n": 13,
+          "pooled": 0.0649,
+          "por_local": {
+            "coworking": 0.7142,
+            "hotmilk": 0.045,
+            "residencia": -4.5712
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 64.8442,
+          "mae_por_local": {
+            "coworking": 26.1039,
+            "hotmilk": 115.8071,
+            "residencia": 31.4562
+          },
+          "media": -0.8218,
+          "n": 13,
+          "pooled": 0.1853,
+          "por_local": {
+            "coworking": 0.5515,
+            "hotmilk": -0.0613,
+            "residencia": -2.9556
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        }
+      },
+      "criado_em": "2026-09-25",
+      "descricao": "v1-legado sem client_opportunity_medium_use: isola o efeito da única feature fora do TR-069.",
+      "features": [
+        "router_expected_throughput_mbps",
+        "router_noise",
+        "router_rx_drop_misc",
+        "router_rx_duration_us",
+        "router_rx_rate_mbps",
+        "router_signal_avg_dbm",
+        "router_signal_dbm",
+        "router_snr",
+        "router_tx_duration_us",
+        "router_tx_failed",
+        "router_tx_rate_mbps",
+        "router_tx_retries",
+        "router_opportunity_medium_use"
+      ],
+      "origem": "studio"
+    },
+    "v2-tr069": {
+      "avaliacao": {
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 19.4586,
+          "mae_por_local": {
+            "coworking": 9.0007,
+            "hotmilk": 17.3376,
+            "residencia": 24.3352
+          },
+          "media": -0.0462,
+          "n": 7,
+          "pooled": -0.0119,
+          "por_local": {
+            "coworking": -0.0686,
+            "hotmilk": -0.058,
+            "residencia": -0.0118
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 28.2112,
+          "mae_por_local": {
+            "coworking": 6.6098,
+            "hotmilk": 36.4265,
+            "residencia": 27.2653
+          },
+          "media": 0.1476,
+          "n": 7,
+          "pooled": -0.0114,
+          "por_local": {
+            "coworking": 0.4887,
+            "hotmilk": -0.0088,
+            "residencia": -0.0371
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 61.7329,
+          "mae_por_local": {
+            "coworking": 28.8992,
+            "hotmilk": 103.3925,
+            "residencia": 34.7765
+          },
+          "media": -0.0345,
+          "n": 7,
+          "pooled": 0.2391,
+          "por_local": {
+            "coworking": 0.5804,
+            "hotmilk": 0.0943,
+            "residencia": -0.7781
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 72.5625,
+          "mae_por_local": {
+            "coworking": 37.2632,
+            "hotmilk": 95.112,
+            "residencia": 63.0351
+          },
+          "media": -4.1394,
+          "n": 7,
+          "pooled": 0.2412,
+          "por_local": {
+            "coworking": -0.0215,
+            "hotmilk": 0.2605,
+            "residencia": -12.6572
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        }
+      },
+      "criado_em": "2026-09-25",
+      "descricao": "Desenho automático para download, só TR-069 e derivadas, sem contadores brutos de volume. Nota aninhada: R² pooled −0,001 / MAE 71,4 Mbps (v1-legado: −0,09 / 90,7). Escolha instável entre folds.",
+      "features": [
+        "router_expected_throughput_mbps",
+        "client_mode",
+        "router_opportunity_medium_use",
+        "radio",
+        "fracao_airtime_tx",
+        "router_rx_rate_mbps",
+        "router_connected_time_sec"
+      ],
+      "origem": "selecao-gulosa",
+      "selecao": {
+        "alvo": "speedtest_down_mbps",
+        "ambiente": "todos",
+        "datasets": [
+          "20260827-metrics.zip",
+          "20260917-metrics-fix.zip",
+          "20260921-metrics-distcalc.zip"
+        ],
+        "nota_aninhada": {
+          "escolhas_por_local": {
+            "coworking": [
+              "vazao_esperada_por_mhz",
+              "router_snr",
+              "router_expected_throughput_mbps",
+              "router_rx_rate_mbps",
+              "channel_width"
+            ],
+            "hotmilk": [
+              "router_bandwith_TX_station",
+              "eficiencia_espectral_rx",
+              "fracao_airtime_tx",
+              "instabilidade_sinal",
+              "router_bandwith_RX_station",
+              "router_snr"
+            ],
+            "residencia": [
+              "router_tx_rate_mbps",
+              "fracao_airtime_tx",
+              "radio",
+              "eficiencia_phy",
+              "descarte_por_pacote_rx",
+              "falha_por_pacote"
+            ]
+          },
+          "mae": 71.3718,
+          "mae_por_local": {
+            "coworking": 30.2142,
+            "hotmilk": 113.8103,
+            "residencia": 46.1389
+          },
+          "media": -0.8402,
+          "pooled": -0.001,
+          "por_local": {
+            "coworking": 0.5145,
+            "hotmilk": -0.1158,
+            "residencia": -2.9193
+          }
+        },
+        "nota_selecao": {
+          "mae": 61.7329,
+          "mae_por_local": {
+            "coworking": 28.8992,
+            "hotmilk": 103.3925,
+            "residencia": 34.7765
+          },
+          "media": -0.0345,
+          "pooled": 0.2391,
+          "por_local": {
+            "coworking": 0.5804,
+            "hotmilk": 0.0943,
+            "residencia": -0.7781
+          }
+        },
+        "parametros": {
+          "arvores_busca": 60,
+          "criterio": "R² pooled, folds por local de coleta",
+          "excluidas": [
+            "router_tx_duration_us",
+            "router_rx_duration_us",
+            "router_tx_retries",
+            "router_tx_failed",
+            "router_rx_drop_misc"
+          ],
+          "max_features": 12,
+          "sem_volume": true,
+          "tolerancia": 0.005
+        },
+        "passos": [
+          {
+            "feature": "router_expected_throughput_mbps",
+            "ganho": null,
+            "pooled": 0.0826
+          },
+          {
+            "feature": "client_mode",
+            "ganho": 0.0391,
+            "pooled": 0.1217
+          },
+          {
+            "feature": "router_opportunity_medium_use",
+            "ganho": 0.0574,
+            "pooled": 0.1791
+          },
+          {
+            "feature": "radio",
+            "ganho": 0.0265,
+            "pooled": 0.2055
+          },
+          {
+            "feature": "fracao_airtime_tx",
+            "ganho": 0.0114,
+            "pooled": 0.217
+          },
+          {
+            "feature": "router_rx_rate_mbps",
+            "ganho": 0.0101,
+            "pooled": 0.2271
+          },
+          {
+            "feature": "router_connected_time_sec",
+            "ganho": 0.0086,
+            "pooled": 0.2357
+          }
+        ]
+      }
+    },
+    "v2-tr069-volume": {
+      "avaliacao": {
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 19.3263,
+          "mae_por_local": {
+            "coworking": 12.9625,
+            "hotmilk": 15.975,
+            "residencia": 24.0962
+          },
+          "media": -0.5285,
+          "n": 6,
+          "pooled": -0.0276,
+          "por_local": {
+            "coworking": -1.4912,
+            "hotmilk": -0.0849,
+            "residencia": -0.0094
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 26.0039,
+          "mae_por_local": {
+            "coworking": 10.083,
+            "hotmilk": 30.9062,
+            "residencia": 26.3149
+          },
+          "media": -0.1817,
+          "n": 6,
+          "pooled": -0.0204,
+          "por_local": {
+            "coworking": -0.5024,
+            "hotmilk": -0.0222,
+            "residencia": -0.0204
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 52.5388,
+          "mae_por_local": {
+            "coworking": 19.7901,
+            "hotmilk": 94.5725,
+            "residencia": 25.2308
+          },
+          "media": 0.3482,
+          "n": 6,
+          "pooled": 0.3266,
+          "por_local": {
+            "coworking": 0.7735,
+            "hotmilk": 0.1572,
+            "residencia": 0.1138
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip"
+          ],
+          "mae": 61.0887,
+          "mae_por_local": {
+            "coworking": 31.3595,
+            "hotmilk": 108.092,
+            "residencia": 28.561
+          },
+          "media": -0.8064,
+          "n": 6,
+          "pooled": 0.274,
+          "por_local": {
+            "coworking": 0.2225,
+            "hotmilk": 0.0747,
+            "residencia": -2.7166
+          },
+          "versao_catalogo": "2026-09-25.1",
+          "versao_tabela": "9a875df932db"
+        }
+      },
+      "criado_em": "2026-09-25",
+      "descricao": "Desenho automático para download, só TR-069 e derivadas, com contadores de volume. Nota aninhada: R² pooled 0,134 / MAE 65,0 Mbps. Usa router_tx_duration_us: confirmar com o coletor se ele é medido na janela do teste (se for, vaza o alvo como router_tx_bytes).",
+      "features": [
+        "router_expected_throughput_mbps",
+        "router_tx_duration_us",
+        "router_connected_time_sec",
+        "router_rx_rate_mbps",
+        "client_mode",
+        "channel_width"
+      ],
+      "origem": "selecao-gulosa",
+      "selecao": {
+        "alvo": "speedtest_down_mbps",
+        "ambiente": "todos",
+        "datasets": [
+          "20260827-metrics.zip",
+          "20260917-metrics-fix.zip",
+          "20260921-metrics-distcalc.zip"
+        ],
+        "nota_aninhada": {
+          "escolhas_por_local": {
+            "coworking": [
+              "vazao_esperada_por_mhz",
+              "router_tx_duration_us",
+              "largura_x_nss",
+              "client_mode",
+              "router_rx_rate_mbps",
+              "channel_width",
+              "router_tx_rate_mbps"
+            ],
+            "hotmilk": [
+              "router_bandwith_TX_station",
+              "router_tx_duration_us",
+              "router_rx_rate_mbps",
+              "router_snr",
+              "router_signal_dbm",
+              "router_bandwith_RX_station"
+            ],
+            "residencia": [
+              "router_tx_rate_mbps",
+              "fracao_airtime_tx",
+              "radio",
+              "eficiencia_phy",
+              "descarte_por_pacote_rx",
+              "falha_por_pacote"
+            ]
+          },
+          "mae": 65.0018,
+          "mae_por_local": {
+            "coworking": 18.737,
+            "hotmilk": 101.8447,
+            "residencia": 46.1389
+          },
+          "media": -0.6874,
+          "pooled": 0.134,
+          "por_local": {
+            "coworking": 0.8069,
+            "hotmilk": 0.0503,
+            "residencia": -2.9193
+          }
+        },
+        "nota_selecao": {
+          "mae": 52.5388,
+          "mae_por_local": {
+            "coworking": 19.7901,
+            "hotmilk": 94.5725,
+            "residencia": 25.2308
+          },
+          "media": 0.3482,
+          "pooled": 0.3266,
+          "por_local": {
+            "coworking": 0.7735,
+            "hotmilk": 0.1572,
+            "residencia": 0.1138
+          }
+        },
+        "parametros": {
+          "arvores_busca": 60,
+          "criterio": "R² pooled, folds por local de coleta",
+          "max_features": 12,
+          "tolerancia": 0.005
+        },
+        "passos": [
+          {
+            "feature": "router_expected_throughput_mbps",
+            "ganho": null,
+            "pooled": 0.0826
+          },
+          {
+            "feature": "router_tx_duration_us",
+            "ganho": 0.1204,
+            "pooled": 0.203
+          },
+          {
+            "feature": "router_connected_time_sec",
+            "ganho": 0.0407,
+            "pooled": 0.2438
+          },
+          {
+            "feature": "router_rx_rate_mbps",
+            "ganho": 0.0424,
+            "pooled": 0.2862
+          },
+          {
+            "feature": "client_mode",
+            "ganho": 0.0343,
+            "pooled": 0.3205
+          },
+          {
+            "feature": "channel_width",
+            "ganho": 0.007,
+            "pooled": 0.3274
+          }
+        ]
+      }
+    }
+  }
+}

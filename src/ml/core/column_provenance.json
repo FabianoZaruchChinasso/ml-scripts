@@ -35,6 +35,9 @@
     "combo": {
       "classe": "identificador"
     },
+    "dist_calc": {
+      "classe": "geometria"
+    },
     "distance_m": {
       "classe": "geometria"
     },
@@ -94,6 +97,16 @@
       "classe": "tr069",
       "vazamento": true
     },
+    "router_rx_drop_misc": {
+      "classe": "tr069",
+      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "vazamento": true
+    },
+    "router_rx_duration_us": {
+      "classe": "tr069",
+      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "vazamento": true
+    },
     "router_rx_packets": {
       "classe": "tr069",
       "vazamento": true
@@ -102,8 +115,23 @@
       "classe": "tr069",
       "vazamento": true
     },
+    "router_tx_duration_us": {
+      "classe": "tr069",
+      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "vazamento": true
+    },
+    "router_tx_failed": {
+      "classe": "tr069",
+      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "vazamento": true
+    },
     "router_tx_packets": {
       "classe": "tr069",
+      "vazamento": true
+    },
+    "router_tx_retries": {
+      "classe": "tr069",
+      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
       "vazamento": true
     },
     "router_x": {

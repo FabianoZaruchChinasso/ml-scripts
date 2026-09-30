@@ -77,6 +77,15 @@
     let html = '';
     if (st.salvarErro) html += gate('critical', 'Não foi possível salvar', esc(st.salvarErro));
     if (inv.tabela_erro) html += gate('critical', 'Tabela de classificação ilegível', esc(inv.tabela_erro));
+    if (inv.locais.length < 4) {
+      html += gate('warning', `Coleta em andamento: ${inv.locais.length} local(is) de coleta`,
+        `Com menos de 4 locais (${esc(inv.locais.join(', '))}), a leitura por local não é interpretável e os números mudam quando novos prédios entrarem. Detalhes em Modelos → Limites e pendências dos dados.`);
+    }
+    const pendentes = inv.colunas.filter((c) => c.pendente).map((c) => c.coluna);
+    if (pendentes.length) {
+      html += gate('warning', `Vazamento não confirmado em ${pendentes.length} coluna(s)`,
+        `<code>${esc(pendentes.join(', '))}</code> podem ser medidas na janela do teste. Continuam nos ajustes até alguém responder em Modelos → Limites e pendências dos dados.`);
+    }
     if (inv.sem_classificacao.length) {
       const linhas = inv.sem_classificacao.map((c) => `<div class="frow" data-col="${esc(c.coluna)}">
         <code>${esc(c.coluna)}</code>
@@ -111,12 +120,12 @@
   function leituraTeto(aj) {
     const t = aj.teto;
     const n = aj.locais.length;
-    if (t.atual.media == null) return 'Nenhuma feature do modelo atual está disponível neste conjunto.';
+    if (t.atual.media == null) return 'Nenhuma feature do modelo ativo está disponível neste conjunto.';
     const d = t.tr069.media - t.atual.media;
     const melhora = Object.keys(t.atual.por_local)
       .filter((s) => t.tr069.por_local[s] > t.atual.por_local[s]).length;
     const dt = t.tudo.media - t.tr069.media;
-    return `Todo o TR-069 rende <b>${sinal(d)}</b> sobre o modelo atual e melhora ${melhora} de ${n} locais de coleta. ` +
+    return `Todo o TR-069 rende <b>${sinal(d)}</b> sobre o modelo ativo e melhora ${melhora} de ${n} locais de coleta. ` +
       (Math.abs(dt) < 0.02 ? `Somar as auxiliares não muda o teto (${num(t.tudo.media, 3)}). `
         : `Somar as auxiliares leva a ${num(t.tudo.media, 3)} (${sinal(dt)}). `) +
       `R² pooled (todas as previsões fora do fold juntas): atual ${num(t.atual.pooled, 3)} · TR-069 ${num(t.tr069.pooled, 3)} · tudo ${num(t.tudo.pooled, 3)}. ` +
@@ -147,11 +156,15 @@
     const canvas = $('#fTeto');
     if (!canvas || !st.aj) return;
     const aj = st.aj;
-    const linhas = [['atual', 'Modelo atual'], ['tr069', 'TR-069 completo'], ['tudo', 'Tudo']].map(([k, rotulo]) => ({
-      label: rotulo, sub: `${aj.teto[k].n} feat. · pooled ${num(aj.teto[k].pooled, 2)} · MAE ${num(aj.teto[k].mae, 1)}`, mean: aj.teto[k].media,
-      points: aj.locais.map((p, i) => ({ key: p, v: aj.teto[k].por_local[p], color: cssv('--s' + (i % 5 + 1)) }))
+    const linha = (rotulo, r) => ({
+      label: rotulo, sub: `${r.n} feat. · pooled ${num(r.pooled, 2)} · MAE ${num(r.mae, 1)}`, mean: r.media,
+      points: aj.locais.map((p, i) => ({ key: p, v: r.por_local[p], color: cssv('--s' + (i % 5 + 1)) }))
         .filter((p) => p.v != null),
-    }));
+    });
+    const ativo = st.inv && st.inv.modelo_ativo ? `${st.inv.modelo_ativo} (ativo)` : 'Modelo ativo';
+    const linhas = [linha(ativo, aj.teto.atual)]
+      .concat((aj.versoes || []).map((v) => linha(v.nome, v)))
+      .concat([linha('TR-069 completo', aj.teto.tr069), linha('Tudo', aj.teto.tudo)]);
     st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, 2), fmtMean: (v) => num(v, 3) });
     V.attachTooltip(canvas, $('#fTetoTip'), () => st.hits,
       (h) => `<b>${esc(h.label)}</b>${esc(h.at)}: R² ${num(h.value, 3)}`);

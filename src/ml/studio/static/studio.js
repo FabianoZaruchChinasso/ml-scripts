@@ -193,24 +193,43 @@
   }
 
   /* ---------------- planta ---------------- */
+  function pontos(rows) {
+    const groups = new Map();
+    rows.forEach((r) => {
+      const k = `${r.x}|${r.y}`;
+      if (!groups.has(k)) groups.set(k, { x: r.x, y: r.y, p: r.p, rows: [] });
+      groups.get(k).rows.push(r);
+    });
+    return [...groups.values()].map((g) => {
+      const pct = 100 * g.rows.filter((r) => meets(r, state.thr)).length / g.rows.length;
+      return { x: g.x, y: g.y, n: g.rows.length, value: pct, label: g.p, color: rampColor(pct) };
+    });
+  }
+
   function renderPlan() {
     const rows = activeRows().filter((r) => r.x != null);
     const predios = [];
     Object.entries(state.data.envelopes).forEach(([b, env]) => {
       const mine = rows.filter((r) => r.b === b);
       if (!mine.length) return;
-      const groups = new Map();
-      mine.forEach((r) => {
-        const k = `${r.x}|${r.y}`;
-        if (!groups.has(k)) groups.set(k, { x: r.x, y: r.y, p: r.p, rows: [] });
-        groups.get(k).rows.push(r);
+      const label = state.data.buildings[b].label;
+      const planta = (state.data.plantas || {})[b] || null;
+      if (!planta || !planta.andares) {
+        predios.push({ k: b, b, andar: null, label, env, points: pontos(mine), planta });
+        return;
+      }
+      // r.andar vem do servidor (plans.andar_de); aqui so se separa por andar.
+      const semAndar = mine.filter((r) => r.andar == null).length;
+      planta.andares.forEach((a, i) => {
+        const extras = i > 0 ? [] : planta.avisos.concat(
+          semAndar ? [`${semAndar} linha(s) sem z ficaram fora da planta`] : []);
+        predios.push({
+          k: `${b}|${a.id}`, b, andar: a.id, label: `${label} · ${a.id}`,
+          env: a.roteador ? env : Object.assign({}, env, { routerX: null, routerY: null }),
+          points: pontos(mine.filter((r) => r.andar === a.id)),
+          planta: Object.assign({}, a, { avisos: a.avisos.concat(extras) }),
+        });
       });
-      const points = [...groups.values()].map((g) => {
-        const pct = 100 * g.rows.filter((r) => meets(r, state.thr)).length / g.rows.length;
-        return { x: g.x, y: g.y, n: g.rows.length, value: pct, label: g.p, color: rampColor(pct) };
-      });
-      predios.push({ b, label: state.data.buildings[b].label, env, points,
-                     planta: (state.data.plantas || {})[b] || null });
     });
     V.views.planta.render({
       predios,
@@ -271,9 +290,13 @@
     renderPool(); renderGates(); renderMatrix();
     if (state.view === 'contention') renderContention();
     if (state.view === 'constraint') renderConstraint();
-    if (state.view === 'features') {
-      V.views.features.render({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
+    const ctxAnalise = () => ({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
                                 ambiente: state.ambiente, ambientes: state.data.ambientes });
+    if (state.view === 'features') V.views.features.render(ctxAnalise());
+    if (state.view === 'assistente') V.views.assistente.render(ctxAnalise());
+    if (state.view === 'modelos') {
+      V.views.modelos.render(ctxAnalise());
+      V.views.paralelos.render(ctxAnalise());
     }
     if (state.view === 'plan') renderPlan();
     if (state.view === 'datasets') renderDatasets();
@@ -283,7 +306,9 @@
     matrix: ['Capacidade por aplicação', 'QoE não é uma nota: é o que dá para fazer aqui, com esta quantidade de gente na rede.'],
     contention: ['Contenção', 'A mesma posição medida com 1, 2 e 3 clientes competindo.'],
     constraint: ['Restrição dominante', 'Qual das quatro métricas reprova mais em cada posição.'],
+    assistente: ['Modelo', 'Ajustar o modelo e testar uma versão nova, passo a passo, sem mexer no código.'],
     features: ['Features', 'O que dá para levar para produção a partir do TR-069.'],
+    modelos: ['Modelos', 'Versões de modelo: comparar, montar e salvar. Folds por local de coleta.'],
     plan: ['Planta baixa', 'Pontos realmente medidos, sobre a planta do prédio quando houver. Sem interpolação.'],
     thresholds: ['Limiares', 'Limiares de QoE por aplicação, explícitos e editáveis.'],
     datasets: ['Datasets', 'Varredura automática do repositório, com o interruptor de legacy.'],
@@ -296,6 +321,8 @@
     $('#view-' + view).classList.remove('hide');
     document.querySelectorAll('nav button').forEach((b) =>
       b.setAttribute('aria-current', String(b.dataset.view === view)));
+    // Features e Modelos moram no grupo Avançado: abri-lo mostra onde a pessoa está.
+    if (view === 'features' || view === 'modelos') $('.nav-avancado').open = true;
     $('#viewTitle').textContent = TITLES[view][0];
     $('#viewSub').textContent = TITLES[view][1];
     renderAll();

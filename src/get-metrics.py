@@ -1,15 +1,14 @@
 import os
 import csv
 import sys
-import json
 import argparse
 import io
 from datetime import datetime, timedelta
 from influxdb_client import InfluxDBClient
 from urllib3.exceptions import ReadTimeoutError
 
-channels_24g = { 1 : 2412, 2 : 2417, 3 : 2422, 4 : 2427, 5 : 2432, 6 : 2437, 7 : 2442, 8 : 2447, 9 : 2452, 10 : 2457, 11 : 2462, 12 : 2467, 13 : 2472 }
-channels_5g = { 32:5160, 36:5180, 40:5200, 44:5220, 48:5240, 52:5260, 56:5280, 60:5300, 64:5320, 68:5340, 72:5360, 76:5380, 80:5400, 84:5420, 88:5440, 92:5460, 96:5480, 100:5500, 104:5520, 108:5540, 112:5560, 116:5580, 120:5600, 124:5620, 128:5640, 132:5660, 136:5680, 140:5700, 144:5720, 149:5745, 153:5765, 157:5785, 161:5805, 165:5825, 169:5845, 173:5865, 177:5885 }
+from medium_use import medium_use
+
 
 
 def main():
@@ -240,44 +239,9 @@ from(bucket: "{bucket}")
                     row_data = record.values
                     row_data["_time"] = normalize_time_value(row_data.get("_time"))
                     
-                    # Calculate new features representing medium usage opportunity
-                    router_opp = 0
-                    client_opp = 0
-                    
-                    channel_val = row_data.get("AP_channel")
-                    if channel_val is not None:
-                        try:
-                            channel = int(float(channel_val))
-                            radio = row_data.get("radio")
-                            ch_map = channels_5g if radio == '5ghz' else channels_24g
-                            
-                            if channel in ch_map:
-                                target_freq = ch_map[channel]
-                                
-                                # Process router_site_survey_ap
-                                router_survey = row_data.get("router_site_survey_ap")
-                                if router_survey:
-                                    try:
-                                        neighbors = json.loads(router_survey)
-                                        for n in neighbors:
-                                            if n.get("freq_mhz") == target_freq:
-                                                router_opp += 1
-                                    except Exception:
-                                        pass
-                                        
-                                # Process site_survey_client
-                                client_survey = row_data.get("site_survey_client")
-                                if client_survey:
-                                    try:
-                                        neighbors = json.loads(client_survey)
-                                        for n in neighbors:
-                                            if n.get("frequency") == target_freq:
-                                                client_opp += 1
-                                    except Exception:
-                                        pass
-                        except (ValueError, TypeError):
-                            pass
-                    
+                    # Vizinhos no mesmo canal. Vazio (None) quando o scan falta ou nao e
+                    # interpretavel: antes virava 0 e se confundia com "canal limpo".
+                    router_opp, client_opp = medium_use(row_data)
                     row_data["router_opportunity_medium_use"] = router_opp
                     row_data["client_opportunity_medium_use"] = client_opp
                     

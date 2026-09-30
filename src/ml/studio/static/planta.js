@@ -83,7 +83,7 @@
       const pendente = pl && pl.calibracao.foto && !pl.foto;
       const wrap = document.createElement('div');
       wrap.innerHTML = `<div class="plan-head"><h2>${esc(p.label)} <span>· ${p.env.w}×${p.env.h} cm · ${p.points.length} pontos · ${ROTULO_MODO[modo(pl)]}</span></h2>
-        <button class="${pendente ? 'btn-pri' : 'btn'}" data-calibrar="${esc(p.b)}">Calibrar planta</button></div>
+        <button class="${pendente ? 'btn-pri' : 'btn'}" data-calibrar="${esc(p.k)}">Calibrar planta</button></div>
         ${avisos.map((a) => `<div class="plan-aviso">${ALERTA}${esc(a)}</div>`).join('')}
         <div class="chartwrap"><canvas></canvas><div class="tooltip"></div></div>`;
       host.appendChild(wrap);
@@ -91,20 +91,22 @@
     });
     pendentes.forEach(({ p, pl, wrap }) => {
       const canvas = wrap.querySelector('canvas');
-      st.hits[p.b] = V.drawFloorPlan(canvas, especificacao(p, pl));
-      V.attachTooltip(canvas, wrap.querySelector('.tooltip'), () => st.hits[p.b], tooltip);
+      st.hits[p.k] = V.drawFloorPlan(canvas, especificacao(p, pl));
+      V.attachTooltip(canvas, wrap.querySelector('.tooltip'), () => st.hits[p.k], tooltip);
     });
     renderCalibracao();
   }
 
   /* ---------------- calibracao ---------------- */
-  async function abrirCalibracao(b) {
-    const p = st.ctx.predios.find((x) => x.b === b);
+  async function abrirCalibracao(k) {
+    const p = st.ctx.predios.find((x) => x.k === k);
     const cal = (p.planta && p.planta.calibracao) || { paredes: null, foto: null };
     const arquivos = await fetch('api/plan/arquivos').then((r) => r.json());
     const cp = cal.paredes || {};
     const cf = cal.foto || {};
-    st.cal = { b, arquivos, csv: cp.arquivo || '', origem: cp.origem || 'inferior-direito',
+    st.cal = { k, b: p.b, andar: p.andar, arquivos, csv: cp.arquivo || '',
+               formato: cp.formato || (p.andar ? 'metros' : 'px'), dx: cp.dx || 0, dy: cp.dy || 0,
+               origem: cp.origem || (p.andar ? 'superior-esquerdo' : 'inferior-direito'),
                eixo: cp.eixo_x || 'horizontal', foto: cf.arquivo || '',
                cantos: (cf.cantos || []).map((c) => c.slice()), paredes: null, erro: null, escala: 1 };
     await carregarParedes();
@@ -117,7 +119,9 @@
     c.paredes = null;
     c.erro = null;
     if (!c.csv) return;
-    const q = new URLSearchParams({ arquivo: c.csv, origem: c.origem, eixo_x: c.eixo });
+    const q = new URLSearchParams({ arquivo: c.csv, origem: c.origem, eixo_x: c.eixo,
+                                    formato: c.formato });
+    if (c.formato === 'metros') { q.set('dx', c.dx); q.set('dy', c.dy); }
     const r = await fetch(`api/plan/${encodeURIComponent(c.b)}/paredes?${q}`);
     const corpo = await r.json().catch(() => ({}));
     if (r.ok) c.paredes = corpo;
@@ -135,27 +139,38 @@
   function renderCalibracao() {
     const host = $('#planCal');
     const c = st.cal;
-    const p = c && st.ctx.predios.find((x) => x.b === c.b);
+    const p = c && st.ctx.predios.find((x) => x.k === c.k);
     if (!p) { st.cal = null; host.innerHTML = ''; host.classList.add('hide'); return; }
     host.classList.remove('hide');
     const passos = ['(0, 0), a origem', `(${p.env.w}, 0)`, `(${p.env.w}, ${p.env.h})`, `(0, ${p.env.h})`];
     const opcoes = (lista, atual, vazio) => `<option value="">${vazio}</option>` +
       lista.map((n) => `<option${n === atual ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    const escolha = (lista, atual, campo) => `<select data-campo="${campo}">` +
+      lista.map((k) => `<option${k === atual ? ' selected' : ''}>${k}</option>`).join('') + '</select>';
     const passo = c.cantos.length < 4 ? `Clique no canto <b>${passos[c.cantos.length]}</b> do envelope na foto.`
       : 'Os 4 cantos estão marcados. Confira a pré-visualização.';
+    const deslocamento = c.formato === 'metros'
+      ? `<label>dx (cm) <input type="number" step="1" data-campo="dx" value="${c.dx}"></label>
+         <label>dy (cm) <input type="number" step="1" data-campo="dy" value="${c.dy}"></label>` : '';
+    const explicacao = c.andar
+      ? `Paredes em metros no envelope dos dados (${p.env.w} × ${p.env.h} cm). Ajuste dx/dy até os pontos deste andar caírem nos cômodos. Nada é gravado antes de salvar.`
+      : `Os cantos são os do envelope dos dados (${p.env.w} × ${p.env.h} cm), a partir da origem. Nada é gravado antes de salvar.`;
+    const blocoFoto = c.andar ? '' : `<div class="controls"><label>Foto</label><select data-campo="foto">${opcoes(c.arquivos.fotos, c.foto, 'nenhuma foto')}</select>
+          <button class="btn" data-cal="desfazer"${c.cantos.length ? '' : ' disabled'}>Desfazer</button>
+          <button class="btn" data-cal="recomecar"${c.cantos.length ? '' : ' disabled'}>Recomeçar</button></div>
+        ${c.foto ? `<p class="hint">${passo}</p><div class="cal-foto"><canvas id="calFoto"></canvas></div>`
+          : '<p class="hint">Sem foto: o registro usa só as paredes.</p>'}`;
     host.innerHTML = `<div class="card"><div class="card-head"><div><h2>Calibrar planta · ${esc(p.label)}</h2>
-      <p class="hint">Os cantos são os do envelope dos dados (${p.env.w} × ${p.env.h} cm), a partir da origem. Nada é gravado antes de salvar.</p></div>
+      <p class="hint">${explicacao}</p></div>
       <div><button class="btn" data-cal="cancelar">Cancelar</button> <button class="btn-pri" data-cal="salvar">Salvar calibração</button></div></div>
       ${c.erro ? `<div class="plan-aviso">${ALERTA}${esc(c.erro)}</div>` : ''}
       <div class="cal-grid"><div>
         <div class="controls"><label>Paredes</label><select data-campo="csv">${opcoes(c.arquivos.paredes, c.csv, 'nenhum CSV')}</select>
+          <label>Formato</label>${escolha(['px', 'metros'], c.formato, 'formato')}
           <label>Origem</label><select data-campo="origem">${ORIGENS.map(([k, r]) => `<option value="${k}"${k === c.origem ? ' selected' : ''}>${r}</option>`).join('')}</select>
-          <label>Eixo x</label><select data-campo="eixo">${['horizontal', 'vertical'].map((k) => `<option${k === c.eixo ? ' selected' : ''}>${k}</option>`).join('')}</select></div>
-        <div class="controls"><label>Foto</label><select data-campo="foto">${opcoes(c.arquivos.fotos, c.foto, 'nenhuma foto')}</select>
-          <button class="btn" data-cal="desfazer"${c.cantos.length ? '' : ' disabled'}>Desfazer</button>
-          <button class="btn" data-cal="recomecar"${c.cantos.length ? '' : ' disabled'}>Recomeçar</button></div>
-        ${c.foto ? `<p class="hint">${passo}</p><div class="cal-foto"><canvas id="calFoto"></canvas></div>`
-          : '<p class="hint">Sem foto: o registro usa só as paredes.</p>'}
+          <label>Eixo x</label>${escolha(['horizontal', 'vertical'], c.eixo, 'eixo')}
+          ${deslocamento}</div>
+        ${blocoFoto}
       </div><div><p class="hint">Pré-visualização</p>
         <div class="chartwrap"><canvas id="calPrevia"></canvas><div class="tooltip" id="calTip"></div></div></div></div></div>`;
     desenharFoto();
@@ -220,8 +235,12 @@
   async function salvar() {
     const c = st.cal;
     const corpo = {};
-    if (c.csv) corpo.paredes = { arquivo: c.csv, origem: c.origem, eixo_x: c.eixo };
-    if (c.foto) corpo.foto = { arquivo: c.foto, cantos: c.cantos.length === 4 ? c.cantos : null };
+    if (c.csv) {
+      corpo.paredes = Object.assign({ arquivo: c.csv, origem: c.origem, eixo_x: c.eixo },
+        c.formato === 'metros' ? { formato: 'metros', dx: c.dx, dy: c.dy } : {});
+    }
+    if (c.andar) corpo.andar = c.andar;
+    else if (c.foto) corpo.foto = { arquivo: c.foto, cantos: c.cantos.length === 4 ? c.cantos : null };
     const r = await fetch(`api/plan/${encodeURIComponent(c.b)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
     const resp = await r.json().catch(() => ({}));
@@ -270,7 +289,15 @@
     const c = st.cal;
     const campo = ev.target.dataset.campo;
     if (!c || !campo) return;
-    c[campo] = ev.target.value;
+    c[campo] = campo === 'dx' || campo === 'dy' ? (Number(ev.target.value) || 0) : ev.target.value;
+    if (campo === 'dx' || campo === 'dy') {
+      const tinhaErro = c.erro;
+      await carregarParedes();
+      if (st.cal !== c) return;
+      if (c.erro || tinhaErro) renderCalibracao();
+      else desenharPrevia(st.ctx.predios.find((x) => x.k === c.k));
+      return;
+    }
     if (campo === 'foto') c.cantos = [];
     if (campo !== 'foto') await carregarParedes();
     renderCalibracao();

@@ -149,6 +149,43 @@ class TestDerivadas(unittest.TestCase):
     self.assertEqual(len(avisos), 1)
 
 
+class TestContadoresJanela(unittest.TestCase):
+  def setUp(self):
+    self.pasta = tempfile.mkdtemp()
+    self.path = os.path.join(self.pasta, 'tabela.json')
+    with open(self.path, 'w', encoding='utf-8') as h:
+      json.dump(tabela_exemplo(), h)
+
+  def tearDown(self):
+    shutil.rmtree(self.pasta)
+
+  def test_estados_e_efeito_na_classificacao(self):
+    self.assertEqual(F.estado_contadores(F.carregar_tabela(self.path)), 'nao_sei')
+    for estado, vaz, pend in (('sim', True, False), ('nao', False, False), ('nao_sei', False, True)):
+      F.gravar_estado_contadores(estado, self.path)
+      t = F.carregar_tabela(self.path)
+      self.assertEqual(F.estado_contadores(t), estado)
+      c = F.classificar('router_tx_duration_us', t)
+      self.assertEqual((c.classe, c.vazamento, c.pendente), ('tr069', vaz, pend), estado)
+
+  def test_estado_invalido(self):
+    with self.assertRaises(ValueError):
+      F.gravar_estado_contadores('talvez', self.path)
+
+  def test_pendente_e_vazamento_juntos_sao_invalidos(self):
+    with self.assertRaises(ValueError):
+      F.validar_regra('x', {'classe': 'tr069', 'vazamento': True, 'pendente': True})
+
+  def test_derivada_herda_pendente_salvo_normaliza_volume(self):
+    F.gravar_estado_contadores('nao_sei', self.path)
+    t = F.carregar_tabela(self.path)
+    herda = F.Derivada('d', ('router_tx_duration_us', 'router_snr'), lambda df: df.router_snr, '')
+    normaliza = F.Derivada('d', ('router_tx_duration_us', 'router_snr'), lambda df: df.router_snr, '',
+                           normaliza_volume=True)
+    self.assertTrue(F.classificar_derivada(herda, t).pendente)
+    self.assertFalse(F.classificar_derivada(normaliza, t).pendente)
+
+
 class TestSemente(unittest.TestCase):
   def test_semente_do_repositorio_e_valida(self):
     tabela = F.carregar_tabela()
