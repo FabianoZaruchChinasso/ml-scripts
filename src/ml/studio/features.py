@@ -18,7 +18,7 @@ from sklearn.pipeline import Pipeline
 
 from ml.core import features as F
 from ml.core.sites import BUILDING_ENVIRONMENT, ENVIRONMENTS, resolve_site_id
-from ml.core.splits import outer_logo_folds
+from ml.core.splits import COMFORTABLE_SITES, outer_logo_folds
 
 TARGETS = ('speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms')
 
@@ -31,6 +31,9 @@ MAX_PROXIES = 15
 MAX_CATEGORIAS = 10
 ARVORES = 200
 ARVORES_PROXY = 100
+# Diferença de R² abaixo disto é ruído com os poucos locais de coleta de hoje.
+RUIDO_R2 = 0.02
+UNIDADES = {'speedtest_down_mbps': 'Mbps', 'speedtest_up_mbps': 'Mbps', 'latency_ms': 'ms', 'jitter_ms': 'ms'}
 CLASSES_FORA_DOS_AJUSTES = {'identificador', 'geometria', 'alvo'}
 CLASSES_AUXILIARES = {'sniffer', 'cliente', 'ambiente'}
 # `_site` é o grupo dos folds: o local de coleta (prédio). Deixar só um cômodo
@@ -216,6 +219,52 @@ def elegiveis(inv: dict) -> list:
           and c['coluna'] not in repetidas]
 
 
+_FORA_DO_ASSISTENTE = {'identificador', 'alvo'}
+
+
+def _motivo_bloqueio(c: dict, repetidas: set):
+  if c['vazamento']:
+    return 'vazamento: medida durante o teste'
+  if c['classe'] != 'tr069':
+    return f'fora do TR-069 ({c["classe"]})'
+  if c.get('hipotese'):
+    return 'hipótese: não passou no teste de aceite'
+  if c['constante']:
+    return 'constante neste conjunto'
+  if c['cobertura'] < COBERTURA_MIN:
+    return 'cobertura baixa'
+  if c['tipo'] == 'categorica_alta':
+    return 'categórica com muitos valores'
+  if c['coluna'] in repetidas:
+    return 'idêntica a outra coluna'
+  return None
+
+
+def lista_assistente(inv: dict, catalogo) -> list:
+  """Colunas do assistente. `liberada` = TR-069 elegível; o resto vem com o motivo.
+
+  O front mostra as liberadas e as que estiverem marcadas no rascunho; uma
+  bloqueada pode ser desmarcada, nunca marcada de novo.
+  """
+  derivadas = {d.nome: d for d in catalogo}
+  repetidas = set()
+  for grupo in inv['grupos_identicos']:
+    repetidas.update(grupo[1:])
+  saida = []
+  for c in inv['colunas']:
+    if c['classe'] in _FORA_DO_ASSISTENTE:
+      continue
+    motivo = _motivo_bloqueio(c, repetidas)
+    d = derivadas.get(c['coluna'])
+    saida.append({'coluna': c['coluna'], 'liberada': motivo is None, 'motivo': motivo,
+                  'classe': c['classe'], 'tipo': c['tipo'], 'vazamento': c['vazamento'],
+                  'derivada': c['derivada'], 'hipotese': bool(c.get('hipotese')),
+                  'pendente': c['pendente'], 'no_modelo': c['no_modelo'],
+                  'descricao': d.descricao if d else c['parametro'],
+                  'cobertura': c['cobertura'], 'rho': c['rho']})
+  return sorted(saida, key=lambda c: c['coluna'])
+
+
 def matriz(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
   partes = []
   for coluna in colunas:
@@ -349,6 +398,51 @@ def delta_por_local(resumo: dict, base: dict) -> dict:
           else round(resumo['mae'] - base['mae'], 4)}
 
 
+def _br_num(valor: float, casas: int) -> str:
+  return f'{valor:.{casas}f}'.replace('.', ',')
+
+
+def _com_sinal(valor: float, casas: int) -> str:
+  return ('+' if valor > 0 else '−' if valor < 0 else '') + _br_num(abs(valor), casas)
+
+
+def veredito(delta: dict, n_locais: int, pendentes=(), unidade: str = '') -> dict:
+  """Melhor / empate / pior do rascunho contra a versão ativa, a partir de delta_por_local.
+
+  Melhor exige R² pooled acima do ruído, MAE que não sobe e nenhum local piorando
+  além do ruído. `pendentes` são features com vazamento ainda não confirmado.
+  """
+  dr2, dmae = delta.get('pooled'), delta.get('mae')
+  piores = {s: d for s, d in sorted(delta.get('por_local', {}).items()) if d < -RUIDO_R2}
+  mae_txt = lambda v: f'{_br_num(abs(v), 1)} {unidade}'.strip()
+  if dr2 is None or dmae is None:
+    resultado, motivo = 'empate', 'Sem R² pooled ou MAE para comparar.'
+  elif dr2 <= -RUIDO_R2:
+    resultado, motivo = 'pior', f'O R² caiu {_br_num(-dr2, 2)}.'
+  elif dmae > 0 and dr2 < RUIDO_R2:
+    resultado, motivo = 'pior', f'O MAE subiu {mae_txt(dmae)} e o R² não subiu além do ruído.'
+  elif dr2 >= RUIDO_R2 and dmae <= 0 and not piores:
+    resultado = 'melhor'
+    mae = f'o MAE caiu {mae_txt(dmae)}' if dmae < 0 else 'o MAE não mudou'
+    motivo = f'O R² subiu {_br_num(dr2, 2)} e {mae}, sem piorar nenhum local.'
+  elif dr2 >= RUIDO_R2 and piores:
+    lista = ', '.join(f'{s} ({_com_sinal(d, 3)})' for s, d in piores.items())
+    resultado, motivo = 'empate', f'O R² subiu {_br_num(dr2, 2)}, mas piorou em {lista}.'
+  elif dr2 >= RUIDO_R2:
+    resultado, motivo = 'empate', f'O R² subiu {_br_num(dr2, 2)}, mas o MAE também subiu {mae_txt(dmae)}.'
+  else:
+    resultado = 'empate'
+    motivo = (f'A diferença de R² ({_com_sinal(dr2, 3)}) é menor que o ruído '
+              f'({_br_num(RUIDO_R2, 2)}) com {n_locais} locais.')
+  provisorio = []
+  if pendentes:
+    provisorio.append(f'depende de vazamento não confirmado: {", ".join(pendentes)}')
+  if n_locais < COMFORTABLE_SITES:
+    provisorio.append(f'só {n_locais} locais de coleta')
+  return {'resultado': resultado, 'motivo': motivo, 'provisorio': bool(provisorio),
+          'motivos_provisorio': provisorio}
+
+
 def comparar(conj: Conjunto, inv: dict, versoes: dict, ativo: str) -> dict:
   """Avalia cada versão salva mais as duas referências: TR-069 completo e Tudo."""
   _checar_locais(conj.df)
@@ -387,6 +481,30 @@ def correlacoes(df: pd.DataFrame, features) -> dict:
           'redundantes': sorted(redundantes, key=lambda r: -abs(r['rho']))}
 
 
+def ganho_mais_um(conj: Conjunto, base, candidatas, vazadas, progresso=None) -> list:
+  """ΔR² médio por local ao somar cada candidata à base, do maior ganho para o menor.
+
+  Features da base com vazamento ou ausentes do conjunto saem da conta. `progresso`
+  recebe {'feito', 'total', 'coluna'} depois de cada candidata.
+  """
+  df, alvo = conj.df, conj.alvo
+  base = [c for c in base if c in df.columns and c not in vazadas]
+  ref = r2_por_local(df, base, alvo, vazadas)
+  ganho = []
+  if not ref:
+    return ganho
+  for i, coluna in enumerate(candidatas, 1):
+    r = r2_por_local(df, base + [coluna], alvo, vazadas)
+    deltas = [r[s] - ref[s] for s in ref if s in r]
+    if deltas:
+      ganho.append({'coluna': coluna, 'delta': round(mean(deltas), 4),
+                    'melhora': sum(d > 0 for d in deltas), 'locais': len(deltas)})
+    if progresso:
+      progresso({'feito': i, 'total': len(candidatas), 'coluna': coluna})
+  ganho.sort(key=lambda g: -g['delta'])
+  return ganho
+
+
 def ajuste(conj: Conjunto, inv: dict, versoes: dict = None) -> dict:
   """Teto, ganho +1 e proxies. `versoes` (nome -> features) entram no teto ao lado do ativo."""
   inicio = time.time()
@@ -411,15 +529,7 @@ def ajuste(conj: Conjunto, inv: dict, versoes: dict = None) -> dict:
     outras = [dict(avaliar_versao(conj, feats, vazadas), nome=nome)
               for nome, feats in (versoes or {}).items() if list(feats) != inv['modelo']]
 
-    ganho = []
-    base = brutos['atual'][0]
-    if base:
-      for coluna in [c for c in inv['candidatas'] if c in ok]:
-        r = r2_por_local(df, atual + [coluna], alvo, vazadas)
-        deltas = [r[s] - base[s] for s in base if s in r]
-        ganho.append({'coluna': coluna, 'delta': round(mean(deltas), 4),
-                      'melhora': sum(d > 0 for d in deltas), 'locais': len(deltas)})
-    ganho.sort(key=lambda g: -g['delta'])
+    ganho = ganho_mais_um(conj, atual, [c for c in inv['candidatas'] if c in ok], vazadas)
 
     proxy = []
     auxiliares = [por_nome[c] for c in ok if por_nome[c]['classe'] in CLASSES_AUXILIARES

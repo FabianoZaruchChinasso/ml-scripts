@@ -251,3 +251,28 @@ table.heat td.hm { width: 30px; height: 26px; border-radius: 4px; text-align: ce
   .mhead, .mrow { grid-template-columns: 22px minmax(0, 1fr) 60px; }
   .mhead > :nth-child(3), .mhead > :nth-child(5), .mrow > :nth-child(3), .mrow > :nth-child(5) { display: none; }
 }
+
+/* Assistente (view Modelo) */
+.nav-avancado { margin-top: 8px; }
+.nav-avancado summary { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted);
+  padding: 8px 12px 4px; cursor: pointer; }
+.passos { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.passo { font: inherit; font-size: 12.5px; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); cursor: pointer; }
+.passo span { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--grid); font-size: 11px; font-weight: 650; }
+.passo[aria-current="step"] { border-color: var(--s1); color: var(--ink-1); font-weight: 600; }
+.passo[aria-current="step"] span { background: var(--s1); color: #fff; }
+.passo:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+.rodape-passo { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+.grupo { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted); margin: 14px 0 4px; }
+.receita { border: 1px dashed var(--border); border-radius: 9px; padding: 12px 14px; margin-top: 16px; }
+.veredito { display: flex; gap: 14px; align-items: center; padding: 14px 16px; margin: 14px 0 4px;
+  border: 1px solid var(--border); border-left: 4px solid var(--axis); border-radius: 10px; }
+.veredito .icon { width: 28px; height: 28px; stroke: var(--axis); flex: none; }
+.veredito b { font-size: 20px; }
+.veredito.melhor { border-left-color: var(--good); }
+.veredito.melhor .icon { stroke: var(--good); }
+.veredito.pior { border-left-color: var(--critical); }
+.veredito.pior .icon { stroke: var(--critical); }
+.btn.marcado { border-color: var(--s1); background: color-mix(in srgb, var(--s1) 10%, transparent); }

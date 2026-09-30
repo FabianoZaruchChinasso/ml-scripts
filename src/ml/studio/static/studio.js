@@ -293,6 +293,7 @@
     const ctxAnalise = () => ({ enabledIds: Object.keys(state.enabled).filter((id) => state.enabled[id]),
                                 ambiente: state.ambiente, ambientes: state.data.ambientes });
     if (state.view === 'features') V.views.features.render(ctxAnalise());
+    if (state.view === 'assistente') V.views.assistente.render(ctxAnalise());
     if (state.view === 'modelos') {
       V.views.modelos.render(ctxAnalise());
       V.views.paralelos.render(ctxAnalise());
@@ -305,6 +306,7 @@
     matrix: ['Capacidade por aplicação', 'QoE não é uma nota: é o que dá para fazer aqui, com esta quantidade de gente na rede.'],
     contention: ['Contenção', 'A mesma posição medida com 1, 2 e 3 clientes competindo.'],
     constraint: ['Restrição dominante', 'Qual das quatro métricas reprova mais em cada posição.'],
+    assistente: ['Modelo', 'Ajustar o modelo e testar uma versão nova, passo a passo, sem mexer no código.'],
     features: ['Features', 'O que dá para levar para produção a partir do TR-069.'],
     modelos: ['Modelos', 'Versões de modelo: comparar, montar e salvar. Folds por local de coleta.'],
     plan: ['Planta baixa', 'Pontos realmente medidos, sobre a planta do prédio quando houver. Sem interpolação.'],
@@ -319,6 +321,8 @@
     $('#view-' + view).classList.remove('hide');
     document.querySelectorAll('nav button').forEach((b) =>
       b.setAttribute('aria-current', String(b.dataset.view === view)));
+    // Features e Modelos moram no grupo Avançado: abri-lo mostra onde a pessoa está.
+    if (view === 'features' || view === 'modelos') $('.nav-avancado').open = true;
     $('#viewTitle').textContent = TITLES[view][0];
     $('#viewSub').textContent = TITLES[view][1];
     renderAll();

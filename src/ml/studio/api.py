@@ -25,6 +25,7 @@ from ml.core.splits import COMFORTABLE_SITES
 from ml.studio import features as studio_features
 from ml.studio import paralelos as studio_paralelos
 from ml.studio import plans
+from ml.studio import receitas as studio_receitas
 from ml.studio import selecao as studio_selecao
 from ml.studio.data import BUILDINGS, build_payload, descobertos
 
@@ -202,6 +203,9 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
         saida['base'] = base
         saida['resumo_base'] = studio_features.avaliar_versao(conj, registro['versoes'][base]['features'], vazadas)
         saida['delta'] = studio_features.delta_por_local(resumo, saida['resumo_base'])
+        pendentes = [f for f in feats if conj.classes.get(f) is not None and conj.classes[f].pendente]
+        saida['veredito'] = studio_features.veredito(saida['delta'], int(conj.df['_site'].nunique()),
+                                                     pendentes, studio_features.UNIDADES[alvo])
     except (ValueError, AssertionError) as erro:
       raise HTTPException(422, str(erro))
     _modelos_cache[chave] = saida
@@ -425,6 +429,59 @@ def derivadas_salvar(corpo: Formula, request: Request):
   _ajustes.clear()
   _modelos_cache.clear()
   return {'status': teste['status'], 'teste': teste, 'lista': derivadas_listar()}
+
+
+# ---------------- Assistente ----------------
+
+@app.get('/api/assistente/colunas')
+def assistente_colunas(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = ''):
+  conj, _ = _conjunto(ds, alvo, ambiente)
+  registro, _ = _registro()
+  inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+  return {'colunas': studio_features.lista_assistente(inv, conj.catalogo)}
+
+
+@app.post('/api/assistente/sugestoes')
+def assistente_sugestoes(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = '', base: str = ''):
+  """Ganho +1 de cada coluna TR-069 liberada sobre a versão de partida, em thread."""
+  feats = _features_base(base)
+
+  def tarefa(progresso):
+    conj, _ = _conjunto(ds, alvo, ambiente)
+    registro, _ = _registro()
+    studio_features._checar_locais(conj.df)
+    inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+    liberadas = [c['coluna'] for c in studio_features.lista_assistente(inv, conj.catalogo) if c['liberada']]
+    candidatas = [c for c in liberadas if c not in feats]
+    ganho = studio_features.ganho_mais_um(conj, feats, candidatas, studio_features.vazadas_do_conjunto(conj),
+                                          progresso)
+    return {'base': base or registro['ativo'], 'alvo': alvo, 'ganho': ganho,
+            'ganho_min': studio_paralelos.GANHO_MIN}
+  return _iniciar_job(('sugestoes', tuple(sorted(_lista(ds))), alvo, _ambiente(ambiente), base)
+                      + _chave_versoes(), tarefa)
+
+
+@app.get('/api/assistente/sugestoes/{job_id}')
+def assistente_sugestoes_status(job_id: str):
+  return _job(job_id)
+
+
+@app.get('/api/receitas')
+def receitas_listar():
+  return {'receitas': studio_receitas.listar()}
+
+
+class MontarReceita(BaseModel):
+  receita: str
+  colunas: list
+
+
+@app.post('/api/receitas/montar')
+def receitas_montar(corpo: MontarReceita):
+  try:
+    return studio_receitas.montar(corpo.receita, corpo.colunas, _colunas_conhecidas())
+  except ValueError as erro:
+    raise HTTPException(422, str(erro))
 
 
 def _metadados_do_desenho(job_id: str, features: list) -> dict:
