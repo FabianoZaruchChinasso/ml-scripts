@@ -271,23 +271,25 @@ window.VENKO = window.VENKO || {};
     ctx.fillText(`${horizontal === W ? H : W} cm`, 0, 0);
     ctx.restore();
 
-    // Roteador: marca de identidade, nunca uma cor de serie.
-    const [rx, ry] = T(env.routerX, env.routerY);
-    ctx.strokeStyle = css('--ink-2');
-    ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(rx, ry, 5, 0, Math.PI * 2); ctx.stroke();
-    [9, 13].forEach((r) => {
-      ctx.beginPath();
-      ctx.arc(rx, ry, r, -Math.PI * 0.85, -Math.PI * 0.15);
-      ctx.stroke();
-    });
-    // Rotulo abaixo do icone com halo da superficie: o roteador fica junto da
-    // parede, onde quase sempre ha um ponto medido por perto.
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = css('--surface-1');
-    ctx.strokeText('roteador', rx, ry + 24);
-    ctx.fillStyle = css('--ink-2');
-    ctx.fillText('roteador', rx, ry + 24);
+    // Roteador: marca de identidade, nunca uma cor de serie. Andar sem roteador vem com routerX nulo.
+    if (env.routerX != null && env.routerY != null) {
+      const [rx, ry] = T(env.routerX, env.routerY);
+      ctx.strokeStyle = css('--ink-2');
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(rx, ry, 5, 0, Math.PI * 2); ctx.stroke();
+      [9, 13].forEach((r) => {
+        ctx.beginPath();
+        ctx.arc(rx, ry, r, -Math.PI * 0.85, -Math.PI * 0.15);
+        ctx.stroke();
+      });
+      // Rotulo abaixo do icone com halo da superficie: o roteador fica junto da
+      // parede, onde quase sempre ha um ponto medido por perto.
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = css('--surface-1');
+      ctx.strokeText('roteador', rx, ry + 24);
+      ctx.fillStyle = css('--ink-2');
+      ctx.fillText('roteador', rx, ry + 24);
+    }
 
     const hits = [];
     spec.points.forEach((p) => {

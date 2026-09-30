@@ -1,0 +1,55 @@
+type,id,x1,y1,x2,y2,label,notes
+wall,w001,-1.01,0.0,7.6,0.0,,"topo: 3,65 + 2,56 + 2,40 = 8,61"
+wall,w002,-1.01,0.0,-1.01,2.75,,lateral do cômodo superior esquerdo
+wall,w003,2.64,0.0,2.64,2.75,,"divisão: -1,01 + 3,65"
+wall,w004,5.2,0.0,5.2,2.75,,"divisão: 2,64 + 2,56"
+wall,w005,7.6,0.0,7.6,13.48,,lateral direita principal
+wall,w006,-1.01,2.75,2.64,2.75,,base do cômodo superior esquerdo
+wall,w007,5.2,2.75,7.6,2.75,,base do cômodo superior direito
+wall,w008,2.64,2.75,2.64,4.31,,"queda de 1,56"
+wall,w009,2.64,3.26,4.48,3.26,"1,84",trecho horizontal do recorte
+wall,w010,4.4800,3.2600,4.7645,2.9376,"0,43","parede diagonal com comprimento real de 0,43 m"
+wall,w011,4.7645,2.9376,5.20,2.9376,"≈0,45","trecho horizontal restante; fica em ~0,44 m, compatível com a cota 0,45"
+wall,w012,2.64,4.31,2.67,4.31,,encontro com o cômodo inferior
+wall,w013,0.0,4.31,2.67,4.31,"2,67",topo do segundo cômodo esquerdo
+wall,w014,0.0,4.31,0.0,6.61,"2,30",lateral esquerda
+wall,w015,0.0,6.61,3.85,6.61,,base do segundo cômodo esquerdo
+wall,w016,3.85,5.28,3.85,6.61,,lado direito inferior do cômodo
+wall,w017,3.85,5.28,5.2,5.28,"1,35",reentrância horizontal
+wall,w018,5.2,4.23,5.2,5.28,"≈1,05",reentrância vertical
+wall,w019,5.2,4.23,7.6,4.23,,base do segundo cômodo direito
+wall,w020,5.2,2.75,5.2,4.23,"1,48",lateral esquerda do segundo cômodo direito
+wall,w021,3.85,6.61,7.6,6.61,"3,75","linha horizontal de 3,75"
+wall,w022,3.85,5.28,3.85,6.61,,fechamento esquerdo superior
+wall,w023,3.85,6.61,3.85,8.91,,lado esquerdo do cômodo abaixo
+wall,w024,3.85,8.91,7.6,8.91,,base do cômodo direito central
+wall,w025,0.0,6.61,0.0,10.01,"3,40",lateral esquerda
+wall,w026,0.0,10.01,3.8,10.01,,base do terceiro cômodo esquerdo
+wall,w028,5.0,8.91,5.0,10.67,,divisão vertical interna aproximada
+wall,w029,3.8,10.01,3.8,10.67,"0,66",degrau vertical
+wall,w030,3.8,10.67,7.6,10.67,,topo do cômodo inferior direito
+wall,w031,5.0,10.67,7.6,10.67,"2,60","trecho cotado de 2,60"
+wall,w032,0.0,10.01,0.0,13.48,"3,47",lateral esquerda inferior
+wall,w033,0.0,13.48,3.8,13.48,"3,80",base inferior esquerda
+wall,w034,3.8,10.67,3.8,13.48,,divisão inferior central
+wall,w035,3.8,13.48,7.6,13.48,"3,80",base inferior direita
+dim,d001,-1.01,-0.42,2.64,-0.42,"3,65",original
+dim,d002,2.64,-0.42,5.2,-0.42,"2,56",original; preservada
+dim,d003,5.2,-0.42,7.6,-0.42,"2,40",original
+dim,d004,0.0,13.9,3.8,13.9,"3,80",original
+dim,d005,3.8,13.9,7.6,13.9,"3,80",original
+dim,d006,0.0,4.0,2.67,4.0,"2,67",original
+dim,d007,2.64,3.0,4.48,3.0,"1,84",original
+dim,d008,4.7645,2.6676,5.20,2.6676,"≈0,44","resultado geométrico após fixar a diagonal em 0,43 m; próximo da cota 0,45"
+dim,d009,3.85,5.0,5.2,5.0,"1,35",original
+dim,d010,3.85,6.95,7.6,6.95,"3,75",original
+dim,d011,5.0,10.98,7.6,10.98,"2,60",original
+dim,d012,-1.42,0.0,-1.42,2.75,"2,75",original
+dim,d013,-0.35,4.31,-0.35,6.61,"2,30",original
+dim,d014,-0.35,6.61,-0.35,10.01,"3,40",original
+dim,d015,-0.35,10.01,-0.35,13.48,"3,47",original
+dim,d016,7.98,0.0,7.98,2.75,"≈2,72",aproximado para alinhar ao topo esquerdo
+dim,d017,7.98,2.75,7.98,4.23,"1,48",original
+dim,d018,5.48,4.23,5.48,5.28,"≈1,05",anotação do recorte
+dim,d019,4.1,8.91,4.1,10.01,"≈1,10",geometria aproximada
+dim,d020,3.55,10.01,3.55,10.67,"0,66",original

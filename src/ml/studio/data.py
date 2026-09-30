@@ -7,13 +7,14 @@ os limiares mudam, entao os sliders respondem sem ida ao servidor.
 
 import hashlib
 import io
+from collections import Counter
 import os
 import zipfile
 
 import pandas as pd
 
 from ml.core.sites import CORPORATE, DOMESTIC
-from ml.studio.plans import montar_plantas
+from ml.studio.plans import andar_de, montar_plantas
 
 TARGETS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
 
@@ -41,6 +42,13 @@ BUILDINGS = {
     'label': 'Hotmilk',
     'ambiente': CORPORATE,
     'positions': ['hotmilk-copa', 'hotmilk-aquario', 'hotmilk-aquario-fora', 'quarto-marcelo'],
+  },
+  'casa-marcelo': {
+    'label': 'Casa do Marcelo',
+    'ambiente': DOMESTIC,
+    'positions': ['marcelo-copa', 'marcelo-copa-split', 'marcelo-inf-ext', 'marcelo-inf-quarto',
+                  'marcelo-inf-quarto-split', 'marcelo-inf-sala', 'marcelo-inf-sala-split',
+                  'marcelo-quarto', 'marcelo-quarto-split', 'marcelo-sala-estar'],
   },
 }
 
@@ -231,7 +239,9 @@ def build_payload() -> dict:
       'hasContention': generation == 'current',
     })
 
-  envelopes = {}
+  # Vence o envelope mais frequente do prédio, não o da primeira linha: a coleta do
+  # 20260925 abriu com 4 linhas do envelope de outro prédio (410x1386).
+  votos = {}
   for item in datasets:
     if not item.get('usable') or item['generation'] != 'current':
       continue
@@ -241,14 +251,23 @@ def build_payload() -> dict:
         building = _building_of(row['local'])
       except ValueError:
         continue
-      if building in envelopes or pd.isna(row.get('house_x0')):
+      if pd.isna(row.get('house_x0')):
         continue
-      envelopes[building] = {
-        'w': float(row['house_x0']), 'h': float(row['house_y0']), 'z': float(row['house_z0']),
-        'routerX': float(row['router_x']), 'routerY': float(row['router_y']),
-      }
+      chave = (float(row['house_x0']), float(row['house_y0']), float(row['house_z0']),
+               float(row['router_x']), float(row['router_y']),
+               None if pd.isna(row.get('router_z')) else float(row['router_z']))
+      votos.setdefault(building, Counter())[chave] += 1
+  envelopes = {}
+  for building, contagem in votos.items():
+    w, h, z, router_x, router_y, router_z = contagem.most_common(1)[0][0]
+    envelopes[building] = {'w': w, 'h': h, 'z': z,
+                           'routerX': router_x, 'routerY': router_y, 'routerZ': router_z}
 
   plantas, plantas_avisos = montar_plantas(envelopes)
+  for record in rows:
+    andares = (plantas.get(record['b']) or {}).get('andares')
+    if andares:
+      record['andar'] = andar_de(record.get('z'), andares)
   return {
     'datasets': descriptors,
     'rows': rows,

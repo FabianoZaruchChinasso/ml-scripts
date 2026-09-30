@@ -4,9 +4,11 @@ import pandas as pd
 
 OFFICE_PREFIX = 'cwpb'
 HOTMILK_PREFIX = 'hotmilk'
+MARCELO_PREFIX = 'marcelo'
 RESIDENCE_BUILDING = 'residencia'
 COWORKING_BUILDING = 'coworking'
 HOTMILK_BUILDING = 'hotmilk'
+MARCELO_BUILDING = 'casa-marcelo'
 
 # Ambiente de cada local de coleta. Doméstico e corporativo diferem em
 # densidade de redes vizinhas, perfil de tráfego e distâncias: é o eixo que
@@ -18,6 +20,7 @@ BUILDING_ENVIRONMENT = {
   RESIDENCE_BUILDING: DOMESTIC,
   COWORKING_BUILDING: CORPORATE,
   HOTMILK_BUILDING: CORPORATE,
+  MARCELO_BUILDING: DOMESTIC,
 }
 
 # Rótulos antigos que a própria coleta corrigiu depois: o 20260917-metrics-fix
@@ -68,6 +71,8 @@ def _resolve_one(value, level: str) -> str:
     return COWORKING_BUILDING if level == 'building' else key
   if key.startswith(HOTMILK_PREFIX):
     return HOTMILK_BUILDING if level == 'building' else key
+  if key.startswith(MARCELO_PREFIX):
+    return MARCELO_BUILDING if level == 'building' else key
   if key in RESIDENCE_POSITIONS:
     return RESIDENCE_BUILDING if level == 'building' else RESIDENCE_POSITIONS[key]
   raise ValueError(
@@ -81,11 +86,12 @@ def resolve_site_id(local_values: pd.Series, level: str = 'position') -> pd.Seri
 
   `local` é a posição de medição dentro de um prédio: a residência usa nomes de
   cômodo (reescritos como 1/2/3 pelo transform), o coworking usa rótulos de
-  distância (`cwpb-*`) e o Hotmilk usa `hotmilk-*`.
+  distância (`cwpb-*`), o Hotmilk usa `hotmilk-*` e a casa do Marcelo usa
+  `marcelo-*`.
 
   level='position' -> um grupo por ponto de medição.
   level='building' -> um grupo por local de coleta (`residencia`, `coworking`,
-  `hotmilk`): é o nível que não vaza o prédio entre treino e teste.
+  `hotmilk`, `casa-marcelo`): é o nível que não vaza o prédio entre treino e teste.
   """
   if level not in GROUP_LEVELS:
     raise ValueError(

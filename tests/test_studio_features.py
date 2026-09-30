@@ -1,4 +1,5 @@
 import os
+import json
 import sys
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 's
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.studio import data as SD
 from ml.studio import features as SF
+from ml.studio import plans as SP
 
 TABELA = {
   'prefixos': {'router_': {'classe': 'tr069'}, 'stats_80211_': {'classe': 'sniffer'}},
@@ -300,6 +302,58 @@ class TestDados(unittest.TestCase):
       finally:
         SD.DATA_DIR = antes
     self.assertEqual(achados['a-fix.csv']['fingerprint'], achados['a.csv']['fingerprint'])
+
+  def test_payload_traz_router_z_e_andar_por_linha(self):
+    linhas = pd.DataFrame({
+      'local': ['marcelo-copa', 'marcelo-inf-sala'],
+      'speedtest_down_mbps': [50.0, 20.0], 'speedtest_up_mbps': [10.0, 5.0],
+      'latency_ms': [10.0, 12.0], 'jitter_ms': [1.0, 2.0],
+      'combo': ['B', 'B'], 'n_clients': [1, 1],
+      'station_x': [238.0, 501.0], 'station_y': [811.0, 540.0], 'station_z': [80.0, -165.0],
+      'house_x0': [861.0, 861.0], 'house_y0': [1448.0, 1448.0], 'house_z0': [250.0, 250.0],
+      'router_x': [501.0, 501.0], 'router_y': [540.0, 540.0], 'router_z': [80.0, 80.0],
+    })
+    with tempfile.TemporaryDirectory() as dados, tempfile.TemporaryDirectory() as planta:
+      linhas.to_csv(os.path.join(dados, 'm.csv'), index=False)
+      with open(os.path.join(planta, 'plantas.json'), 'w', encoding='utf-8') as handle:
+        json.dump({'casa-marcelo': {'andares': [{'id': 'cima', 'z_min': 0}, {'id': 'baixo', 'z_min': None}]}}, handle)
+      antes = (SD.DATA_DIR, SP.PLANTA_DIR)
+      SD.DATA_DIR, SP.PLANTA_DIR, SD._descobertos = dados, planta, None
+      try:
+        payload = SD.build_payload()
+      finally:
+        (SD.DATA_DIR, SP.PLANTA_DIR), SD._descobertos = antes, None
+    self.assertEqual(payload['envelopes']['casa-marcelo']['routerZ'], 80.0)
+    self.assertEqual([r['andar'] for r in payload['rows']], ['cima', 'baixo'])
+    self.assertEqual([a['roteador'] for a in payload['plantas']['casa-marcelo']['andares']], [True, False])
+
+  def test_envelope_e_o_mais_frequente_e_nao_o_da_primeira_linha(self):
+    # A coleta do 20260925 abriu com 4 linhas do envelope de outro prédio (410x1386).
+    n = 5
+    linhas = pd.DataFrame({
+      'local': ['marcelo-copa'] * n,
+      'speedtest_down_mbps': [50.0] * n, 'speedtest_up_mbps': [10.0] * n,
+      'latency_ms': [10.0] * n, 'jitter_ms': [1.0] * n,
+      'combo': ['B'] * n, 'n_clients': [1] * n,
+      'station_x': [238.0] * n, 'station_y': [811.0] * n, 'station_z': [80.0] * n,
+      'house_x0': [410.0, 410.0] + [861.0] * 3, 'house_y0': [1386.0, 1386.0] + [1448.0] * 3,
+      'house_z0': [268.0, 268.0] + [250.0] * 3,
+      'router_x': [200.0, 200.0] + [501.0] * 3, 'router_y': [15.0, 15.0] + [540.0] * 3,
+      'router_z': [80.0] * n,
+    })
+    with tempfile.TemporaryDirectory() as dados, tempfile.TemporaryDirectory() as planta:
+      linhas.to_csv(os.path.join(dados, 'm.csv'), index=False)
+      antes = (SD.DATA_DIR, SP.PLANTA_DIR)
+      SD.DATA_DIR, SP.PLANTA_DIR, SD._descobertos = dados, planta, None
+      try:
+        payload = SD.build_payload()
+      finally:
+        (SD.DATA_DIR, SP.PLANTA_DIR), SD._descobertos = antes, None
+    self.assertEqual(payload['envelopes']['casa-marcelo'],
+                     {'w': 861.0, 'h': 1448.0, 'z': 250.0, 'routerX': 501.0, 'routerY': 540.0, 'routerZ': 80.0})
+
+  def test_posicoes_da_casa_do_marcelo_incluem_marcelo_quarto(self):
+    self.assertEqual(SD._building_of('marcelo-quarto'), 'casa-marcelo')
 
 
 if __name__ == '__main__':

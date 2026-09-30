@@ -193,24 +193,43 @@
   }
 
   /* ---------------- planta ---------------- */
+  function pontos(rows) {
+    const groups = new Map();
+    rows.forEach((r) => {
+      const k = `${r.x}|${r.y}`;
+      if (!groups.has(k)) groups.set(k, { x: r.x, y: r.y, p: r.p, rows: [] });
+      groups.get(k).rows.push(r);
+    });
+    return [...groups.values()].map((g) => {
+      const pct = 100 * g.rows.filter((r) => meets(r, state.thr)).length / g.rows.length;
+      return { x: g.x, y: g.y, n: g.rows.length, value: pct, label: g.p, color: rampColor(pct) };
+    });
+  }
+
   function renderPlan() {
     const rows = activeRows().filter((r) => r.x != null);
     const predios = [];
     Object.entries(state.data.envelopes).forEach(([b, env]) => {
       const mine = rows.filter((r) => r.b === b);
       if (!mine.length) return;
-      const groups = new Map();
-      mine.forEach((r) => {
-        const k = `${r.x}|${r.y}`;
-        if (!groups.has(k)) groups.set(k, { x: r.x, y: r.y, p: r.p, rows: [] });
-        groups.get(k).rows.push(r);
+      const label = state.data.buildings[b].label;
+      const planta = (state.data.plantas || {})[b] || null;
+      if (!planta || !planta.andares) {
+        predios.push({ k: b, b, andar: null, label, env, points: pontos(mine), planta });
+        return;
+      }
+      // r.andar vem do servidor (plans.andar_de); aqui so se separa por andar.
+      const semAndar = mine.filter((r) => r.andar == null).length;
+      planta.andares.forEach((a, i) => {
+        const extras = i > 0 ? [] : planta.avisos.concat(
+          semAndar ? [`${semAndar} linha(s) sem z ficaram fora da planta`] : []);
+        predios.push({
+          k: `${b}|${a.id}`, b, andar: a.id, label: `${label} · ${a.id}`,
+          env: a.roteador ? env : Object.assign({}, env, { routerX: null, routerY: null }),
+          points: pontos(mine.filter((r) => r.andar === a.id)),
+          planta: Object.assign({}, a, { avisos: a.avisos.concat(extras) }),
+        });
       });
-      const points = [...groups.values()].map((g) => {
-        const pct = 100 * g.rows.filter((r) => meets(r, state.thr)).length / g.rows.length;
-        return { x: g.x, y: g.y, n: g.rows.length, value: pct, label: g.p, color: rampColor(pct) };
-      });
-      predios.push({ b, label: state.data.buildings[b].label, env, points,
-                     planta: (state.data.plantas || {})[b] || null });
     });
     V.views.planta.render({
       predios,

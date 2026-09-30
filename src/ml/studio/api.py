@@ -538,13 +538,14 @@ def plan_arquivo(nome: str):
 
 
 @app.get('/api/plan/{predio}/paredes')
-def plan_paredes(predio: str, arquivo: str, origem: str, eixo_x: str):
+def plan_paredes(predio: str, arquivo: str, origem: str, eixo_x: str, formato: str = 'px',
+                 dx: float = 0.0, dy: float = 0.0):
   env = _envelope(predio)
+  registro = {'arquivo': arquivo, 'origem': origem, 'eixo_x': eixo_x, 'formato': formato, 'dx': dx, 'dy': dy}
   try:
-    segmentos = plans.ler_paredes(plans.caminho(arquivo))
-    return {'paredes': plans.paredes_em_cm(segmentos, origem, eixo_x, env['w'], env['h']),
-            'papel': plans.papel_das_paredes(origem, eixo_x)}
-  except (OSError, ValueError) as erro:
+    paredes, papel = plans.ler_registro(registro, env['w'], env['h'])
+    return {'paredes': paredes, 'papel': papel}
+  except (OSError, ValueError, KeyError) as erro:
     raise HTTPException(422, str(erro))
 
 
@@ -576,6 +577,7 @@ def plan_foto(predio: str, arquivo: Optional[str] = None, cantos: Optional[str] 
 class Calibracao(BaseModel):
   paredes: Optional[dict] = None
   foto: Optional[dict] = None
+  andar: Optional[str] = None
 
 
 @app.post('/api/plan/{predio}')
@@ -585,7 +587,7 @@ def plan_salvar(predio: str, corpo: Calibracao, request: Request):
     raise HTTPException(404, f'prédio {predio!r} desconhecido')
   _envelope(predio)
   try:
-    plans.salvar_calibracao(predio, corpo.paredes, corpo.foto)
+    plans.salvar_calibracao(predio, corpo.paredes, corpo.foto, andar=corpo.andar)
   except (OSError, ValueError) as erro:
     raise HTTPException(422, str(erro))
   dados = _payload()

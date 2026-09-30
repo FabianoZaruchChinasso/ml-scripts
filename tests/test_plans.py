@@ -58,6 +58,29 @@ class TestRegistroParedes(unittest.TestCase):
     with self.assertRaises(ValueError):
       P.registro_paredes(np.array([[1, 1, 1, 5]], float), 'superior-esquerdo', 'horizontal', W, H)
 
+  def test_escala_fixa_leva_a_origem_para_dx_dy(self):
+    cantos = {'superior-esquerdo': (100, 50), 'superior-direito': (300, 50),
+              'inferior-esquerdo': (100, 650), 'inferior-direito': (300, 650)}
+    for origem, eixo in COMBOS:
+      px_para_cm, _ = P.registro_paredes(SEGMENTOS, origem, eixo, W, H, escala=1.0, dx=7.0, dy=-3.0)
+      np.testing.assert_allclose(px_para_cm(*cantos[origem]), (7, -3), atol=1e-9, err_msg=origem + eixo)
+
+  def test_escala_fixa_nao_estica_no_envelope(self):
+    px_para_cm, _ = P.registro_paredes(SEGMENTOS, 'superior-esquerdo', 'horizontal', W, H, escala=2.0)
+    np.testing.assert_allclose(px_para_cm(120, 90), (10, 20), atol=1e-9)
+
+  def test_escala_fixa_ida_e_volta(self):
+    for origem, eixo in COMBOS:
+      px_para_cm, cm_para_px = P.registro_paredes(SEGMENTOS, origem, eixo, W, H, escala=1.0, dx=12.5, dy=-40.0)
+      for x, y in [(0, 0), (58, 75), (861, 1448), (-20.5, 700.25)]:
+        np.testing.assert_allclose(px_para_cm(*cm_para_px(x, y)), (x, y), atol=1e-9)
+
+  def test_paredes_em_cm_com_escala(self):
+    segmentos = np.array([[-101, 0, 760, 0], [760, 0, 760, 1348]], float)
+    self.assertEqual(P.paredes_em_cm(segmentos, 'superior-esquerdo', 'horizontal', 861, 1448,
+                                     escala=1.0, dx=10, dy=20),
+                     [[10.0, 20.0, 871.0, 20.0], [871.0, 20.0, 871.0, 1368.0]])
+
 
 class TestFoto(unittest.TestCase):
   def test_papel_da_foto(self):
@@ -185,6 +208,180 @@ class TestArquivos(unittest.TestCase):
     self.assertIsNone(casa['foto'])
     self.assertIsNone(casa['papel'])
     self.assertTrue(any('foto ignorada' in a for a in casa['avisos']))
+
+
+class TestParedesMetros(unittest.TestCase):
+  def setUp(self):
+    self.pasta = tempfile.mkdtemp()
+
+  def tearDown(self):
+    shutil.rmtree(self.pasta)
+
+  def _csv(self, nome, texto):
+    path = os.path.join(self.pasta, nome)
+    with open(path, 'w', encoding='utf-8') as handle:
+      handle.write(texto)
+    return path
+
+  def test_so_paredes_em_cm(self):
+    path = self._csv('m.csv', 'type,id,x1,y1,x2,y2,label,notes\n'
+                              'wall,w1,0.0,0.0,5.12,0.0,,a\n'
+                              'dim,c1,0.0,-0.38,2.53,-0.38,"2,53",cota\n'
+                              'wall,w2,-1.01,0.0,-1.01,2.75,,"x, y"\n')
+    np.testing.assert_allclose(P.ler_paredes_metros(path), [[0, 0, 512, 0], [-101, 0, -101, 275]])
+
+  def test_sem_parede_levanta(self):
+    path = self._csv('m.csv', 'type,id,x1,y1,x2,y2\ndim,c1,0,0,1,0\n')
+    with self.assertRaises(ValueError):
+      P.ler_paredes_metros(path)
+
+  def test_coluna_faltando_levanta(self):
+    path = self._csv('m.csv', 'type,id,x1,y1,x2\nwall,w1,0,0,1\n')
+    with self.assertRaises(ValueError):
+      P.ler_paredes_metros(path)
+
+
+class TestAndarDe(unittest.TestCase):
+  ANDARES = [{'id': 'baixo', 'z_min': None}, {'id': 'cima', 'z_min': 0}]
+
+  def test_pelo_maior_piso_que_nao_passa_do_z(self):
+    self.assertEqual(P.andar_de(80.0, self.ANDARES), 'cima')
+    self.assertEqual(P.andar_de(0, self.ANDARES), 'cima')
+    self.assertEqual(P.andar_de(-165.0, self.ANDARES), 'baixo')
+
+  def test_z_nulo_nao_tem_andar(self):
+    self.assertIsNone(P.andar_de(None, self.ANDARES))
+    self.assertIsNone(P.andar_de(float('nan'), self.ANDARES))
+
+  def test_abaixo_de_todos_os_pisos_nao_tem_andar(self):
+    self.assertIsNone(P.andar_de(-1, [{'id': 'unico', 'z_min': 0}]))
+
+
+class TestAndares(unittest.TestCase):
+  REGISTRO = {'formato': 'metros', 'origem': 'superior-esquerdo', 'eixo_x': 'horizontal'}
+
+  def setUp(self):
+    self.pasta = tempfile.mkdtemp()
+    with open(os.path.join(self.pasta, 'cima.csv'), 'w', encoding='utf-8') as handle:
+      handle.write('type,id,x1,y1,x2,y2,label,notes\n'
+                   'wall,w1,-1.01,0.0,7.6,0.0,,topo\n'
+                   'wall,w2,7.6,0.0,7.6,13.48,,lateral\n'
+                   'dim,d1,-1.01,-0.42,2.64,-0.42,"3,65",cota\n')
+    with open(os.path.join(self.pasta, 'baixo.csv'), 'w', encoding='utf-8') as handle:
+      handle.write('type,id,x1,y1,x2,y2,label,notes\n'
+                   'wall,w1,0.0,0.0,7.35,0.0,,topo\n'
+                   'wall,w2,7.35,0.0,7.35,9.14,,lateral\n')
+    self.env = {'casa-m': {'w': 861.0, 'h': 1448.0, 'routerZ': 80.0}}
+
+  def tearDown(self):
+    shutil.rmtree(self.pasta)
+
+  def _gravar(self, config):
+    with open(os.path.join(self.pasta, 'plantas.json'), 'w', encoding='utf-8') as handle:
+      json.dump(config, handle)
+
+  def _config(self):
+    with open(os.path.join(self.pasta, 'plantas.json'), encoding='utf-8') as handle:
+      return json.load(handle)
+
+  def _dois_andares(self, arquivo_baixo='baixo.csv'):
+    return {'casa-m': {'andares': [
+      {'id': 'baixo', 'z_min': None, 'paredes': dict(self.REGISTRO, arquivo=arquivo_baixo, dx=10, dy=20)},
+      {'id': 'cima', 'z_min': 0, 'paredes': dict(self.REGISTRO, arquivo='cima.csv', dx=0, dy=0)},
+    ]}}
+
+  def test_um_item_por_andar_do_mais_alto_para_o_mais_baixo(self):
+    self._gravar(self._dois_andares())
+    plantas, avisos = P.montar_plantas(self.env, self.pasta)
+    self.assertEqual(avisos, [])
+    andares = plantas['casa-m']['andares']
+    self.assertEqual([a['id'] for a in andares], ['cima', 'baixo'])
+    cima, baixo = andares
+    self.assertEqual(cima['paredes'], [[0.0, 0.0, 861.0, 0.0], [861.0, 0.0, 861.0, 1348.0]])
+    self.assertEqual(baixo['paredes'][0], [10.0, 20.0, 745.0, 20.0])
+    self.assertEqual(cima['papel'], [[1, 0], [0, 1]])
+    self.assertIsNone(cima['foto'])
+    self.assertEqual(cima['calibracao']['paredes'],
+                     {'arquivo': 'cima.csv', 'origem': 'superior-esquerdo', 'eixo_x': 'horizontal',
+                      'formato': 'metros', 'dx': 0.0, 'dy': 0.0})
+
+  def test_roteador_so_no_andar_do_router_z(self):
+    self._gravar(self._dois_andares())
+    plantas, _ = P.montar_plantas(self.env, self.pasta)
+    self.assertEqual([a['roteador'] for a in plantas['casa-m']['andares']], [True, False])
+
+  def test_csv_quebrado_de_um_andar_nao_afeta_o_outro(self):
+    self._gravar(self._dois_andares(arquivo_baixo='sumiu.csv'))
+    plantas, _ = P.montar_plantas(self.env, self.pasta)
+    cima, baixo = plantas['casa-m']['andares']
+    self.assertIsNotNone(cima['paredes'])
+    self.assertIsNone(baixo['paredes'])
+    self.assertTrue(any('paredes ignoradas' in a for a in baixo['avisos']))
+
+  def test_andares_invalidos_viram_aviso_e_planta_simples(self):
+    self._gravar({'casa-m': {'andares': 'cima'}})
+    plantas, _ = P.montar_plantas(self.env, self.pasta)
+    item = plantas['casa-m']
+    self.assertNotIn('andares', item)
+    self.assertIsNone(item['paredes'])
+    self.assertTrue(any('andares ignorados' in a for a in item['avisos']))
+
+  def test_salvar_grava_so_o_andar_pedido(self):
+    config = self._dois_andares()
+    config['casa'] = {'paredes': {'arquivo': 'x.csv', 'origem': 'inferior-direito', 'eixo_x': 'horizontal'}}
+    self._gravar(config)
+    P.salvar_calibracao('casa-m', dict(self.REGISTRO, arquivo='baixo.csv', dx=12, dy=-3), None,
+                        self.pasta, andar='baixo')
+    salvo = self._config()
+    baixo = next(a for a in salvo['casa-m']['andares'] if a['id'] == 'baixo')
+    cima = next(a for a in salvo['casa-m']['andares'] if a['id'] == 'cima')
+    self.assertEqual(baixo['paredes'], {'arquivo': 'baixo.csv', 'origem': 'superior-esquerdo',
+                                        'eixo_x': 'horizontal', 'formato': 'metros', 'dx': 12.0, 'dy': -3.0})
+    self.assertEqual(cima, config['casa-m']['andares'][1])
+    self.assertEqual(salvo['casa'], config['casa'])
+
+  def test_salvar_recusa_andar_inexistente_dx_invalido_e_foto(self):
+    self._gravar(self._dois_andares())
+    bom = dict(self.REGISTRO, arquivo='baixo.csv', dx=0, dy=0)
+    with self.assertRaises(ValueError):
+      P.salvar_calibracao('casa-m', bom, None, self.pasta, andar='sotao')
+    with self.assertRaises(ValueError):
+      P.salvar_calibracao('casa-m', dict(bom, dx='abc'), None, self.pasta, andar='baixo')
+    with self.assertRaises(ValueError):
+      P.salvar_calibracao('casa-m', dict(bom, formato='polegadas'), None, self.pasta, andar='baixo')
+    with self.assertRaises(ValueError):
+      P.salvar_calibracao('casa-m', None, {'arquivo': 'f.jpeg', 'cantos': None}, self.pasta, andar='baixo')
+    self.assertEqual(self._config(), self._dois_andares())
+
+  def test_salvar_sem_andar_em_predio_com_andares_levanta(self):
+    self._gravar(self._dois_andares())
+    with self.assertRaises(ValueError):
+      P.salvar_calibracao('casa-m', dict(self.REGISTRO, arquivo='cima.csv'), None, self.pasta)
+    self.assertEqual(self._config(), self._dois_andares())
+
+  def test_paredes_que_nao_e_objeto_vira_aviso_no_andar(self):
+    self._gravar({'casa-m': {'andares': [
+      {'id': 'cima', 'z_min': 0, 'paredes': 'cima.csv'},
+      {'id': 'baixo', 'z_min': None, 'paredes': dict(self.REGISTRO, arquivo='baixo.csv', dx=0, dy=0)},
+    ]}})
+    plantas, _ = P.montar_plantas(self.env, self.pasta)
+    cima, baixo = plantas['casa-m']['andares']
+    self.assertIsNone(cima['paredes'])
+    self.assertTrue(any('paredes ignoradas' in a for a in cima['avisos']))
+    self.assertIsNotNone(baixo['paredes'])
+
+  def test_dx_nao_finito_vira_aviso_no_andar(self):
+    self._gravar({'casa-m': {'andares': [
+      {'id': 'cima', 'z_min': 0, 'paredes': dict(self.REGISTRO, arquivo='cima.csv', dx=0, dy=0)},
+      {'id': 'baixo', 'z_min': None,
+       'paredes': dict(self.REGISTRO, arquivo='baixo.csv', dx=float('nan'), dy=0)},
+    ]}})
+    plantas, _ = P.montar_plantas(self.env, self.pasta)
+    cima, baixo = plantas['casa-m']['andares']
+    self.assertIsNotNone(cima['paredes'])
+    self.assertIsNone(baixo['paredes'])
+    self.assertTrue(any('paredes ignoradas' in a for a in baixo['avisos']))
+    self.assertIsNone(baixo['calibracao']['paredes'])
 
 
 if __name__ == '__main__':
