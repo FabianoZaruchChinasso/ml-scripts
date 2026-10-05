@@ -17,9 +17,13 @@ Razões por pacote não cancelam o volume: retry por pacote tem ρ −0,61 com o
 - Fim da isenção `normaliza_volume`: uma derivada vaza se qualquer insumo vazar.
   `retry_por_pacote`, `falha_por_pacote`, `descarte_por_pacote_rx` e `fracao_airtime_tx`
   continuam no catálogo, mas saem de ajustes e versões. Catálogo `2026-10-02.1`.
-- Registro de versões reduzido à `v1` (era `v1-legado`), ativa. `v1-sem-cliente`, `v2-tr069` e
-  `v2-tr069-volume` foram removidas. Na avaliação, a `v1` perde os 5 contadores, listados em
-  `removidas_por_vazamento`.
+- Registro de versões limpo: fica a `v1` (era `v1-legado`), ativa. `v1-sem-cliente`, a `v2-tr069`
+  antiga e `v2-tr069-volume` foram removidas. Na avaliação, a `v1` perde os 5 contadores, listados
+  em `removidas_por_vazamento`.
+- Nova `v2-tr069`, montada no Studio sobre a base limpa e não ativa: só TR-069, sem contadores da
+  janela (taxa PHY, SNR, sinal, largura de canal, eficiência espectral e perda de percurso).
+  Download: R² pooled 0,59, MAE 45 Mbps em 4 prédios.
+- `regression_mlflow.py` treina a versão ativa do registro, ou a indicada em `MODELO=`.
 - Testes que falharam (alvo exatamente 0) são descartados em `load_datasets` e no Studio, com a
   contagem impressa ou nos avisos. Valores pequenos e positivos ficam: são enlaces ruins reais.
 
@@ -31,7 +35,7 @@ Razões por pacote não cancelam o volume: retry por pacote tem ρ −0,61 com o
 | + colunas e derivadas físicas que já existem | 0,404 | 47,4 |
 | + físicas, sem testes que falharam | 0,439 | 44,7 |
 
-A versão nova do modelo será montada no assistente sobre essa base.
+A `v2-tr069` foi montada sobre essa base e chega a R² pooled 0,59 (MAE 45 Mbps).
 
 ## Fica para depois
 
