@@ -189,7 +189,6 @@ class Derivada:
   insumos: tuple
   calcular: Callable[[pd.DataFrame], pd.Series]
   descricao: str
-  normaliza_volume: bool = False
   # Derivadas desenhadas no Studio (derivadas.json): fórmula, status e a coluna de
   # laboratório que inspirou a receita. As do CATALOGO ficam com os padrões.
   formula: Optional[str] = None
@@ -206,16 +205,15 @@ def _por_canal(taxa: str, largura: str, fluxos: str):
   return lambda df: df[taxa] / (df[largura] * df[fluxos]).replace(0, np.nan)
 
 
-CATALOGO_VERSAO = '2026-09-25.1'
+CATALOGO_VERSAO = '2026-10-02.1'
 
 CATALOGO = (
   Derivada('retry_por_pacote', ('router_tx_retries', 'router_tx_packets'),
            _razao('router_tx_retries', 'router_tx_packets'),
-           'Retransmissões por pacote enviado: qualidade do enlace, sem depender do volume.',
-           normaliza_volume=True),
+           'Retransmissões por pacote enviado: qualidade do enlace, sem depender do volume.'),
   Derivada('falha_por_pacote', ('router_tx_failed', 'router_tx_packets'),
            _razao('router_tx_failed', 'router_tx_packets'),
-           'Falhas de envio por pacote.', normaliza_volume=True),
+           'Falhas de envio por pacote.'),
   Derivada('bytes_por_pacote_tx', ('router_tx_bytes', 'router_tx_packets'),
            _razao('router_tx_bytes', 'router_tx_packets'),
            'Tamanho médio do quadro enviado; depende do tipo de tráfego do teste.'),
@@ -255,7 +253,7 @@ CATALOGO = (
            'Throughput esperado pelo rate control por MHz de canal.'),
   Derivada('descarte_por_pacote_rx', ('router_rx_drop_misc', 'router_rx_packets'),
            _razao('router_rx_drop_misc', 'router_rx_packets'),
-           'Pacotes descartados na recepção por pacote recebido.', normaliza_volume=True),
+           'Pacotes descartados na recepção por pacote recebido.'),
 )
 
 
@@ -343,12 +341,19 @@ def gravar_derivada(nome: str, formula: str, descricao: str, status: str, inspir
 
 
 def classificar_derivada(derivada: Derivada, tabela: dict) -> Optional[Classificacao]:
+  """Classe e vazamento herdados dos insumos.
+
+  Razão entre contadores não cancela o volume: medido em 2026-10-02, retry por
+  pacote acompanha o volume (ρ −0,61) quase tanto quanto o alvo (ρ −0,64). Por
+  isso qualquer insumo vazado vaza a derivada. Vazamento confirmado não fica
+  pendente, como em validar_regra.
+  """
   insumos = [classificar(c, tabela) for c in derivada.insumos]
   if any(c is None for c in insumos):
     return None
   classe = 'tr069' if all(c.classe == 'tr069' for c in insumos) else CLASSE_AUXILIAR
-  vazamento = any(c.vazamento for c in insumos) and not derivada.normaliza_volume
-  pendente = any(c.pendente for c in insumos) and not derivada.normaliza_volume
+  vazamento = any(c.vazamento for c in insumos)
+  pendente = any(c.pendente for c in insumos) and not vazamento
   return Classificacao(classe, vazamento, None, 'derivada', pendente)
 
 
@@ -364,3 +369,19 @@ def aplicar_derivadas(df: pd.DataFrame, catalogo=CATALOGO):
   if not novas:
     return df.copy(), avisos
   return pd.concat([df, pd.DataFrame(novas, index=df.index)], axis=1), avisos
+
+
+def matriz(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
+  """Monta a matriz de treino: colunas numéricas como estão, categóricas em one-hot.
+
+  Usado pelo Studio e pelos scripts de treino, para que uma versão com feature
+  categórica (ex.: client_mode, radio) rode nos dois sem duplicar a conversão.
+  """
+  partes = []
+  for coluna in colunas:
+    serie = df[coluna]
+    if pd.api.types.is_numeric_dtype(serie):
+      partes.append(serie.astype(float).rename(coluna))
+    else:
+      partes.append(pd.get_dummies(serie.astype('string'), prefix=coluna, dtype=float))
+  return pd.concat(partes, axis=1)

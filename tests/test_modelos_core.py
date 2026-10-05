@@ -86,11 +86,10 @@ class TestRegistro(Base):
 class TestSemente(unittest.TestCase):
   def test_registro_do_repositorio(self):
     reg = M.carregar()
-    self.assertEqual(reg['versoes']['v1-legado']['features'], list(F.MODELO_ATUAL))
-    self.assertEqual(reg['ativo'], 'v1-legado')
-    sem = reg['versoes']['v1-sem-cliente']['features']
-    self.assertEqual(sem, [f for f in F.MODELO_ATUAL if f != 'client_opportunity_medium_use'])
-    self.assertEqual(M.fora_do_tr069(sem, F.carregar_tabela()), [])
+    self.assertIn('v1', reg['versoes'])
+    self.assertEqual(reg['ativo'], 'v1')
+    self.assertEqual(reg['versoes']['v1']['features'], list(F.MODELO_ATUAL))
+    self.assertNotIn('avaliacao', reg['versoes']['v1'])
 
 
 class TestDerivadasNovas(unittest.TestCase):
@@ -112,10 +111,15 @@ class TestDerivadasNovas(unittest.TestCase):
   def test_derivadas_novas_sao_tr069_na_tabela_do_repositorio(self):
     tabela = F.carregar_tabela()
     for nome in ('perda_percurso_db', 'eficiencia_espectral_tx', 'eficiencia_espectral_rx',
-                 'vazao_esperada_por_mhz', 'descarte_por_pacote_rx'):
+                 'vazao_esperada_por_mhz'):
       derivada = next(d for d in F.CATALOGO if d.nome == nome)
       c = F.classificar_derivada(derivada, tabela)
       self.assertEqual((c.classe, c.vazamento), ('tr069', False), nome)
+
+  def test_descarte_por_pacote_rx_herda_vazamento_do_contador(self):
+    derivada = next(d for d in F.CATALOGO if d.nome == 'descarte_por_pacote_rx')
+    c = F.classificar_derivada(derivada, F.carregar_tabela())
+    self.assertEqual((c.classe, c.vazamento), ('tr069', True))
 
 
 if __name__ == '__main__':

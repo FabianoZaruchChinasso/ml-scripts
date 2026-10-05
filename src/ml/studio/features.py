@@ -17,6 +17,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.pipeline import Pipeline
 
 from ml.core import features as F
+from ml.core.data import descartar_testes_falhos
 from ml.core.sites import BUILDING_ENVIRONMENT, ENVIRONMENTS, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES, outer_logo_folds
 
@@ -76,6 +77,9 @@ def preparar(frames: dict, alvo: str, tabela: dict, ambiente: str = None, catalo
   if sem_alvo:
     avisos.append(f'{sem_alvo} linhas sem {alvo} descartadas')
   df = df[df[alvo].notna()]
+  df, falhos = descartar_testes_falhos(df, alvo)
+  if falhos:
+    avisos.append(f'{falhos} testes que falharam ({alvo} = 0) descartados')
 
   posicoes, predios = {}, {}
   desconhecidos = []
@@ -165,7 +169,6 @@ def inventario(conj: Conjunto, modelo=F.MODELO_ATUAL) -> dict:
     colunas.append({
       'coluna': coluna, 'classe': c.classe, 'origem': c.origem, 'vazamento': c.vazamento,
       'parametro': c.parametro, 'derivada': coluna in derivadas,
-      'normaliza_volume': coluna in derivadas and derivadas[coluna].normaliza_volume,
       # Derivada desenhada no Studio que não passou no critério de aceite:
       # pode ser escolhida à mão, mas fica fora do teto, do ganho e do desenho automático.
       'hipotese': coluna in derivadas and derivadas[coluna].status == 'hipotese',
@@ -265,15 +268,9 @@ def lista_assistente(inv: dict, catalogo) -> list:
   return sorted(saida, key=lambda c: c['coluna'])
 
 
-def matriz(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
-  partes = []
-  for coluna in colunas:
-    serie = df[coluna]
-    if pd.api.types.is_numeric_dtype(serie):
-      partes.append(serie.astype(float).rename(coluna))
-    else:
-      partes.append(pd.get_dummies(serie.astype('string'), prefix=coluna, dtype=float))
-  return pd.concat(partes, axis=1)
+# Movida para core/features.py: scripts de treino fora do Studio (regression_mlflow.py)
+# também precisam converter categóricas em one-hot quando uma versão as usa.
+matriz = F.matriz
 
 
 def assert_sem_vazamento(colunas, vazadas) -> None:

@@ -99,12 +99,12 @@
     },
     "router_rx_drop_misc": {
       "classe": "tr069",
-      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
       "vazamento": true
     },
     "router_rx_duration_us": {
       "classe": "tr069",
-      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
       "vazamento": true
     },
     "router_rx_packets": {
@@ -117,12 +117,12 @@
     },
     "router_tx_duration_us": {
       "classe": "tr069",
-      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
       "vazamento": true
     },
     "router_tx_failed": {
       "classe": "tr069",
-      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
       "vazamento": true
     },
     "router_tx_packets": {
@@ -131,7 +131,7 @@
     },
     "router_tx_retries": {
       "classe": "tr069",
-      "parametro": "contador do roteador: medido na janela do teste? (view Modelos)",
+      "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
       "vazamento": true
     },
     "router_x": {

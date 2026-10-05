@@ -165,7 +165,7 @@
     const linhas = [linha(ativo, aj.teto.atual)]
       .concat((aj.versoes || []).map((v) => linha(v.nome, v)))
       .concat([linha('TR-069 completo', aj.teto.tr069), linha('Tudo', aj.teto.tudo)]);
-    st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, 2), fmtMean: (v) => num(v, 3) });
+    st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, 2), fmtMean: (v) => num(v, 3), floor: -1 });
     V.attachTooltip(canvas, $('#fTetoTip'), () => st.hits,
       (h) => `<b>${esc(h.label)}</b>${esc(h.at)}: R² ${num(h.value, 3)}`);
   }
@@ -180,9 +180,7 @@
       atual ? ((ganho[b.coluna] || { delta: -9 }).delta - (ganho[a.coluna] || { delta: -9 }).delta)
         : ((b.rho || 0) - (a.rho || 0)));
     const vazadas = lista.filter((c) => c.vazamento).sort((a, b) => (b.rho || 0) - (a.rho || 0));
-    const tipo = (c) => c.derivada
-      ? '<span class="tag">derivada</span>' + (c.normaliza_volume ? ' <span class="tag ok" title="razão entre dois contadores de volume: o volume se cancela">normaliza volume</span>' : '')
-      : '<span class="tag">bruta</span>';
+    const tipo = (c) => c.derivada ? '<span class="tag">derivada</span>' : '<span class="tag">bruta</span>';
     const linha = (c) => {
       const g = ganho[c.coluna];
       const cel = c.vazamento ? '<td class="num" colspan="2">fora dos ajustes</td>'

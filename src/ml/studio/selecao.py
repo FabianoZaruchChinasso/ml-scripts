@@ -29,10 +29,10 @@ ARVORES_BUSCA = 60
 MAX_FEATURES = 12
 TOLERANCIA = 0.005
 
-# Contadores brutos que crescem com o volume de tráfego. Se o coletor os mede na
-# janela do teste, carregam o próprio alvo (como router_tx_bytes, já marcado como
-# vazamento). As versões por pacote (retry_por_pacote, fracao_airtime_tx, ...)
-# continuam disponíveis mesmo com a exclusão ligada.
+# Contadores brutos que crescem com o volume de tráfego. O coletor os mede na janela
+# do teste (confirmado em 2026-10-02), então carregam o próprio alvo. As razões por
+# pacote (retry_por_pacote, fracao_airtime_tx, ...) herdam esse vazamento. A exclusão
+# continua aqui porque o estado pode voltar a "não sei" em Limites e pendências.
 CONTADORES_VOLUME = F.CONTADORES_JANELA
 
 

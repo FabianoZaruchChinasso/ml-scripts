@@ -79,6 +79,15 @@ class TestPreparar(Base):
     self.assertEqual(len(conj.df), len(f) - 1)
     self.assertTrue(any('1 linhas sem' in a for a in conj.avisos))
 
+  def test_descarta_testes_que_falharam_e_avisa(self):
+    f = frame()
+    f.loc[0, 'speedtest_down_mbps'] = 0.0
+    f.loc[1, 'speedtest_down_mbps'] = 0.3
+    conj = SF.preparar({'a.csv': f}, 'speedtest_down_mbps', TABELA)
+    self.assertEqual(len(conj.df), len(f) - 1)
+    self.assertIn(0.3, conj.df['speedtest_down_mbps'].tolist())
+    self.assertTrue(any('1 testes que falharam' in a for a in conj.avisos))
+
   def test_fold_e_o_local_de_coleta_e_posicao_fica_para_exibicao(self):
     conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
     self.assertEqual(sorted(conj.df['_site'].unique()), ['coworking', 'hotmilk', 'residencia'])
