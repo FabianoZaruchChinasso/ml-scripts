@@ -35,6 +35,10 @@
     "combo": {
       "classe": "identificador"
     },
+    "concorrentes_mesmo_radio": {
+      "classe": "tr069",
+      "parametro": "clientes em teste simultâneo no mesmo bssid; em produção depende do coletor"
+    },
     "dist_calc": {
       "classe": "geometria"
     },
@@ -72,7 +76,8 @@
       "classe": "identificador"
     },
     "n_clients": {
-      "classe": "identificador"
+      "classe": "tr069",
+      "parametro": "substituto de estações ativas no rádio; em produção depende do coletor"
     },
     "obstacles": {
       "classe": "geometria"

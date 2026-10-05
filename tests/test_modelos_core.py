@@ -122,5 +122,13 @@ class TestDerivadasNovas(unittest.TestCase):
     self.assertEqual((c.classe, c.vazamento), ('tr069', True))
 
 
+class TestAvaliacaoComRegua(unittest.TestCase):
+  def test_registro_aceita_avaliacao_com_versao_da_regua_e_atende(self):
+    M.validar_registro({'ativo': 'v1', 'versoes': {'v1': {
+      'features': ['router_snr'], 'descricao': 'x',
+      'avaliacao': {'speedtest_down_mbps': {'pooled': 0.5, 'versao_regua': '2026-10-05.1'},
+                    'atende_throughput': {'media': 0.8}}}}})
+
+
 if __name__ == '__main__':
   unittest.main()

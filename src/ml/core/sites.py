@@ -23,6 +23,19 @@ BUILDING_ENVIRONMENT = {
   MARCELO_BUILDING: DOMESTIC,
 }
 
+# Teto do plano de WAN por local de coleta e por alvo (Mbps): acima disto o
+# speedtest mede a internet, não o Wi-Fi. Inferido pelo p99 em 2026-10-05
+# (download 154, upload 99,8 na residência). Prédio ausente = sem teto conhecido.
+TETOS_WAN = {
+  RESIDENCE_BUILDING: {'speedtest_down_mbps': 154.0, 'speedtest_up_mbps': 99.0},
+}
+
+
+def teto_wan(predio: str, alvo: str):
+  """Teto de WAN do prédio para o alvo, ou None quando não há teto conhecido."""
+  return TETOS_WAN.get(predio, {}).get(alvo)
+
+
 # Rótulos antigos que a própria coleta corrigiu depois: o 20260917-metrics-fix
 # regravou `quarto-marcelo` como `hotmilk-aquario`, linha a linha.
 POSITION_ALIASES = {

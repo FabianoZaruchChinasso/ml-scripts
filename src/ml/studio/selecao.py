@@ -19,6 +19,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.pipeline import Pipeline
 
+from ml.core import avaliacao as A
 from ml.core import features as F
 from ml.core.splits import assert_sites_disjoint
 from ml.studio import features as SF
@@ -93,7 +94,7 @@ def aninhada(df: pd.DataFrame, candidatas: list, alvo: str, progresso=None) -> d
     X_tr, X_te = SF.matriz(treino, feats), SF.matriz(teste, feats)
     X_te = X_te.reindex(columns=X_tr.columns, fill_value=0.0)
     y_te = teste[alvo].astype(float)
-    p = SF._modelo(SF.ARVORES).fit(X_tr, treino[alvo].astype(float)).predict(X_te)
+    p = A.modelo_regua().fit(X_tr, treino[alvo].astype(float)).predict(X_te)
     por_local[local] = round(float(r2_score(y_te, p)), 4)
     mae_local[local] = round(float(mean_absolute_error(y_te, p)), 4)
     reais.extend(y_te.tolist())

@@ -17,6 +17,9 @@ from fastapi.staticfiles import StaticFiles
 import pandas as pd
 from pydantic import BaseModel
 
+from ml.core import aplicacoes as core_aplicacoes
+from ml.core import avaliacao as core_avaliacao
+from ml.core import carga as core_carga
 from ml.core import features as core_features
 from ml.core import formulas as core_formulas
 from ml.core import modelos as core_modelos
@@ -136,7 +139,7 @@ def features_ajuste(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: s
 # ---------------- Modelos ----------------
 
 def _colunas_conhecidas() -> set:
-  conhecidas = {d.nome for d in core_features.catalogo_completo()}
+  conhecidas = {d.nome for d in core_features.catalogo_completo()} | set(core_carga.COLUNAS_CALCULADAS)
   for d in descobertos():
     if d.get('usable'):
       conhecidas.update(d['_frame'].columns)
@@ -157,7 +160,8 @@ def modelos_listar():
   return {'ativo': registro['ativo'], 'versoes': versoes, 'erro': erro,
           'contadores': core_features.estado_contadores(tabela),
           'versao_tabela': core_features.versao_tabela(),
-          'versao_catalogo': core_features.CATALOGO_VERSAO}
+          'versao_catalogo': core_features.CATALOGO_VERSAO,
+          'versao_regua': core_avaliacao.VERSAO_REGUA}
 
 
 @app.get('/api/modelos/comparar')
@@ -177,6 +181,24 @@ def modelos_comparar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: 
 
 def _lista(texto: str) -> list:
   return [x for x in texto.split(',') if x]
+
+
+def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, conj) -> dict:
+  """Veredito de promoção da régua: intervalo da diferença em MAE e, para throughput, em "atende"."""
+  def prever(c, lista):
+    vazadas = studio_features.vazadas_do_conjunto(c)
+    presentes = [f for f in lista if f in c.df.columns and f not in vazadas]
+    return core_avaliacao.prever_fora_do_fold(c.df, presentes, c.alvo, vazadas)
+  d_mae = core_avaliacao.delta_mae(prever(conj, feats), prever(conj, feats_base))
+  d_atende = None
+  if alvo in core_avaliacao.ALVOS_COM_TETO:
+    dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
+    up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
+    d_atende = core_avaliacao.delta_atende(prever(dn, feats), prever(up, feats), prever(dn, feats_base),
+                                           prever(up, feats_base), core_aplicacoes.carregar())
+  return {'delta_mae': d_mae, 'delta_atende': d_atende,
+          'veredito': core_avaliacao.veredito_promocao(d_mae, d_atende),
+          'versao_regua': core_avaliacao.VERSAO_REGUA}
 
 
 @app.get('/api/modelos/avaliar')
@@ -206,6 +228,7 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
         pendentes = [f for f in feats if conj.classes.get(f) is not None and conj.classes[f].pendente]
         saida['veredito'] = studio_features.veredito(saida['delta'], int(conj.df['_site'].nunique()),
                                                      pendentes, studio_features.UNIDADES[alvo])
+        saida['promocao'] = _promocao(ds, ambiente, alvo, feats, registro['versoes'][base]['features'], conj)
     except (ValueError, AssertionError) as erro:
       raise HTTPException(422, str(erro))
     _modelos_cache[chave] = saida
@@ -213,14 +236,18 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
 
 
 def avaliacao_completa(ds: str, ambiente: str, features: list) -> dict:
-  """Avaliação dos quatro alvos, guardada junto da versão como registro da época."""
-  saida = {}
+  """Avaliação dos quatro alvos e de "atende em throughput", guardada junto da versão."""
+  saida, previsoes = {}, {}
   for alvo in studio_features.TARGETS:
     conj, _ = _conjunto(ds, alvo, ambiente)
-    resumo = studio_features.avaliar(conj, features, studio_features.vazadas_do_conjunto(conj))
+    resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, features, studio_features.vazadas_do_conjunto(conj),
+                                                     com_previsoes=True)
     saida[alvo] = dict(resumo, datasets=conj.datasets, ambiente=_ambiente(ambiente) or 'todos',
                        versao_tabela=core_features.versao_tabela(),
                        versao_catalogo=core_features.CATALOGO_VERSAO)
+  saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
+                                                     previsoes['speedtest_up_mbps'],
+                                                     core_aplicacoes.carregar())
   return saida
 
 

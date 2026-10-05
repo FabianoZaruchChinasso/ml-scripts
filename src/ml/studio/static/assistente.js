@@ -354,16 +354,25 @@
       <td class="num">${num(a.resumo_base.por_local[s], 3)}</td><td class="num">${num(a.resumo.por_local[s], 3)}</td>
       <td class="num">${sinal(d.por_local[s])}</td>
       <td class="num">${num(a.resumo_base.mae_por_local[s], 1)}</td><td class="num">${num(a.resumo.mae_por_local[s], 1)}</td></tr>`).join('');
+    const faixa = (iv, casas) => (iv ? `<em>90%: ${num(iv[0], casas)} a ${num(iv[1], casas)}</em>` : '');
+    const p = a.promocao;
+    const promocao = p ? `<div class="veredito ${p.veredito.resultado}" style="margin-top:10px">
+        <svg class="icon"><use href="#${VEREDITO[p.veredito.resultado][1]}"/></svg>
+        <div><b>Régua de promoção: ${VEREDITO[p.veredito.resultado][0]}</b>
+          <div class="gate-msg">${esc(p.veredito.motivo)}</div>
+          <div class="gate-msg">Δ MAE ${num(p.delta_mae.valor, 1)} ${u} ${faixa(p.delta_mae.intervalo, 1)}${p.delta_atende
+            ? ` · Δ atende ${num(p.delta_atende.valor, 3)} ${faixa(p.delta_atende.intervalo, 3)}` : ''}</div></div></div>` : '';
     return `<div class="${atual ? '' : 'stale'}">
       <div class="veredito ${v.resultado}"><svg class="icon"><use href="#${icone}"/></svg>
         <div><b>${rotulo}</b>${v.provisorio ? ` <span class="tag mid" title="${esc(v.motivos_provisorio.join('; '))}">provisório</span>` : ''}
           ${atual ? '' : ' <span class="tag lab">desatualizado: o rascunho, os dados ou o alvo mudaram</span>'}
           <div class="gate-msg">${esc(v.motivo)}</div></div></div>
       <div class="kpis">
-        <div><span>R² pooled</span><b>${num(a.resumo_base.pooled, 3)} → ${num(a.resumo.pooled, 3)}</b></div>
+        <div><span>R² pooled</span><b>${num(a.resumo_base.pooled, 3)} → ${num(a.resumo.pooled, 3)}</b>${faixa((a.resumo.intervalos || {}).pooled, 3)}</div>
         <div><span>MAE (${u})</span><b>${num(a.resumo_base.mae, 1)} → ${num(a.resumo.mae, 1)}</b></div>
         <div><span>Melhora em</span><b>${d.melhora} de ${d.locais}</b><em>locais</em></div>
       </div>
+      ${promocao}
       <details class="fold"><summary>Ver detalhes por local</summary><div class="inner" style="overflow-x:auto"><table>
         <thead><tr><th>Local de coleta</th><th class="num">R² ativa</th><th class="num">R² rascunho</th><th class="num">Δ R²</th>
         <th class="num">MAE ativa</th><th class="num">MAE rascunho</th></tr></thead><tbody>${linhas}</tbody></table></div></details>

@@ -5,24 +5,17 @@ alvos universais. A capacidade por aplicacao e recalculada no cliente sempre que
 os limiares mudam, entao os sliders respondem sem ida ao servidor.
 """
 
-import hashlib
-import io
 from collections import Counter
-import os
-import zipfile
 
 import pandas as pd
 
+from ml.core import aplicacoes as core_aplicacoes
+from ml.core.carga import TARGETS as _TARGETS
+from ml.core.carga import _superseded, descobertos, discover, duplicatas
 from ml.core.sites import CORPORATE, DOMESTIC
 from ml.studio.plans import andar_de, montar_plantas
 
-TARGETS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
-
-# A geracao de esquema e o que separa `legacy_` do modelo de colunas atual.
-# `combo`/`n_clients` (o eixo de contencao) so existem na geracao atual.
-CURRENT_MARKERS = ['combo', 'n_clients', 'station_x', 'house_x0']
-
-DATA_DIR = 'data'
+TARGETS = list(_TARGETS)
 
 # O prefixo `cwpb` deixou de distinguir predio: e o mapa explicito que manda.
 # Os coletores sao donos deste bloco. `ambiente` precisa bater com
@@ -57,10 +50,6 @@ AMBIENTES = {DOMESTIC: 'Doméstico', CORPORATE: 'Corporativo'}
 # quarto-marcelo: rotulo antigo que o 20260917-metrics-fix regravou como hotmilk-aquario.
 POSITION_LABELS = {'1': 'sala', '2': 'quarto', '3': 'suite', 'quarto-marcelo': 'hotmilk-aquario'}
 
-# Casas decimais do fingerprint. As versoes -fix/-distcalc recalculam os alvos
-# e diferem da original em ~1e-14: sem arredondar, o dedupe nao as reconhece.
-FINGERPRINT_DECIMALS = 6
-
 
 def _canonical_local(local_value) -> str:
   """'1.0', 'Sala' e 'sala' precisam cair na mesma chave.
@@ -87,98 +76,10 @@ def _building_of(local_value) -> str:
   )
 
 
-def _read_any(path: str) -> pd.DataFrame:
-  """Le CSV ou o unico CSV dentro de um zip, sem gravar nada em disco."""
-  if path.endswith('.zip'):
-    with zipfile.ZipFile(path) as archive:
-      names = [n for n in archive.namelist() if n.endswith('.csv')]
-      if len(names) != 1:
-        raise ValueError(f'{path}: esperado exatamente 1 CSV no zip, achei {len(names)}')
-      with archive.open(names[0]) as handle:
-        return pd.read_csv(io.BytesIO(handle.read()), low_memory=False)
-  return pd.read_csv(path, low_memory=False)
-
-
-def _generation(columns) -> str:
-  return 'current' if all(m in columns for m in CURRENT_MARKERS) else 'legacy'
-
-
-def discover() -> list:
-  """Varre data/ e devolve um descritor por dataset utilizavel."""
-  found = []
-  for name in sorted(os.listdir(DATA_DIR)):
-    if not (name.endswith('.csv') or name.endswith('.zip')):
-      continue
-    # Os -qoe.csv carregam qoe_dw_score, cuja formula se perdeu e cujas duas
-    # versoes diferem por ~3200x. Ficam de fora ate serem recalculados.
-    if '-qoe' in name or 'filllast' in name:
-      continue
-    path = os.path.join(DATA_DIR, name)
-    try:
-      frame = _read_any(path)
-    except Exception as error:
-      found.append({'id': name, 'path': path, 'error': str(error), 'usable': False})
-      continue
-    if 'local' not in frame.columns or not all(t in frame.columns for t in TARGETS):
-      continue
-    alvos = frame[TARGETS].round(FINGERPRINT_DECIMALS)
-    digest = hashlib.sha256(pd.util.hash_pandas_object(alvos, index=False).values.tobytes())
-    found.append({
-      'id': name,
-      'path': path,
-      'usable': True,
-      'rows': int(len(frame)),
-      'columns': int(len(frame.columns)),
-      'generation': _generation(frame.columns),
-      'fingerprint': digest.hexdigest()[:12],
-      '_frame': frame,
-    })
-  return found
-
-
-_descobertos = None
-
-
-def descobertos() -> list:
-  """discover() uma vez por processo: reler o zip de 52 MB a cada requisicao travaria as views."""
-  global _descobertos
-  if _descobertos is None:
-    _descobertos = discover()
-  return _descobertos
-
-
-def _superseded(datasets: list) -> dict:
-  """Marca datasets cujas linhas estao inteiras dentro de outro (0817 dentro de 0827)."""
-  verdict = {}
-  keyed = {}
-  for item in datasets:
-    if not item.get('usable'):
-      continue
-    frame = item['_frame']
-    keys = set(map(tuple, frame[TARGETS].round(FINGERPRINT_DECIMALS).astype(str).values))
-    keyed[item['id']] = keys
-  for a, keys_a in keyed.items():
-    for b, keys_b in keyed.items():
-      if a == b or not keys_a:
-        continue
-      if keys_a <= keys_b and len(keys_a) < len(keys_b):
-        verdict[a] = b
-  return verdict
-
-
 def build_payload() -> dict:
   datasets = descobertos()
   superseded = _superseded(datasets)
-  # Fingerprint igual = os mesmos alvos ate a 6a casa. Manter os dois ligados
-  # duplica o peso de cada amostra sem avisar.
-  seen_fingerprints = {}
-  duplicate_of = {}
-  for item in datasets:
-    if not item.get('usable'):
-      continue
-    first = seen_fingerprints.setdefault(item['fingerprint'], item['id'])
-    if first != item['id']:
-      duplicate_of[item['id']] = first
+  duplicate_of = duplicatas(datasets)
   rows = []
   descriptors = []
 
@@ -273,6 +174,7 @@ def build_payload() -> dict:
     'rows': rows,
     'buildings': {k: {'label': v['label'], 'ambiente': v['ambiente']} for k, v in BUILDINGS.items()},
     'ambientes': AMBIENTES,
+    'aplicacoes': core_aplicacoes.carregar(),
     'envelopes': envelopes,
     'plantas': plantas,
     'plantasAvisos': plantas_avisos,

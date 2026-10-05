@@ -156,6 +156,246 @@
         "perda_percurso_db"
       ],
       "origem": "studio"
+    },
+    "v3-tr069": {
+      "avaliacao": {
+        "atende_throughput": {
+          "avisos": [],
+          "intervalo": [
+            0.6381,
+            0.6756
+          ],
+          "media": 0.6551,
+          "n": 1300,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.5583,
+            "Jogo em nuvem": 0.7661,
+            "Navegação": 0.5188,
+            "Streaming 4K": 0.7773
+          }
+        },
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "intervalos": {
+            "mae": [
+              16.3425,
+              28.9833
+            ],
+            "mae_log": [
+              0.9505,
+              1.0832
+            ],
+            "pooled": [
+              -1.3575,
+              -0.069
+            ]
+          },
+          "mae": 22.3425,
+          "mae_log": 1.0131,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.4579,
+            "coworking": 0.651,
+            "hotmilk": 0.9439,
+            "residencia": 0.8788
+          },
+          "mae_por_local": {
+            "casa-marcelo": 35.9928,
+            "coworking": 8.0985,
+            "hotmilk": 16.8198,
+            "residencia": 21.8513
+          },
+          "media": -1.9091,
+          "n": 12,
+          "pooled": -0.3852,
+          "por_local": {
+            "casa-marcelo": -7.3391,
+            "coworking": -0.2645,
+            "hotmilk": -0.03,
+            "residencia": -0.003
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-05.1",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "intervalos": {
+            "mae": [
+              20.4707,
+              42.9207
+            ],
+            "mae_log": [
+              0.6822,
+              0.8395
+            ],
+            "pooled": [
+              -1.2826,
+              -0.0488
+            ]
+          },
+          "mae": 31.3342,
+          "mae_log": 0.7603,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.2849,
+            "coworking": 0.4064,
+            "hotmilk": 0.6449,
+            "residencia": 0.6065
+          },
+          "mae_por_local": {
+            "casa-marcelo": 51.6658,
+            "coworking": 8.8762,
+            "hotmilk": 30.6626,
+            "residencia": 25.0021
+          },
+          "media": -3.2622,
+          "n": 12,
+          "pooled": -0.1528,
+          "por_local": {
+            "casa-marcelo": -12.1184,
+            "coworking": -0.915,
+            "hotmilk": -0.0204,
+            "residencia": 0.0051
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-05.1",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "intervalos": {
+            "mae": [
+              29.8683,
+              50.7613
+            ],
+            "mae_log": [
+              0.5822,
+              0.8429
+            ],
+            "pooled": [
+              0.3496,
+              0.5453
+            ]
+          },
+          "mae": 40.7453,
+          "mae_log": 0.7129,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.5806,
+            "coworking": 0.499,
+            "hotmilk": 0.7976,
+            "residencia": 0.801
+          },
+          "mae_por_local": {
+            "casa-marcelo": 25.1794,
+            "coworking": 26.8908,
+            "hotmilk": 90.8652,
+            "residencia": 16.1429
+          },
+          "media": 0.5579,
+          "n": 12,
+          "pooled": 0.4211,
+          "por_local": {
+            "casa-marcelo": 0.6589,
+            "coworking": 0.6492,
+            "hotmilk": 0.2469,
+            "residencia": 0.6766
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-05.1",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "intervalos": {
+            "mae": [
+              30.7914,
+              49.5906
+            ],
+            "mae_log": [
+              0.7156,
+              0.9457
+            ],
+            "pooled": [
+              0.5447,
+              0.7127
+            ]
+          },
+          "mae": 40.2498,
+          "mae_log": 0.8311,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.8302,
+            "coworking": 0.608,
+            "hotmilk": 0.7737,
+            "residencia": 0.9451
+          },
+          "mae_por_local": {
+            "casa-marcelo": 36.9348,
+            "coworking": 28.2538,
+            "hotmilk": 79.1961,
+            "residencia": 15.0927
+          },
+          "media": 0.4445,
+          "n": 12,
+          "pooled": 0.6194,
+          "por_local": {
+            "casa-marcelo": 0.6286,
+            "coworking": 0.3945,
+            "hotmilk": 0.5016,
+            "residencia": 0.2531
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-05.1",
+          "versao_tabela": "730e9c46f15f"
+        }
+      },
+      "criado_em": "2026-10-05",
+      "descricao": "v2-tr069 + concorrência (n_clients e concorrentes_mesmo_radio). Em produção as duas dependem de o coletor ler estações ativas por rádio (spec 2026-10-05, seção 9).",
+      "features": [
+        "router_expected_throughput_mbps",
+        "client_mode",
+        "radio",
+        "router_rx_rate_mbps",
+        "router_snr",
+        "router_signal_dbm",
+        "router_tx_rate_mbps",
+        "channel_width",
+        "eficiencia_espectral_tx",
+        "perda_percurso_db",
+        "n_clients",
+        "concorrentes_mesmo_radio"
+      ],
+      "origem": "studio"
     }
   }
 }

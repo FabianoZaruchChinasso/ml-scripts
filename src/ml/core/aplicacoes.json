@@ -1,0 +1,8 @@
+{
+  "aplicacoes": {
+    "Navegação": {"dn": 2, "up": 0.5, "lat": 300, "jit": 100},
+    "Chamada de vídeo": {"dn": 3.8, "up": 3.8, "lat": 150, "jit": 30},
+    "Streaming 4K": {"dn": 25, "up": 0, "lat": 500, "jit": 100},
+    "Jogo em nuvem": {"dn": 15, "up": 1, "lat": 40, "jit": 10}
+  }
+}

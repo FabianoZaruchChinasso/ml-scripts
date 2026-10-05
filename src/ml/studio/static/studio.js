@@ -11,13 +11,9 @@
     { key: 'jit', label: 'Jitter',    unit: 'ms',   dir: 'max', max: 200,  step: 2 },
   ];
 
-  /* Limiares de referencia por aplicacao. Editaveis na view Limiares. */
-  const PROFILES = {
-    'Navegação':        { dn: 2,   up: 0.5, lat: 300, jit: 100 },
-    'Chamada de vídeo': { dn: 3.8, up: 3.8, lat: 150, jit: 30 },
-    'Streaming 4K':     { dn: 25,  up: 0,   lat: 500, jit: 100 },
-    'Jogo em nuvem':    { dn: 15,  up: 1,   lat: 40,  jit: 10 },
-  };
+  /* Limiares de referencia por aplicacao: src/ml/core/aplicacoes.json, via payload.
+     Editaveis na view Limiares (so na sessao). */
+  let PROFILES = {};
   const SEQ = ['--seq-100','--seq-200','--seq-300','--seq-400','--seq-500','--seq-600','--seq-700'];
   const MIN_SAMPLES = 5;
 
@@ -330,6 +326,7 @@
 
   fetch('api/payload').then((r) => r.json()).then((data) => {
     state.data = data;
+    PROFILES = data.aplicacoes;
     data.datasets.forEach((d) => { state.enabled[d.id] = d.enabled; });
     // ?legacy=1 liga os datasets legacy de saida — deixa um link reproduzir
     // exatamente o conjunto que alguem estava vendo.

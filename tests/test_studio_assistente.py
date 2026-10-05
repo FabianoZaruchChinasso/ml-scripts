@@ -6,6 +6,7 @@ from unittest import mock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core import avaliacao as A
 from ml.core import features as F
 from ml.core import formulas
 from ml.studio import api
@@ -250,6 +251,24 @@ class TestRotasAssistente(Base):
     r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
     self.assertIn(r['veredito']['resultado'], {'melhor', 'empate', 'pior'})
     self.assertTrue(r['veredito']['provisorio'])
+
+  def test_avaliar_com_base_traz_promocao_da_regua(self):
+    r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
+    self.assertIn(r['promocao']['veredito']['resultado'], {'melhor', 'empate', 'pior'})
+    self.assertEqual(r['promocao']['versao_regua'], A.VERSAO_REGUA)
+    self.assertIn('intervalo', r['promocao']['delta_mae'])
+
+  def test_resumo_traz_intervalos(self):
+    r = api.modelos_avaliar(features='router_snr', ds='a.csv')
+    self.assertIn('pooled', r['resumo']['intervalos'])
+
+  def test_listar_traz_versao_da_regua(self):
+    self.assertEqual(api.modelos_listar()['versao_regua'], A.VERSAO_REGUA)
+
+  def test_avaliacao_completa_traz_atende_e_versao(self):
+    av = api.avaliacao_completa('a.csv', '', ['router_snr'])
+    self.assertEqual(av['speedtest_down_mbps']['versao_regua'], A.VERSAO_REGUA)
+    self.assertIn('media', av['atende_throughput'])
 
   def test_avaliar_sem_base_nao_traz_veredito(self):
     r = api.modelos_avaliar(features='router_snr', ds='a.csv')

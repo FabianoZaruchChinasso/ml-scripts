@@ -7,6 +7,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core import avaliacao as A
 from ml.studio import features as SF
 from ml.studio import selecao as S
 
@@ -39,13 +40,13 @@ def frame(n_por_local=30, seed=1):
 
 class Base(unittest.TestCase):
   def setUp(self):
-    self._antes = (S.ARVORES_BUSCA, SF.ARVORES)
-    S.ARVORES_BUSCA, SF.ARVORES = 15, 15
+    self._antes = (S.ARVORES_BUSCA, A.ARVORES)
+    S.ARVORES_BUSCA, A.ARVORES = 15, 15
     self.conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
     self.inv = SF.inventario(self.conj, ['router_snr'])
 
   def tearDown(self):
-    S.ARVORES_BUSCA, SF.ARVORES = self._antes
+    S.ARVORES_BUSCA, A.ARVORES = self._antes
 
 
 class TestSelecao(Base):

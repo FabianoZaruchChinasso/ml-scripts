@@ -182,6 +182,7 @@
     if ((av.ambiente || 'todos') !== st.ctx.ambiente) motivos.push('ambiente diferente');
     if (av.versao_tabela !== st.reg.versao_tabela) motivos.push('classificação de colunas mudou');
     if (av.versao_catalogo !== st.reg.versao_catalogo) motivos.push('catálogo de derivadas mudou');
+    if (av.versao_regua !== st.reg.versao_regua) motivos.push('régua de avaliação mudou');
     return motivos.join(', ');
   }
 

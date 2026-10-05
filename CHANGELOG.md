@@ -1,3 +1,85 @@
+# Changelog — Régua única, carga canônica e concorrência
+
+**Data:** 2026-10-05
+
+## Por quê
+
+O Studio e os scripts de treino mediam com réguas diferentes: `regression_mlflow.py` agrupava por
+posição (o mesmo prédio no treino e no teste), usava um fold só e lia um CSV antigo. E o fator que
+mais move o download, quantos clientes testam ao mesmo tempo, não entrava em nenhuma versão: no
+hotmilk o download mediano cai de 92 para 37 Mbps com 2 clientes (`n_clients` 1 contra 2).
+
+## Mudanças
+
+- `core/carga.py`: uma carga só para Studio e scripts. Descoberta e duplicatas (antes no Studio),
+  `concorrentes_mesmo_radio` (clientes em teste simultâneo no mesmo `bssid`), descarte de linhas sem
+  stats de estação (taxa PHY, SNR e sinal vazios), marca `_limitado_wan` (alvo no teto do plano de
+  internet: residência 154/99 Mbps) e a chave `_linha`, estável entre alvos.
+- `core/avaliacao.py`: uma régua só. LOGO por prédio, linhas no teto de WAN fora do treino e
+  previsão cortada no teto, MAE em escala log, intervalo de 90% por bootstrap de posições,
+  "atende em throughput" por aplicação (acurácia balanceada) e veredito de promoção pelo intervalo
+  da diferença. Versão da régua `2026-10-05.1`.
+- Limiares de aplicação saem do `studio.js` para `core/aplicacoes.json`.
+- `n_clients` e `concorrentes_mesmo_radio` passam a `tr069`, marcadas como dependentes do coletor.
+- `regression_mlflow.py` e `regression_benchmark.py` medem pela régua e leem o conjunto canônico
+  (`DATASETS=` / `--datasets`). `--csv` e `DS_CSV` saíram.
+- Nova `v3-tr069` (`v2-tr069` + concorrência), não ativa; a `v1` continua ativa. A `v2-tr069`
+  segue imutável, com a avaliação antiga gravada: o Studio a marca como desatualizada.
+
+## Efeito medido (deixando um prédio de fora, 4 prédios)
+
+| Versão | Régua | Download R² pooled (90%) | Download MAE (90%) | Atende (90%) |
+|---|---|---|---|---|
+| v2-tr069 | antiga | 0,59 | 45,0 | – |
+| v2-tr069 | nova | 0,41 (0,35 a 0,52) | 42,0 (31,6 a 52,1) | 0,645 (0,625 a 0,665) |
+| v3-tr069 | nova | 0,42 (0,35 a 0,55) | 40,7 (29,9 a 50,8) | 0,655 (0,638 a 0,676) |
+
+MAE log do download na régua nova: 0,736 na `v2-tr069` e 0,713 na `v3-tr069`. R² por prédio do
+download (`v2-tr069` → `v3-tr069`): casa-marcelo 0,60 → 0,66, coworking 0,47 → 0,65, hotmilk
+0,26 → 0,25, residencia 0,49 → 0,68. Upload (`v2-tr069` → `v3-tr069`): R² pooled 0,54 (0,47 a 0,61)
+→ 0,62 (0,54 a 0,71) e MAE 44,5 (33,8 a 54,9) → 40,2 (30,8 a 49,6).
+
+Veredito de promoção v3 contra v2: download **melhor** ("atende" subiu 0,011, 90%: 0,006 a 0,017,
+sem piorar o MAE; o MAE variou −1,2, 90%: −3,1 a 0,5, dentro do ruído); upload **melhor** (o MAE
+caiu 4,3, 90%: −5,5 a −2,8, sem piorar "atende"). O "atende" é calculado sobre o download, por isso
+o `delta_atende` do upload é o mesmo do download.
+
+### O R² não é comparável entre as duas réguas
+
+A queda de 0,59 para 0,41 no R² da `v2-tr069` não é piora do modelo. Com as mesmas funções de
+`carga` e `avaliacao` e cada regra nova ligada isoladamente (download, 4 prédios, RandomForest com
+200 árvores, deixando um prédio de fora):
+
+| Regras da carga ligadas | linhas | R² pooled | MAE (Mbps) |
+|---|---|---|---|
+| nenhuma (como na régua antiga) | 1628 | 0,5925 | 45,02 |
+| só descartar linhas sem stats de estação | 1300 | 0,4493 | 41,34 |
+| só teto de WAN (sem descartar linhas sem stats) | 1628 | 0,5922 | 45,01 |
+| todas (padrão novo) | 1300 | 0,4137 | 41,99 |
+
+- Sem nenhuma regra nova, a régua reproduz o número antigo (0,5925 e 45,02): a régua em si é fiel.
+- O que baixa o R² é descartar as 328 linhas sem stats de estação (0,59 para 0,45) enquanto o MAE
+  melhora (45,0 para 41,3). Essas linhas ainda têm `radio`, `client_mode` e `channel_width`, então o
+  modelo as previa bem pelo contraste 2,4 contra 5 GHz, o que inflava o R².
+- A regra de WAN custa um pouco mais de R² (0,45 para 0,41, porque as linhas cortadas são a ponta
+  alta que o modelo costumava ajustar) e mantém o MAE estável.
+- Por isso o R² não é comparável entre as duas réguas, e o MAE é o número a comparar.
+- Contagem na carga atual do download: 328 linhas descartadas no total (não só as cerca de 253 do
+  casa-marcelo), 14 testes que falharam, 20 linhas no teto de WAN e 24 sem
+  `concorrentes_mesmo_radio`.
+
+## Para o responsável pela coleta
+
+Ver `docs/superpowers/specs/2026-10-05-regua-unica-concorrencia-design.md`, seção 9: token
+versionado em `src/get-all.py`, snapshot pré-teste, estações ativas por rádio, rodízio de clientes e
+roteadores, `run_id` repetido e plano de WAN de cada local.
+
+## Fica para depois
+
+Frentes C (dados externos e fine-tuning) e D (latência e jitter): spec, seção 10.
+
+---
+
 # Changelog — Contadores do roteador como vazamento e limpeza do registro
 
 **Data:** 2026-10-02

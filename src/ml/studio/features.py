@@ -7,21 +7,15 @@ import hashlib
 import re
 import time
 import warnings
-from dataclasses import dataclass, field
 from statistics import mean
 
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.pipeline import Pipeline
 
 from ml.core import features as F
-from ml.core.data import descartar_testes_falhos
-from ml.core.sites import BUILDING_ENVIRONMENT, ENVIRONMENTS, resolve_site_id
-from ml.core.splits import COMFORTABLE_SITES, outer_logo_folds
-
-TARGETS = ('speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms')
+from ml.core.avaliacao import (_logo, _modelo, _resumo, assert_sem_vazamento, avaliar,
+                               avaliar_versao, r2_por_local)
+from ml.core.carga import _INTERNAS, TARGETS, Conjunto, preparar
+from ml.core.splits import COMFORTABLE_SITES
 
 COBERTURA_MIN = 0.7
 RHO_SUSPEITA = 0.9
@@ -30,90 +24,12 @@ PROXY_PARCIAL = 0.3
 PROXY_TR069 = 0.99
 MAX_PROXIES = 15
 MAX_CATEGORIAS = 10
-ARVORES = 200
 ARVORES_PROXY = 100
 # Diferença de R² abaixo disto é ruído com os poucos locais de coleta de hoje.
 RUIDO_R2 = 0.02
 UNIDADES = {'speedtest_down_mbps': 'Mbps', 'speedtest_up_mbps': 'Mbps', 'latency_ms': 'ms', 'jitter_ms': 'ms'}
 CLASSES_FORA_DOS_AJUSTES = {'identificador', 'geometria', 'alvo'}
 CLASSES_AUXILIARES = {'sniffer', 'cliente', 'ambiente'}
-# `_site` é o grupo dos folds: o local de coleta (prédio). Deixar só um cômodo
-# de fora mantinha os outros cômodos do mesmo prédio no treino — mesmo roteador,
-# mesmo ambiente, mesmo dia — e inflava o R² (ver CHANGELOG).
-# `_pos` é o cômodo, só para exibição; `_amb` é doméstico/corporativo.
-_INTERNAS = ('_ds', '_site', '_pos', '_amb')
-
-
-@dataclass
-class Conjunto:
-  df: pd.DataFrame
-  alvo: str
-  datasets: list
-  classes: dict
-  tabela: dict
-  avisos: list = field(default_factory=list)
-  catalogo: tuple = F.CATALOGO
-
-
-def preparar(frames: dict, alvo: str, tabela: dict, ambiente: str = None, catalogo=None) -> Conjunto:
-  """Junta os frames, descarta linhas sem alvo/local e calcula as derivadas.
-
-  `ambiente` ('domestico' ou 'corporativo') restringe o conjunto a esse tipo de
-  local de coleta; None mantém todos. `catalogo` é o de derivadas (padrão: o curado
-  mais as desenhadas no Studio, F.catalogo_completo()).
-  """
-  catalogo = F.catalogo_completo() if catalogo is None else tuple(catalogo)
-  if alvo not in TARGETS:
-    raise ValueError(f'alvo {alvo!r} desconhecido; esperado um de {list(TARGETS)}')
-  if ambiente is not None and ambiente not in ENVIRONMENTS:
-    raise ValueError(f'ambiente {ambiente!r} desconhecido; esperado um de {list(ENVIRONMENTS)}')
-  if not frames:
-    raise ValueError('nenhum dataset não-legacy ativo')
-  avisos = []
-  df = pd.concat([f.assign(_ds=ds) for ds, f in frames.items()], ignore_index=True)
-  if alvo not in df.columns:
-    raise ValueError(f'o alvo {alvo!r} não existe nos datasets ativos')
-  sem_alvo = int(df[alvo].isna().sum())
-  if sem_alvo:
-    avisos.append(f'{sem_alvo} linhas sem {alvo} descartadas')
-  df = df[df[alvo].notna()]
-  df, falhos = descartar_testes_falhos(df, alvo)
-  if falhos:
-    avisos.append(f'{falhos} testes que falharam ({alvo} = 0) descartados')
-
-  posicoes, predios = {}, {}
-  desconhecidos = []
-  for valor in df['local'].dropna().unique():
-    try:
-      posicoes[valor] = resolve_site_id(pd.Series([valor])).iloc[0]
-      predios[valor] = resolve_site_id(pd.Series([valor]), level='building').iloc[0]
-    except ValueError:
-      desconhecidos.append(str(valor))
-  fora = int((~df['local'].isin(list(posicoes))).sum())
-  if fora:
-    avisos.append(f'{fora} linhas com local desconhecido em core/sites.py descartadas: '
-                  f'{sorted(desconhecidos)}')
-  df = df[df['local'].isin(list(posicoes))].reset_index(drop=True)
-  df = df.assign(_site=df['local'].map(predios), _pos=df['local'].map(posicoes))
-  df['_amb'] = df['_site'].map(BUILDING_ENVIRONMENT)
-  if ambiente is not None:
-    df = df[df['_amb'] == ambiente].reset_index(drop=True)
-    if df.empty:
-      raise ValueError(f'nenhuma linha de ambiente {ambiente!r} nos datasets ativos')
-
-  df, avisos_derivadas = F.aplicar_derivadas(df, catalogo)
-  avisos += avisos_derivadas
-
-  derivadas = {d.nome: d for d in catalogo}
-  classes = {}
-  for coluna in df.columns:
-    if coluna in _INTERNAS:
-      continue
-    if coluna in derivadas:
-      classes[coluna] = F.classificar_derivada(derivadas[coluna], tabela)
-    else:
-      classes[coluna] = F.classificar(coluna, tabela)
-  return Conjunto(df, alvo, sorted(frames), classes, tabela, avisos, catalogo)
 
 
 def _tipo(serie: pd.Series) -> str:
@@ -273,57 +189,6 @@ def lista_assistente(inv: dict, catalogo) -> list:
 matriz = F.matriz
 
 
-def assert_sem_vazamento(colunas, vazadas) -> None:
-  proibidas = sorted(set(colunas) & set(vazadas))
-  if proibidas:
-    raise AssertionError(f'colunas com vazamento chegaram a um ajuste: {proibidas}')
-
-
-def _modelo(arvores: int) -> Pipeline:
-  return Pipeline([
-    ('imputer', SimpleImputer(strategy='median')),
-    ('reg', RandomForestRegressor(n_estimators=arvores, min_samples_leaf=2, n_jobs=-1, random_state=42)),
-  ])
-
-
-def _logo(df, colunas, y_col, vazadas, arvores=None, min_teste=1, min_treino=1):
-  """LOGO por local de coleta. Devolve (R² por local, y real, y previsto, MAE por local)."""
-  assert_sem_vazamento(colunas, vazadas)
-  if not colunas:
-    return {}, [], [], {}
-  sub = df[df[y_col].notna()].reset_index(drop=True)
-  X = matriz(sub, colunas)
-  y = sub[y_col].astype(float)
-  por_local, reais, previstos, mae_local = {}, [], [], {}
-  for fold in outer_logo_folds(X, y, sub['_site']):
-    if len(fold.y_test) < min_teste or len(fold.y_train) < min_treino:
-      continue
-    previsto = _modelo(arvores or ARVORES).fit(fold.X_train, fold.y_train).predict(fold.X_test)
-    por_local[fold.test_site] = float(r2_score(fold.y_test, previsto))
-    mae_local[fold.test_site] = float(mean_absolute_error(fold.y_test, previsto))
-    reais.extend(fold.y_test.tolist())
-    previstos.extend(previsto.tolist())
-  return por_local, reais, previstos, mae_local
-
-
-def r2_por_local(df, colunas, y_col, vazadas, arvores=None, min_teste=1, min_treino=1) -> dict:
-  return _logo(df, colunas, y_col, vazadas, arvores, min_teste, min_treino)[0]
-
-
-def _resumo(logo, n: int) -> dict:
-  """Média por local, mais R² e MAE sobre todas as previsões fora do fold.
-
-  Com poucos locais a média dos R² por fold é dominada pelo local de menor
-  variância do alvo; o R² pooled e o MAE não têm esse problema.
-  """
-  por_local, reais, previstos, mae_local = logo
-  return {'n': n, 'media': round(mean(por_local.values()), 4) if por_local else None,
-          'pooled': round(float(r2_score(reais, previstos)), 4) if len(reais) > 1 else None,
-          'mae': round(float(mean_absolute_error(reais, previstos)), 4) if reais else None,
-          'por_local': {s: round(v, 4) for s, v in sorted(por_local.items())},
-          'mae_por_local': {s: round(v, 4) for s, v in sorted(mae_local.items())}}
-
-
 def _leitura(r2: float) -> str:
   if r2 >= PROXY_ALCANCAVEL:
     return 'alcancavel'
@@ -358,29 +223,6 @@ def _vazadas(inv: dict) -> list:
 def vazadas_do_conjunto(conj: Conjunto) -> list:
   """Mesma lista de _vazadas, sem precisar montar o inventário inteiro."""
   return [c for c, k in conj.classes.items() if k is not None and k.vazamento]
-
-
-def avaliar_versao(conj: Conjunto, features, vazadas) -> dict:
-  """Como avaliar, mas uma versão salva que usa coluna hoje marcada como vazamento é
-  avaliada sem ela, e a lista sai em `removidas_por_vazamento`. Assim a comparação
-  continua de pé quando alguém confirma um vazamento depois de a versão existir."""
-  removidas = [f for f in features if f in vazadas]
-  resumo = avaliar(conj, [f for f in features if f not in vazadas], vazadas)
-  resumo['removidas_por_vazamento'] = removidas
-  return resumo
-
-
-def avaliar(conj: Conjunto, features, vazadas) -> dict:
-  """LOGO por local de coleta de uma lista de features, como está.
-
-  Feature ausente do conjunto sai da conta e é listada; feature com vazamento
-  levanta (assert_sem_vazamento), nunca é descartada em silêncio.
-  """
-  presentes = [f for f in features if f in conj.df.columns]
-  logo = _logo(conj.df, presentes, conj.alvo, vazadas)
-  resumo = _resumo(logo, len(presentes))
-  resumo['ausentes'] = [f for f in features if f not in conj.df.columns]
-  return resumo
 
 
 def delta_por_local(resumo: dict, base: dict) -> dict:

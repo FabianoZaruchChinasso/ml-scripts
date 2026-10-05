@@ -4,7 +4,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
 from sklearn.ensemble import ExtraTreesRegressor, HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.neural_network import MLPRegressor
@@ -14,7 +13,11 @@ from xgboost import XGBRegressor
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from ml.core.data import SITE_COLUMN, load_datasets, validate_columns
+from ml.core import avaliacao as core_avaliacao
+from ml.core import carga as core_carga
+from ml.core import features as core_features
+from ml.core import modelos as core_modelos
+from ml.core.data import validate_columns
 from ml.core.explain import (
   ShapConfig,
   concat_explanations,
@@ -26,25 +29,8 @@ from ml.core.explain import (
 )
 from ml.core.metrics import assert_comparable_scales, regression_metrics
 from ml.core.reporting import format_fold_plan, format_per_site_table, format_shap_ranking
-from ml.core.splits import outer_logo_folds
 
 
-DEFAULT_FEATURES = [
-  "router_expected_throughput_mbps",
-  "router_noise",
-  "router_rx_drop_misc",
-  "router_rx_duration_us",
-  "router_rx_rate_mbps",
-  "router_signal_avg_dbm",
-  "router_signal_dbm",
-  "router_snr",
-  "router_tx_duration_us",
-  "router_tx_failed",
-  "router_tx_rate_mbps",
-  "router_tx_retries",
-  "router_opportunity_medium_use",
-  "client_opportunity_medium_use",
-]
 DEFAULT_FEATURES_STATS = [
   "client_opportunity_medium_use",
   "router_expected_throughput_mbps",
@@ -162,44 +148,49 @@ def build_models(seed: int):
   }
 
 
-def evaluate_target(df, features, target, models, group_level, shap_config=None):
-  valid = df[target].notna()
-  dropped = (~valid).sum()
-  if dropped:
-    print(f'dropped {dropped} rows with empty target {target!r}')
-  df = df[valid]
-
-  X = df[features]
-  y = df[target]
-  sites = df[SITE_COLUMN]
-  assert_comparable_scales(y, sites, target)
-
-  folds = list(outer_logo_folds(X, y, sites))
-  print(format_fold_plan([f.train_sites for f in folds], [f.test_site for f in folds],
-                         group_level=group_level))
+def evaluate_target(conj, features, models, shap_config=None):
+  """Avalia cada modelo pela régua (LOGO por prédio, teto de WAN, intervalos)."""
+  target = conj.alvo
+  vazadas = [c for c, k in conj.classes.items() if k is not None and k.vazamento]
+  removidas = [f for f in features if f in vazadas]
+  if removidas:
+    print(f'features com vazamento fora da conta: {removidas}')
+  features = [f for f in features if f not in vazadas]
+  validate_columns(conj.df, features, 'feature')
+  assert_comparable_scales(conj.df[target], conj.df['_site'], target)
+  sites = sorted(conj.df['_site'].unique())
+  print(format_fold_plan([tuple(s for s in sites if s != t) for t in sites], sites, group_level='building'))
 
   rows = []
   shap_rankings = []
   for name, model in models.items():
     fold_explanations = []
-    for fold in folds:
-      fitted = clone(model).fit(fold.X_train, fold.y_train)
-      scores = regression_metrics(fold.y_test.to_numpy(), fitted.predict(fold.X_test))
-      rows.append({'model': name, 'test_site': fold.test_site, **scores})
-      if shap_config is not None and shap_config.wants(name):
-        # Uma falha do shap nunca pode custar as tabelas de r2/rmse do fold.
-        try:
-          explanation = explain_fold(fitted, fold.X_train, fold.X_test, name, shap_config)
-          fold_explanations.append(explanation)
-          if shap_config.per_fold:
-            save_beeswarm(
-              explanation,
-              f'{target} - {name} - fold test_site={fold.test_site}',
-              os.path.join(shap_config.out_dir, target, 'folds',
-                           f'{name}_{fold.test_site}_beeswarm.png'),
-              shap_config.max_display)
-        except Exception as error:
-          print(f'WARNING: shap falhou em {name}/{target}/{fold.test_site}: {error}')
+
+    def explicar(fold, fitted, name=name, fold_explanations=fold_explanations):
+      if shap_config is None or not shap_config.wants(name):
+        return
+      # Uma falha do shap nunca pode custar as tabelas de r2/rmse do fold.
+      try:
+        explanation = explain_fold(fitted, fold.X_train, fold.X_test, name, shap_config)
+        fold_explanations.append(explanation)
+        if shap_config.per_fold:
+          save_beeswarm(
+            explanation,
+            f'{target} - {name} - fold test_site={fold.test_site}',
+            os.path.join(shap_config.out_dir, target, 'folds',
+                         f'{name}_{fold.test_site}_beeswarm.png'),
+            shap_config.max_display)
+      except Exception as error:
+        print(f'WARNING: shap falhou em {name}/{target}/{fold.test_site}: {error}')
+
+    prev = core_avaliacao.prever_fora_do_fold(conj.df, features, target, vazadas, estimador=model,
+                                              ao_ajustar=explicar)
+    for site, grupo in prev.groupby('_site'):
+      rows.append({'model': name, 'test_site': site,
+                   **regression_metrics(grupo['y'].to_numpy(dtype=float), grupo['yhat'].to_numpy(dtype=float))})
+    resumo = core_avaliacao.resumir(prev, len(features))
+    print(f"{name}: R² pooled {resumo['pooled']} (90%: {resumo['intervalos'].get('pooled')}), "
+          f"MAE {resumo['mae']} (90%: {resumo['intervalos'].get('mae')}), MAE log {resumo['mae_log']}")
     if fold_explanations:
       try:
         pooled = concat_explanations(fold_explanations)
@@ -225,11 +216,12 @@ def evaluate_target(df, features, target, models, group_level, shap_config=None)
 
 def parse_args():
   parser = argparse.ArgumentParser(description="Benchmark regressors for WiFi throughput estimation")
-  parser.add_argument('--csv', required=True,
-                      help='Comma-separated dataset CSV paths (merged into one site pool)')
-  parser.add_argument('--group-level', choices=['position', 'building'], default='position',
-                      help="'position' (padrão): 7 grupos, um por ponto de medição. "
-                           "'building': 2 grupos, residencia/coworking (viabilidade, n=2)")
+  parser.add_argument('--datasets', default='',
+                      help='Nomes de arquivo em data/, separados por vírgula (padrão: o conjunto canônico do Studio)')
+  parser.add_argument('--csv', default=None,
+                      help='REMOVIDO; use --datasets com nomes de data/')
+  parser.add_argument('--group-level', default=None,
+                      help='IGNORED; o grupo é sempre o prédio')
   parser.add_argument(
     "--targets",
     default=",".join(DEFAULT_TARGETS),
@@ -237,8 +229,8 @@ def parse_args():
   )
   parser.add_argument(
     "--features",
-    default=",".join(DEFAULT_FEATURES),
-    help="Comma-separated feature columns",
+    default="",
+    help="Features separadas por vírgula (padrão: as da versão ativa em core/modelos.json)",
   )
   parser.add_argument("--seed", type=int, default=42, help="Random seed")
   parser.add_argument("--use-stats", action='store_true', default=False, help="Use stats feat")
@@ -283,22 +275,25 @@ def main():
      'the group is always the resolved site_id, not a raw column name'),
     ('--time-column', args.time_column,
      'no split in this script is time-ordered'),
+    ('--group-level', args.group_level, 'the group is always the building'),
   )
   for flag, value, reason in ignored_flags:
     if value is not None:
       print(f'WARNING: {flag} is ignored under leave-one-site-out; {reason}.')
+  if args.csv is not None:
+    raise SystemExit('--csv saiu: use --datasets com nomes de data/ (padrão: o conjunto canônico)')
 
   np.random.seed(args.seed)
 
   if args.use_stats == True:
     features = DEFAULT_FEATURES_STATS
-  else:
+  elif args.features:
     features = parse_csv_list(args.features)
+  else:
+    features = core_modelos.ativo(core_modelos.carregar())
   targets = parse_csv_list(args.targets)
-
-  df = load_datasets(parse_csv_list(args.csv), group_level=args.group_level)
-  validate_columns(df, features, 'feature')
-  validate_columns(df, targets, 'target')
+  ids = parse_csv_list(args.datasets) or None
+  tabela = core_features.carregar_tabela()
 
   models = build_models(args.seed)
 
@@ -320,16 +315,16 @@ def main():
   elif args.shap_models is not None or args.shap_per_fold:
     print('WARNING: as flags --shap-* são ignoradas sem --shap.')
 
-  print(f'Dataset rows: {len(df)}')
-  print(f'Sites: {sorted(df[SITE_COLUMN].unique())}')
-  print(f'Group level: {args.group_level}')
   print(f'Features ({len(features)}): {features}')
 
   for target in targets:
     print('\n' + '=' * 90)
     print(f'Target: {target}')
-    results, shap_ranking = evaluate_target(df, features, target, models, args.group_level,
-                                            shap_config)
+    conj = core_carga.carregar(target, ids=ids, tabela=tabela)
+    for aviso in conj.avisos:
+      print(f'aviso: {aviso}')
+    print(f'Linhas: {len(conj.df)}  Prédios: {sorted(conj.df["_site"].unique())}  Datasets: {conj.datasets}')
+    results, shap_ranking = evaluate_target(conj, features, models, shap_config)
     print(format_per_site_table(results, 'r2'))
     print(format_per_site_table(results, 'rmse'))
     if shap_ranking is not None:

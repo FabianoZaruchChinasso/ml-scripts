@@ -9,6 +9,8 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core import avaliacao as A
+from ml.core import carga as C
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.studio import data as SD
 from ml.studio import features as SF
@@ -64,11 +66,11 @@ def frame(locais=LOCAIS, linhas_por_local=12, seed=0):
 
 class Base(unittest.TestCase):
   def setUp(self):
-    self._arvores = (SF.ARVORES, SF.ARVORES_PROXY)
-    SF.ARVORES, SF.ARVORES_PROXY = 25, 25
+    self._arvores = (A.ARVORES, SF.ARVORES_PROXY)
+    A.ARVORES, SF.ARVORES_PROXY = 25, 25
 
   def tearDown(self):
-    SF.ARVORES, SF.ARVORES_PROXY = self._arvores
+    A.ARVORES, SF.ARVORES_PROXY = self._arvores
 
 
 class TestPreparar(Base):
@@ -200,17 +202,17 @@ class TestAjuste(Base):
     # Com folds por cômodo, sala sairia para teste com quarto/suíte no treino.
     conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
     vistos = []
-    original = SF.outer_logo_folds
+    original = A.outer_logo_folds
 
     def espiao(X, y, grupos):
       folds = original(X, y, grupos)
       vistos.extend(folds)
       return folds
-    SF.outer_logo_folds = espiao
+    A.outer_logo_folds = espiao
     try:
       SF.r2_por_local(conj.df, ['router_snr'], 'speedtest_down_mbps', [])
     finally:
-      SF.outer_logo_folds = original
+      A.outer_logo_folds = original
     self.assertEqual(len(vistos), 3)
     for fold in vistos:
       self.assertNotIn(fold.test_site, fold.train_sites)
@@ -304,12 +306,12 @@ class TestDados(unittest.TestCase):
     with tempfile.TemporaryDirectory() as pasta:
       base.to_csv(os.path.join(pasta, 'a-fix.csv'), index=False)
       ruido.to_csv(os.path.join(pasta, 'a.csv'), index=False)
-      antes = SD.DATA_DIR
-      SD.DATA_DIR = pasta
+      antes = C.DATA_DIR
+      C.DATA_DIR = pasta
       try:
-        achados = {d['id']: d for d in SD.discover()}
+        achados = {d['id']: d for d in C.discover()}
       finally:
-        SD.DATA_DIR = antes
+        C.DATA_DIR = antes
     self.assertEqual(achados['a-fix.csv']['fingerprint'], achados['a.csv']['fingerprint'])
 
   def test_payload_traz_router_z_e_andar_por_linha(self):
@@ -326,15 +328,16 @@ class TestDados(unittest.TestCase):
       linhas.to_csv(os.path.join(dados, 'm.csv'), index=False)
       with open(os.path.join(planta, 'plantas.json'), 'w', encoding='utf-8') as handle:
         json.dump({'casa-marcelo': {'andares': [{'id': 'cima', 'z_min': 0}, {'id': 'baixo', 'z_min': None}]}}, handle)
-      antes = (SD.DATA_DIR, SP.PLANTA_DIR)
-      SD.DATA_DIR, SP.PLANTA_DIR, SD._descobertos = dados, planta, None
+      antes = (C.DATA_DIR, SP.PLANTA_DIR)
+      C.DATA_DIR, SP.PLANTA_DIR, C._descobertos = dados, planta, None
       try:
         payload = SD.build_payload()
       finally:
-        (SD.DATA_DIR, SP.PLANTA_DIR), SD._descobertos = antes, None
+        (C.DATA_DIR, SP.PLANTA_DIR), C._descobertos = antes, None
     self.assertEqual(payload['envelopes']['casa-marcelo']['routerZ'], 80.0)
     self.assertEqual([r['andar'] for r in payload['rows']], ['cima', 'baixo'])
     self.assertEqual([a['roteador'] for a in payload['plantas']['casa-marcelo']['andares']], [True, False])
+    self.assertEqual(payload['aplicacoes']['Jogo em nuvem']['lat'], 40)
 
   def test_envelope_e_o_mais_frequente_e_nao_o_da_primeira_linha(self):
     # A coleta do 20260925 abriu com 4 linhas do envelope de outro prédio (410x1386).
@@ -352,12 +355,12 @@ class TestDados(unittest.TestCase):
     })
     with tempfile.TemporaryDirectory() as dados, tempfile.TemporaryDirectory() as planta:
       linhas.to_csv(os.path.join(dados, 'm.csv'), index=False)
-      antes = (SD.DATA_DIR, SP.PLANTA_DIR)
-      SD.DATA_DIR, SP.PLANTA_DIR, SD._descobertos = dados, planta, None
+      antes = (C.DATA_DIR, SP.PLANTA_DIR)
+      C.DATA_DIR, SP.PLANTA_DIR, C._descobertos = dados, planta, None
       try:
         payload = SD.build_payload()
       finally:
-        (SD.DATA_DIR, SP.PLANTA_DIR), SD._descobertos = antes, None
+        (C.DATA_DIR, SP.PLANTA_DIR), C._descobertos = antes, None
     self.assertEqual(payload['envelopes']['casa-marcelo'],
                      {'w': 861.0, 'h': 1448.0, 'z': 250.0, 'routerX': 501.0, 'routerY': 540.0, 'routerZ': 80.0})
 

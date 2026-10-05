@@ -10,6 +10,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core import avaliacao as A
 from ml.core import features as F
 from ml.core import formulas
 from ml.studio import features as SF
@@ -119,13 +120,13 @@ def frame(n=30, seed=3):
 
 class TestParalelos(unittest.TestCase):
   def setUp(self):
-    self._antes = (SF.ARVORES, P.ARVORES_PARALELOS)
-    SF.ARVORES, P.ARVORES_PARALELOS = 20, 20
+    self._antes = (A.ARVORES, P.ARVORES_PARALELOS)
+    A.ARVORES, P.ARVORES_PARALELOS = 20, 20
     self.conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA, catalogo=())
     self.inv = SF.inventario(self.conj, ['router_ruido'])
 
   def tearDown(self):
-    SF.ARVORES, P.ARVORES_PARALELOS = self._antes
+    A.ARVORES, P.ARVORES_PARALELOS = self._antes
 
   def test_assinatura_exige_mesmo_sinal_em_todos_os_predios(self):
     ass = {a['coluna']: a for a in P.assinatura(self.conj.df, 'stats_80211_diferenca',
