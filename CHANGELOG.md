@@ -1,3 +1,44 @@
+# Changelog — Contadores do roteador como vazamento e limpeza do registro
+
+**Data:** 2026-10-02
+
+## Por quê
+
+Os contadores de volume do roteador são o delta da janela do próprio speedtest:
+`router_tx_bytes·8 / speedtest_down_mbps` fica entre 11,2 e 12,5 s em todos os prédios, e os
+contadores não são acumulados (só cerca de 45% sobem entre linhas seguidas do mesmo `mac`).
+Razões por pacote não cancelam o volume: retry por pacote tem ρ −0,61 com o número de pacotes e
+−0,64 com o download.
+
+## Mudanças
+
+- `router_tx_duration_us`, `router_rx_duration_us`, `router_tx_retries`, `router_tx_failed` e
+  `router_rx_drop_misc` passam a ser **vazamento** (resposta "sim" em Limites e pendências).
+- Fim da isenção `normaliza_volume`: uma derivada vaza se qualquer insumo vazar.
+  `retry_por_pacote`, `falha_por_pacote`, `descarte_por_pacote_rx` e `fracao_airtime_tx`
+  continuam no catálogo, mas saem de ajustes e versões. Catálogo `2026-10-02.1`.
+- Registro de versões reduzido à `v1` (era `v1-legado`), ativa. `v1-sem-cliente`, `v2-tr069` e
+  `v2-tr069-volume` foram removidas. Na avaliação, a `v1` perde os 5 contadores, listados em
+  `removidas_por_vazamento`.
+- Testes que falharam (alvo exatamente 0) são descartados em `load_datasets` e no Studio, com a
+  contagem impressa ou nos avisos. Valores pequenos e positivos ficam: são enlaces ruins reais.
+
+## Efeito medido (download, deixando um prédio de fora, RandomForest do Studio, 4 prédios)
+
+| Conjunto | R² pooled | MAE (Mbps) |
+|---|---|---|
+| Base TR-069 sem contadores | 0,348 | 50,7 |
+| + colunas e derivadas físicas que já existem | 0,404 | 47,4 |
+| + físicas, sem testes que falharam | 0,439 | 44,7 |
+
+A versão nova do modelo será montada no assistente sobre essa base.
+
+## Fica para depois
+
+- Deadzone temporal no coletor: contadores numa janela que termina antes do teste (`router_pre_*`).
+- Teto de WAN da residência.
+- Stats de estação ausentes no AX3000 da casa-marcelo e em todo o `20260925`.
+
 # Changelog — Coletor sem zeros falsos e pendências dos dados no Studio
 
 **Data:** 2026-09-25

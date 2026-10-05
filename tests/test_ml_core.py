@@ -256,7 +256,7 @@ class TestMetrics(unittest.TestCase):
 
 import tempfile
 
-from ml.core.data import load_datasets, validate_columns
+from ml.core.data import descartar_testes_falhos, load_datasets, validate_columns
 
 
 class TestData(unittest.TestCase):
@@ -284,6 +284,37 @@ class TestData(unittest.TestCase):
     with self.assertRaises(ValueError) as ctx:
       validate_columns(df, ['b'], 'feature')
     self.assertIn('b', str(ctx.exception))
+
+  def test_descartar_testes_falhos_remove_so_zero(self):
+    df = pd.DataFrame({'alvo': [0.0, 0.3, np.nan, 50.0, 0]})
+    saida, n = descartar_testes_falhos(df, 'alvo')
+    self.assertEqual(n, 2)
+    self.assertEqual(len(saida), 3)
+    self.assertEqual(saida['alvo'].iloc[0], 0.3)
+    self.assertTrue(np.isnan(saida['alvo'].iloc[1]))
+    self.assertEqual(list(saida.index), [0, 1, 2])
+
+  def test_descartar_testes_falhos_sem_zero_nao_muda_nada(self):
+    df = pd.DataFrame({'alvo': [1.0, 2.0]})
+    saida, n = descartar_testes_falhos(df, 'alvo')
+    self.assertEqual(n, 0)
+    self.assertEqual(list(saida['alvo']), [1.0, 2.0])
+
+  def test_rows_with_zero_target_are_dropped(self):
+    path = self._write_csv([
+      {'local': 1.0, 'feat': 1.0, 'target': 2.0},
+      {'local': 1.0, 'feat': 1.0, 'target': 0.0},
+      {'local': 1.0, 'feat': 1.0, 'target': 0.3},
+    ])
+    df = load_datasets([path], target='target')
+    self.assertEqual(sorted(df['target']), [0.3, 2.0])
+
+  def test_zero_target_kept_when_no_target_is_given(self):
+    path = self._write_csv([
+      {'local': 1.0, 'feat': 1.0, 'target': 0.0},
+      {'local': 1.0, 'feat': 1.0, 'target': 2.0},
+    ])
+    self.assertEqual(len(load_datasets([path])), 2)
 
   def test_rows_with_nan_target_are_dropped(self):
     path = self._write_csv([

@@ -12,12 +12,25 @@ def validate_columns(df: pd.DataFrame, columns, role: str) -> None:
     raise ValueError(f'missing {role} columns in dataset: {missing}')
 
 
+def descartar_testes_falhos(df: pd.DataFrame, alvo: str):
+  """Remove linhas com alvo exatamente 0: teste que falhou, não enlace ruim.
+
+  Valores pequenos e positivos (ex.: 0,3 Mbps) ficam: são enlaces ruins de
+  verdade e são justamente o que o modelo precisa aprender. NaN fica para o
+  chamador, que já trata alvo vazio.
+  Devolve (df sem essas linhas, com índice refeito, e quantas saíram).
+  """
+  falhos = pd.to_numeric(df[alvo], errors='coerce') == 0
+  return df[~falhos].reset_index(drop=True), int(falhos.sum())
+
+
 def load_datasets(paths, target: str = None, group_level: str = 'position') -> pd.DataFrame:
   """Load and concatenate CSVs, attaching a canonical site_id column.
 
   `group_level` selects the grouping granularity: 'position' (default, one group
   per measurement spot) or 'building' (one group per physical building).
-  Rows whose target is empty are dropped and the count reported.
+  Rows whose target is empty or exactly 0 (failed test) are dropped and the
+  counts reported.
   """
   frames = []
   for path in paths:
@@ -39,5 +52,8 @@ def load_datasets(paths, target: str = None, group_level: str = 'position') -> p
     dropped = before - len(df)
     if dropped:
       print(f'dropped {dropped} rows with empty target {target!r}')
+    df, falhos = descartar_testes_falhos(df, target)
+    if falhos:
+      print(f'dropped {falhos} rows with failed test (target == 0) {target!r}')
 
   return df

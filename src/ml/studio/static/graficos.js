@@ -324,9 +324,19 @@ window.VENKO = window.VENKO || {};
     if (!all.length) return [];
     let lo = Math.min(...all);
     let hi = Math.max(...all);
+    // `floor` prende a escala num piso (ex.: R² = -1): sem ele, um único local ruim
+    // (ex.: residência com R² -16) esmaga a faixa útil 0..1 em poucos pixels. Pontos
+    // abaixo do piso ficam presos na borda esquerda, com uma seta indicando o corte;
+    // o tooltip continua mostrando o valor real.
+    const floor = spec.floor;
+    if (floor != null) lo = Math.max(lo, floor);
     const pad = Math.max(0.02, (hi - lo) * 0.08);
-    lo -= pad; hi += pad;
-    const x = (v) => left + ((v - lo) / (hi - lo)) * (width - left - right);
+    hi += pad;
+    if (floor == null) lo -= pad;
+    const x = (v) => {
+      const vv = floor != null ? Math.max(v, floor) : v;
+      return left + ((vv - lo) / (hi - lo)) * (width - left - right);
+    };
     const fmt = spec.fmt || ((v) => v.toFixed(2));
     const font = '11px system-ui, -apple-system, sans-serif';
     const bold = '600 12.5px system-ui, -apple-system, sans-serif';
@@ -343,6 +353,38 @@ window.VENKO = window.VENKO || {};
       ctx.fillText(fmt(t), X, H - bottom + 8);
     });
 
+    // Seta curta apontando para fora do eixo: marca um ponto ou a média presos no
+    // piso da escala, porque o valor real está além dele.
+    function desenharCorte(X, Y, cor) {
+      ctx.beginPath();
+      ctx.moveTo(X - 10, Y);
+      ctx.lineTo(X - 4, Y - 4);
+      ctx.lineTo(X - 4, Y + 4);
+      ctx.closePath();
+      ctx.fillStyle = cor;
+      ctx.fill();
+    }
+
+    // Pontos cuja posição x cai a menos de 12px um do outro se escondem atrás do
+    // último desenhado (é o caso comum quando vários locais têm R² parecido, ou
+    // quando vários ficam presos no mesmo piso): espalha-os na vertical, centrados
+    // na linha, para que nenhum marcador fique coberto.
+    function espalhar(pontos) {
+      const ordenados = pontos.map((p, idx) => ({ ...p, idx })).sort((a, b) => a.X - b.X);
+      const grupos = [];
+      ordenados.forEach((p) => {
+        const ultimo = grupos[grupos.length - 1];
+        if (ultimo && p.X - ultimo[ultimo.length - 1].X < 12) ultimo.push(p);
+        else grupos.push([p]);
+      });
+      const saida = new Array(pontos.length);
+      grupos.forEach((grupo) => {
+        const n = grupo.length;
+        grupo.forEach((p, k) => { saida[p.idx] = { ...p, dy: (k - (n - 1) / 2) * 11 }; });
+      });
+      return saida;
+    }
+
     const hits = [];
     spec.rows.forEach((r, i) => {
       const cy = top + i * rowH + rowH / 2;
@@ -353,18 +395,22 @@ window.VENKO = window.VENKO || {};
       ctx.fillStyle = css('--ink-muted'); ctx.font = font;
       ctx.fillText(r.sub, 0, cy + 9);
       if (r.mean != null) {
+        const Xm = x(r.mean);
         ctx.strokeStyle = css('--ink-1'); ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(x(r.mean), cy - 15); ctx.lineTo(x(r.mean), cy + 15); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(Xm, cy - 15); ctx.lineTo(Xm, cy + 15); ctx.stroke();
+        if (floor != null && r.mean < floor) desenharCorte(Xm, cy, css('--ink-1'));
         ctx.fillStyle = css('--ink-1'); ctx.font = bold;
         ctx.fillText((spec.fmtMean || fmt)(r.mean), width - right + 14, cy);
-        hits.push({ x: x(r.mean), y: cy, r: 10, label: r.label, value: r.mean, at: 'média' });
+        hits.push({ x: Xm, y: cy, r: 10, label: r.label, value: r.mean, at: 'média' });
       }
-      r.points.forEach((p) => {
-        const X = x(p.v);
+      const comX = r.points.map((p) => ({ ...p, X: x(p.v) }));
+      espalhar(comX).forEach((p) => {
+        const Y = cy + (p.dy || 0);
         // Anel na cor da superficie: pontos de posicoes vizinhas nao se fundem.
-        ctx.beginPath(); ctx.arc(X, cy, 7, 0, Math.PI * 2); ctx.fillStyle = css('--surface-1'); ctx.fill();
-        ctx.beginPath(); ctx.arc(X, cy, 5.5, 0, Math.PI * 2); ctx.fillStyle = p.color; ctx.fill();
-        hits.push({ x: X, y: cy, r: 9, label: r.label, value: p.v, at: p.key, color: p.color });
+        ctx.beginPath(); ctx.arc(p.X, Y, 7, 0, Math.PI * 2); ctx.fillStyle = css('--surface-1'); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.X, Y, 5.5, 0, Math.PI * 2); ctx.fillStyle = p.color; ctx.fill();
+        if (floor != null && p.v < floor) desenharCorte(p.X, Y, p.color);
+        hits.push({ x: p.X, y: Y, r: 9, label: r.label, value: p.v, at: p.key, color: p.color });
       });
     });
     return hits;

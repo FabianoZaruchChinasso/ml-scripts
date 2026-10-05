@@ -76,7 +76,7 @@ def _registro():
   try:
     return core_modelos.carregar(), None
   except (OSError, ValueError) as erro:
-    reserva = {'ativo': 'v1-legado', 'versoes': {'v1-legado': {
+    reserva = {'ativo': 'v1', 'versoes': {'v1': {
       'features': list(core_features.MODELO_ATUAL), 'descricao': 'reserva: modelos.json ilegível'}}}
     return reserva, f'registro de modelos ilegível: {erro}'
 

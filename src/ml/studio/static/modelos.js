@@ -326,7 +326,8 @@
       .concat([linha('TR-069 completo', sub(c.referencias.tr069), c.referencias.tr069),
                linha('Tudo (laboratório)', sub(c.referencias.tudo), c.referencias.tudo)]);
     const d = r2 ? 2 : 1;
-    st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, d), fmtMean: (v) => num(v, r2 ? 3 : 1) });
+    st.hits = V.drawDotRows(canvas, { rows: linhas, fmt: (v) => num(v, d), fmtMean: (v) => num(v, r2 ? 3 : 1),
+      floor: r2 ? -1 : null });
     V.attachTooltip(canvas, $('#mCmpTip'), () => st.hits,
       (h) => `<b>${esc(h.label)}</b>${esc(h.at)}: ${r2 ? 'R² ' + num(h.value, 3) : 'MAE ' + num(h.value, 1) + ' ' + UNIDADE[c.alvo]}`);
   }
