@@ -5,6 +5,8 @@ posição: um número só engana. O modelo prevê a faixa, e a régua mede pinba
 cobertura (a fração de valores reais abaixo de cada quantil previsto).
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
@@ -20,7 +22,7 @@ ALVOS_QUANTILICOS = ('latency_ms', 'jitter_ms')
 # Faixa aceita para a cobertura pooled do p90 num prédio novo.
 FAIXA_COBERTURA = (0.80, 0.95)
 
-_COLUNAS = ['_linha', 'y', 'q50', 'q90', 'cruzado', '_site', '_pos']
+_COLUNAS = ['_linha', 'y', 'q50', 'q90', 'cruzado', 'correcao', 'sem_correcao', '_site', '_pos']
 
 
 def coluna(q: float) -> str:
@@ -49,18 +51,48 @@ def cobertura(y, previsto) -> float:
   return float(np.mean(np.asarray(y, dtype=float) <= np.asarray(previsto, dtype=float)))
 
 
+def correcao_conformal(X: pd.DataFrame, y_log, sites, q: float = 0.9, estimador=None):
+  """Termo conformal (CQR) do quantil `q`, em escala log, por LOGO entre os prédios de `sites`.
+
+  Para cada prédio, ajusta o modelo sem ele e mede quanto o real passou do quantil previsto
+  (escore = y_log - previsto). A correção é o quantil de nível de amostra finita,
+  min(1, ceil((n + 1) * q) / n), de todos os escores juntos. Devolve None com menos de
+  2 prédios, porque não há como deixar um de fora.
+  """
+  grupos = np.asarray(sites)
+  unicos = pd.unique(grupos)
+  if len(unicos) < 2:
+    return None
+  y = np.asarray(y_log, dtype=float)
+  escores = []
+  for predio in unicos:
+    fora = grupos == predio
+    modelo = clone(estimador) if estimador is not None else modelo_quantil(q)
+    modelo.fit(X[~fora], y[~fora])
+    escores.append(y[fora] - np.asarray(modelo.predict(X[fora]), dtype=float))
+  todos = np.concatenate(escores)
+  if not len(todos):
+    return None
+  nivel = min(1.0, math.ceil((len(todos) + 1) * q) / len(todos))
+  return float(np.quantile(todos, nivel, method='higher'))
+
+
 def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
-                                estimadores: dict = None) -> pd.DataFrame:
+                                estimadores: dict = None, conformal: bool = True) -> pd.DataFrame:
   """p50 e p90 de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
-  Treina em log1p(y) e volta com expm1, cortado em 0. Se o p90 sair abaixo do p50
-  (quantis cruzados), o p90 passa a valer o p50 e a linha fica com `cruzado` verdadeiro.
-  `estimadores` ({quantil: estimador}) troca os modelos; são clonados a cada fold.
-  Devolve _linha, y (em ms), q50, q90, cruzado, _site, _pos, indexados como `df`.
+  Treina em log1p(y) e volta com expm1, cortado em 0. Com `conformal`, soma ao p90 (em
+  escala log) a correção de `correcao_conformal`, calculada só com os prédios de treino do
+  fold; sem pelo menos 2 deles, a correção é 0 e a linha fica com `sem_correcao`. Se o p90
+  sair abaixo do p50 (quantis cruzados), o p90 passa a valer o p50 e a linha fica com
+  `cruzado`. `estimadores` ({quantil: estimador}) troca os modelos; são clonados a cada fold.
+  Devolve _linha, y (em ms), q50, q90, cruzado, correcao, sem_correcao, _site, _pos,
+  indexados como `df`.
   """
   assert_sem_vazamento(colunas, vazadas)
   if not colunas:
     return pd.DataFrame(columns=_COLUNAS)
+  estimadores = estimadores or {}
   sub = df[df[y_col].notna()]
   X = matriz(sub, colunas)
   y = sub[y_col].astype(float)
@@ -69,17 +101,24 @@ def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
   posicao = sub['_pos'] if '_pos' in sub.columns else sub['_site']
   partes = []
   for fold in outer_logo_folds(X, y_log, sub['_site']):
-    previstos = {}
+    em_log = {}
     for q in QUANTIS:
-      base = (estimadores or {}).get(q)
+      base = estimadores.get(q)
       modelo = clone(base) if base is not None else modelo_quantil(q)
       modelo.fit(fold.X_train, fold.y_train)
-      previstos[q] = np.clip(np.expm1(np.asarray(modelo.predict(fold.X_test), dtype=float)), 0, None)
+      em_log[q] = np.asarray(modelo.predict(fold.X_test), dtype=float)
+    correcao = None
+    if conformal:
+      correcao = correcao_conformal(fold.X_train, fold.y_train, fold.train_site_ids, 0.9, estimadores.get(0.9))
+    termo = 0.0 if correcao is None else correcao
+    em_log[0.9] = em_log[0.9] + termo
+    previstos = {q: np.clip(np.expm1(v), 0, None) for q, v in em_log.items()}
     cruzado = previstos[0.9] < previstos[0.5]
     previstos[0.9] = np.maximum(previstos[0.9], previstos[0.5])
     indice = fold.X_test.index
     partes.append(pd.DataFrame({'_linha': linha.loc[indice].to_numpy(), 'y': y.loc[indice].to_numpy(),
                                 'q50': previstos[0.5], 'q90': previstos[0.9], 'cruzado': cruzado,
+                                'correcao': termo, 'sem_correcao': conformal and correcao is None,
                                 '_site': fold.test_site, '_pos': posicao.loc[indice].to_numpy()},
                                index=indice))
   if not partes:
@@ -97,13 +136,22 @@ def resumir_quantis(prev: pd.DataFrame, n: int, amostras=None) -> dict:
 
   `mediana_mae` é o MAE em ms do p50, para comparar com a regressão pontual.
   `cruzados` conta as linhas em que o p90 foi corrigido para o p50.
+  `correcao_por_local` é o termo conformal (em log) usado em cada prédio de teste.
   """
   resumo = {'n': n, 'versao_regua': VERSAO_REGUA}
   if prev.empty:
-    return dict(resumo, pinball={}, cobertura={}, por_local={}, intervalos={}, cruzados=0, mediana_mae=None)
+    return dict(resumo, pinball={}, cobertura={}, por_local={}, intervalos={}, cruzados=0, mediana_mae=None,
+                correcao_por_local={}, sem_correcao=0)
   resumo.update(_metricas(prev))
   resumo['por_local'] = {s: _metricas(g) for s, g in sorted(prev.groupby('_site'), key=lambda kv: kv[0])}
   resumo['cruzados'] = int(prev['cruzado'].astype(bool).sum())
+  # A correção conformal é uma por fold, então é constante dentro de cada prédio de teste.
+  if 'correcao' in prev.columns:
+    resumo['correcao_por_local'] = {s: round(float(g['correcao'].iloc[0]), 4)
+                                    for s, g in sorted(prev.groupby('_site'), key=lambda kv: kv[0])}
+    resumo['sem_correcao'] = int(prev['sem_correcao'].astype(bool).sum())
+  else:
+    resumo['correcao_por_local'], resumo['sem_correcao'] = {}, 0
   y = prev['y'].to_numpy(dtype=float)
   resumo['mediana_mae'] = round(float(np.mean(np.abs(y - prev['q50'].to_numpy(dtype=float)))), 4)
   resumo['intervalos'] = {}

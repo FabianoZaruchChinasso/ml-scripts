@@ -5,7 +5,8 @@ download). Datasets: DATASETS=a.zip,b.zip (nomes em data/; padrão: o conjunto
 canônico, o mesmo do Studio). Cada configuração de árvore é avaliada deixando um
 prédio de fora por vez, e o modelo final é treinado com todas as linhas fora do
 teto de WAN. Para ALVO=latency_ms ou jitter_ms, treina os dois modelos quantílicos
-(p50 e p90) em vez da varredura de árvores.
+(p50 e p90) em vez da varredura de árvores, e registra em conformal.json a correção conformal do
+p90 (em escala log) que a produção soma à previsão do modelo antes de voltar para ms.
 """
 
 import os
@@ -85,9 +86,18 @@ def treinar_quantis(conj, features, vazadas, params: dict) -> None:
       modelo = core_quantis.modelo_quantil(q).fit(X, y_log)
       mlflow.sklearn.log_model(sk_model=modelo, name=f'quantil_{core_quantis.coluna(q)}',
                                serialization_format='skops')
+    # A produção não vê prédio novo durante o treino: a correção usa LOGO entre todos os prédios.
+    correcao = core_quantis.correcao_conformal(X, y_log, conj.df['_site'], 0.9)
+    termo = 0.0 if correcao is None else correcao
+    mlflow.log_metric('correcao_log_q90', termo)
+    mlflow.log_dict({'quantil': 0.9, 'correcao_log': termo, 'escala': 'log1p',
+                     'uso': 'q90_ms = expm1(predict(X) + correcao_log)',
+                     'sem_correcao': correcao is None,
+                     'versao_regua': core_avaliacao.VERSAO_REGUA}, 'conformal.json')
     print(f"Quantis {ALVO}: cobertura {resumo['cobertura']} (90%: "
           f"{resumo['intervalos'].get('cobertura_q90')}), pinball {resumo['pinball']}, "
           f"MAE da mediana {resumo['mediana_mae']}, cruzados {resumo['cruzados']}")
+    print(f'  correção conformal do p90 (log): {termo:.4f}; por prédio na régua: {resumo["correcao_por_local"]}')
     for site, metricas in resumo['por_local'].items():
       print(f'  {site}: {metricas}')
 

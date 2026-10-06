@@ -1,3 +1,92 @@
+# Changelog — Calibração conformal (CQR) do p90 de latência e jitter
+
+**Data:** 2026-10-06
+
+## Por quê
+
+A cobertura do p90 sem correção ficava abaixo de 0,80 em três dos quatro prédios deixados de fora
+(coworking, hotmilk e residencia, nos dois alvos), e a pooled era 0,71 em latência e 0,72 em jitter
+na `v3-tr069` (ver o changelog "Latência e jitter por quantis"). O critério da spec da frente D
+(seção 7.3) pedia a CQR nesse caso.
+
+## Mudanças
+
+- `core/quantis.py`: `correcao_conformal` (LOGO entre os prédios de treino, escores juntos, nível de
+  amostra finita) é somada por padrão ao p90 em escala log (`conformal=True`). As previsões ganham as
+  colunas `correcao` e `sem_correcao`, e o resumo ganha `correcao_por_local` e `sem_correcao`.
+- `core/avaliacao.py`: versão da régua `2026-10-06.1`.
+- `regression_mlflow.py`: o ramo quantílico calcula a correção de produção com todos os prédios e a
+  registra na métrica `correcao_log_q90` e no artefato `conformal.json` (`q90_ms = expm1(predict(X)
+  + correcao_log)`). Rodando `ALVO=latency_ms MODELO=v3-tr069`, a correção de produção foi 0,6134
+  (escala log).
+- O Studio não muda de código: a régua e o veredito de promoção já leem o p90 corrigido.
+
+## Efeito medido (LOGO por prédio, 4 prédios)
+
+Cru contra CQR, por alvo e versão (cobertura do p90 com intervalo de 90%):
+
+| Alvo | Versão | Modo | Cobertura p50 | Cobertura p90 (IC 90%) | Pinball p90 | Cruzados |
+|---|---|---|---|---|---|---|
+| Latência | v2-tr069 | cru | 0,4241 | 0,73 (0,7087 a 0,751) | 14,5874 | 44 |
+| Latência | v2-tr069 | CQR | 0,4241 | 0,9329 (0,9184 a 0,9471) | 14,5452 | 0 |
+| Latência | v3-tr069 | cru | 0,4249 | 0,7109 (0,6849 a 0,7383) | 14,5556 | 54 |
+| Latência | v3-tr069 | CQR | 0,4249 | 0,923 (0,9058 a 0,9413) | 14,227 | 0 |
+| Jitter | v2-tr069 | cru | 0,4481 | 0,7435 (0,6945 a 0,8022) | 10,077 | 12 |
+| Jitter | v2-tr069 | CQR | 0,4481 | 0,9168 (0,8928 a 0,9413) | 9,5548 | 0 |
+| Jitter | v3-tr069 | cru | 0,4588 | 0,7176 (0,6659 a 0,7812) | 10,1632 | 36 |
+| Jitter | v3-tr069 | CQR | 0,4588 | 0,9008 (0,874 a 0,9294) | 9,217 | 0 |
+
+A CQR só mexe no p90: a cobertura e o pinball do p50 não mudam, e os quantis cruzados somem.
+
+Correção somada ao p90 (escala log) por prédio deixado de fora, `v3-tr069`:
+
+| Prédio | Latência | Jitter |
+|---|---|---|
+| casa-marcelo | 0,6428 | 0,7572 |
+| coworking | 0,9248 | 1,1929 |
+| hotmilk | 0,5993 | 0,847 |
+| residencia | 0,858 | 1,025 |
+
+Cobertura do p90 por prédio, `v3-tr069`, cru contra CQR:
+
+| Prédio | Latência cru | Latência CQR | Jitter cru | Jitter CQR |
+|---|---|---|---|---|
+| casa-marcelo | 0,8491 | 0,9371 | 0,8145 | 0,9119 |
+| coworking | 0,7413 | 1,0 | 0,6573 | 0,986 |
+| hotmilk | 0,6596 | 0,8856 | 0,696 | 0,872 |
+| residencia | 0,6498 | 0,9198 | 0,6878 | 0,8903 |
+
+"Atende completo" com CQR (n=1298): `v2-tr069` média 0,6699 (IC 0,6496 a 0,7004) e `v3-tr069` média
+0,6611 (IC 0,6418 a 0,6904); sem CQR eram 0,6526 e 0,6522. Por aplicação, sem CQR → com CQR:
+
+| Aplicação | v2-tr069 | v3-tr069 |
+|---|---|---|
+| Navegação | 0,5405 → 0,6266 | 0,5426 → 0,5893 |
+| Chamada de vídeo | 0,6184 → 0,6906 | 0,6063 → 0,6956 |
+| Streaming 4K | 0,7739 → 0,7658 | 0,7751 → 0,7662 |
+| Jogo em nuvem | 0,6777 → 0,5965 | 0,6848 → 0,5933 |
+
+O p90 corrigido é mais alto, então o "atende" fica mais conservador: Jogo em nuvem cai de cerca de
+0,68 para cerca de 0,59 nas duas versões, que é o custo de uma faixa que agora cobre o que promete.
+Navegação e Chamada de vídeo sobem nas duas versões; não investiguei a causa por aplicação.
+
+Veredito de promoção `v3-tr069` contra `v2-tr069`, régua `2026-10-06.1`: latência **melhor**
+(`delta_pinball` −0,3182, IC −0,4516 a −0,1989; cobertura do p90 0,923, na faixa) e jitter
+**melhor** (`delta_pinball` −0,3378, IC −0,7323 a −0,0376; cobertura do p90 0,9008, na faixa).
+
+### Critério de aceite
+
+A CQR é **aceita** (spec, seção 7.3): a cobertura pooled do p90 da `v3-tr069` com CQR fica em
+0,923 na latência e 0,9008 no jitter, os dois dentro da faixa de 0,80 a 0,95. Nenhum prédio fica
+abaixo de 0,80. O coworking fica acima de 0,95 (latência 1,0 e jitter 0,986): a faixa é
+conservadora ali, e a correção vem do escore juntado dos outros três prédios. Hotmilk (0,8856 e 0,872) e residencia em jitter (0,8903) ficam na faixa, mas abaixo de 0,90.
+
+## Fica para depois
+
+A frente C (spec anterior, seção 10).
+
+---
+
 # Changelog — Latência e jitter por quantis
 
 **Data:** 2026-10-05

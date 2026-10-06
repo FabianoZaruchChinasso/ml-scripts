@@ -66,7 +66,8 @@ class TestPrevisoes(unittest.TestCase):
   def test_folds_por_predio_e_colunas(self):
     conj = conjunto()
     prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
-    self.assertEqual(list(prev.columns), ['_linha', 'y', 'q50', 'q90', 'cruzado', '_site', '_pos'])
+    self.assertEqual(list(prev.columns), ['_linha', 'y', 'q50', 'q90', 'cruzado', 'correcao', 'sem_correcao',
+                                          '_site', '_pos'])
     self.assertEqual(sorted(prev['_site'].unique()), ['coworking', 'hotmilk', 'residencia'])
     self.assertEqual(sorted(prev['_linha']), sorted(conj.df['_linha']))
     self.assertTrue((prev['q90'] >= prev['q50']).all())
@@ -74,7 +75,7 @@ class TestPrevisoes(unittest.TestCase):
   def test_volta_da_escala_log(self):
     conj = conjunto()
     est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(np.log1p(20.0))}
-    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est, conformal=False)
     np.testing.assert_allclose(prev['q50'], 5.0)
     np.testing.assert_allclose(prev['q90'], 20.0)
     self.assertFalse(prev['cruzado'].any())
@@ -82,7 +83,7 @@ class TestPrevisoes(unittest.TestCase):
   def test_corta_em_zero_e_corrige_cruzamento(self):
     conj = conjunto()
     est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(-10.0)}
-    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est, conformal=False)
     np.testing.assert_allclose(prev['q90'], prev['q50'])
     self.assertTrue(prev['cruzado'].all())
 
@@ -96,6 +97,39 @@ class TestPrevisoes(unittest.TestCase):
     conj = conjunto()
     with self.assertRaises(AssertionError):
       Q.prever_quantis_fora_do_fold(conj.df, ['router_tx_bytes'], conj.alvo, ['router_tx_bytes'])
+
+  def test_conformal_soma_a_correcao_ao_p90_em_escala_log(self):
+    conj = conjunto()
+    est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(0.0)}
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    self.assertTrue((prev['correcao'] > 0).all())
+    self.assertFalse(prev['sem_correcao'].any())
+    np.testing.assert_allclose(prev['q90'], np.maximum(np.expm1(prev['correcao']), prev['q50']))
+
+  def test_correcao_do_fold_vem_so_dos_predios_de_treino(self):
+    from ml.core.features import matriz
+    conj = conjunto()
+    est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(0.0)}
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    treino = conj.df[conj.df['_site'] != 'residencia']
+    esperado = Q.correcao_conformal(matriz(treino, ['router_snr']),
+                                    np.log1p(treino['latency_ms'].astype(float)), treino['_site'], 0.9,
+                                    estimador=Constante(0.0))
+    np.testing.assert_allclose(prev.loc[prev['_site'] == 'residencia', 'correcao'], esperado)
+
+  def test_um_predio_de_treino_fica_sem_correcao(self):
+    f = frame()
+    f = f[f['local'].isin(['sala', 'quarto', 'cwpb-1', 'cwpb-2'])]
+    conj = C.preparar({'a.csv': f}, 'latency_ms', TABELA, catalogo=())
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
+    self.assertTrue(prev['sem_correcao'].all())
+    self.assertTrue((prev['correcao'] == 0).all())
+
+  def test_sem_conformal_nao_corrige(self):
+    conj = conjunto()
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], conformal=False)
+    self.assertTrue((prev['correcao'] == 0).all())
+    self.assertFalse(prev['sem_correcao'].any())
 
 
 def previsto(y, q50, q90, sites=None, linhas=None):
@@ -128,6 +162,22 @@ class TestResumo(unittest.TestCase):
     from ml.core import avaliacao as A
     self.assertEqual(Q.resumir_quantis(previsto([1.0, 2.0], [1.0, 2.0], [1.0, 2.0]), 1)['versao_regua'],
                      A.VERSAO_REGUA)
+
+  def test_sem_coluna_de_correcao(self):
+    r = Q.resumir_quantis(previsto([1.0, 2.0], [1.0, 2.0], [1.0, 2.0]), 1)
+    self.assertEqual((r['correcao_por_local'], r['sem_correcao']), ({}, 0))
+
+  def test_correcao_por_predio(self):
+    prev = previsto([10.0, 20.0, 30.0, 40.0], [10.0, 20.0, 30.0, 40.0], [15.0, 25.0, 35.0, 45.0])
+    prev['correcao'] = [0.5, 0.5, 0.8, 0.8]
+    prev['sem_correcao'] = [False, False, False, False]
+    r = Q.resumir_quantis(prev, 1)
+    self.assertEqual(r['correcao_por_local'], {'s1': 0.5, 's2': 0.8})
+    self.assertEqual(r['sem_correcao'], 0)
+
+  def test_vazio_traz_campos_de_correcao(self):
+    r = Q.resumir_quantis(pd.DataFrame(columns=['_linha', 'y', 'q50', 'q90', 'cruzado', '_site', '_pos']), 0)
+    self.assertEqual((r['correcao_por_local'], r['sem_correcao']), ({}, 0))
 
 
 def delta(valor, lo, hi):
@@ -188,6 +238,29 @@ class TestAtendeCompleto(unittest.TestCase):
     dn = pontual([30.0], [30.0], ['x:0'])
     with self.assertRaises(ValueError):
       Q.atende_completo(dn, dn, previsto([1.0], [1.0], [1.0]), previsto([1.0], [1.0], [1.0]), APPS)
+
+
+class TestCorrecaoConformal(unittest.TestCase):
+  def test_nivel_de_amostra_finita_com_escores_juntos(self):
+    # Estimador constante 0: os escores são os próprios y. Com n = 30 escores, o nível é
+    # ceil(31 * 0,9) / 30 = 0,9333, e o quantil 'higher' dá 29 (o quantil 0,9 ingênuo daria 28).
+    X = pd.DataFrame({'x': np.arange(30, dtype=float)})
+    y = pd.Series(np.arange(1, 31, dtype=float))
+    sites = pd.Series(['a'] * 10 + ['b'] * 10 + ['c'] * 10)
+    self.assertEqual(Q.correcao_conformal(X, y, sites, 0.9, estimador=Constante(0.0)), 29.0)
+
+  def test_um_predio_so_devolve_none(self):
+    X = pd.DataFrame({'x': np.arange(5, dtype=float)})
+    y = pd.Series(np.arange(5, dtype=float))
+    self.assertIsNone(Q.correcao_conformal(X, y, pd.Series(['a'] * 5), 0.9, estimador=Constante(0.0)))
+
+  def test_usa_o_modelo_quantilico_por_padrao(self):
+    conj = conjunto()
+    from ml.core.features import matriz
+    X = matriz(conj.df, ['router_snr'])
+    y = np.log1p(conj.df['latency_ms'].astype(float))
+    c = Q.correcao_conformal(X, y, conj.df['_site'], 0.9)
+    self.assertIsInstance(c, float)
 
 
 if __name__ == '__main__':

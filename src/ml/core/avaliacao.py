@@ -19,7 +19,7 @@ from ml.core.sites import teto_wan
 from ml.core.splits import outer_logo_folds
 
 # Muda quando a régua muda: avaliações guardadas com outra versão ficam "desatualizadas".
-VERSAO_REGUA = '2026-10-05.2'
+VERSAO_REGUA = '2026-10-06.1'
 ARVORES = 200
 ALVOS_COM_TETO = ('speedtest_down_mbps', 'speedtest_up_mbps')
 _COLUNAS_PREVISAO = ['_linha', 'y', 'yhat', '_site', '_pos']
