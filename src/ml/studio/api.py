@@ -23,6 +23,7 @@ from ml.core import carga as core_carga
 from ml.core import features as core_features
 from ml.core import formulas as core_formulas
 from ml.core import modelos as core_modelos
+from ml.core import quantis as core_quantis
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES
 from ml.studio import features as studio_features
@@ -183,19 +184,42 @@ def _lista(texto: str) -> list:
   return [x for x in texto.split(',') if x]
 
 
+def _presentes(c, lista):
+  vazadas = studio_features.vazadas_do_conjunto(c)
+  return [f for f in lista if f in c.df.columns and f not in vazadas], vazadas
+
+
+def _prever_pontual(c, lista):
+  presentes, vazadas = _presentes(c, lista)
+  return core_avaliacao.prever_fora_do_fold(c.df, presentes, c.alvo, vazadas)
+
+
+def _prever_quantis(c, lista):
+  presentes, vazadas = _presentes(c, lista)
+  return core_quantis.prever_quantis_fora_do_fold(c.df, presentes, c.alvo, vazadas)
+
+
 def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, conj) -> dict:
-  """Veredito de promoção da régua: intervalo da diferença em MAE e, para throughput, em "atende"."""
-  def prever(c, lista):
-    vazadas = studio_features.vazadas_do_conjunto(c)
-    presentes = [f for f in lista if f in c.df.columns and f not in vazadas]
-    return core_avaliacao.prever_fora_do_fold(c.df, presentes, c.alvo, vazadas)
-  d_mae = core_avaliacao.delta_mae(prever(conj, feats), prever(conj, feats_base))
+  """Veredito de promoção da régua contra a versão base.
+
+  Latência e jitter: Δ pinball do p90 e cobertura da nova versão. Download e upload:
+  Δ MAE e Δ "atende em throughput".
+  """
+  if alvo in core_quantis.ALVOS_QUANTILICOS:
+    nova = _prever_quantis(conj, feats)
+    d_pinball = core_quantis.delta_pinball(nova, _prever_quantis(conj, feats_base))
+    cobertura = round(core_quantis.cobertura(nova['y'], nova['q90']), 4)
+    return {'delta_pinball': d_pinball, 'cobertura': cobertura,
+            'veredito': core_quantis.veredito_quantis(d_pinball, cobertura),
+            'versao_regua': core_avaliacao.VERSAO_REGUA}
+  d_mae = core_avaliacao.delta_mae(_prever_pontual(conj, feats), _prever_pontual(conj, feats_base))
   d_atende = None
   if alvo in core_avaliacao.ALVOS_COM_TETO:
     dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
     up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
-    d_atende = core_avaliacao.delta_atende(prever(dn, feats), prever(up, feats), prever(dn, feats_base),
-                                           prever(up, feats_base), core_aplicacoes.carregar())
+    d_atende = core_avaliacao.delta_atende(_prever_pontual(dn, feats), _prever_pontual(up, feats),
+                                           _prever_pontual(dn, feats_base), _prever_pontual(up, feats_base),
+                                           core_aplicacoes.carregar())
   return {'delta_mae': d_mae, 'delta_atende': d_atende,
           'veredito': core_avaliacao.veredito_promocao(d_mae, d_atende),
           'versao_regua': core_avaliacao.VERSAO_REGUA}
@@ -236,8 +260,12 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
 
 
 def avaliacao_completa(ds: str, ambiente: str, features: list) -> dict:
-  """Avaliação dos quatro alvos e de "atende em throughput", guardada junto da versão."""
-  saida, previsoes = {}, {}
+  """Avaliação dos quatro alvos, de "atende em throughput" e de "atende completo", guardada junto da versão.
+
+  Latência e jitter levam também o resumo quantílico (p50 e p90).
+  """
+  saida, previsoes, quantis = {}, {}, {}
+  aplicacoes = core_aplicacoes.carregar()
   for alvo in studio_features.TARGETS:
     conj, _ = _conjunto(ds, alvo, ambiente)
     resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, features, studio_features.vazadas_do_conjunto(conj),
@@ -245,9 +273,14 @@ def avaliacao_completa(ds: str, ambiente: str, features: list) -> dict:
     saida[alvo] = dict(resumo, datasets=conj.datasets, ambiente=_ambiente(ambiente) or 'todos',
                        versao_tabela=core_features.versao_tabela(),
                        versao_catalogo=core_features.CATALOGO_VERSAO)
+    if alvo in core_quantis.ALVOS_QUANTILICOS:
+      quantis[alvo] = _prever_quantis(conj, features)
+      saida[alvo]['quantis'] = core_quantis.resumir_quantis(quantis[alvo], resumo['n'])
   saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
-                                                     previsoes['speedtest_up_mbps'],
-                                                     core_aplicacoes.carregar())
+                                                     previsoes['speedtest_up_mbps'], aplicacoes)
+  saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
+                                                          previsoes['speedtest_up_mbps'],
+                                                          quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)
   return saida
 
 

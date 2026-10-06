@@ -301,6 +301,26 @@ class TestRotasAssistente(Base):
       api.receitas_montar(api.MontarReceita(receita='razao', colunas=['router_snr']))
     self.assertEqual(ctx.exception.status_code, 422)
 
+  def test_avaliacao_completa_traz_quantis_e_atende_completo(self):
+    av = api.avaliacao_completa('a.csv', '', ['router_snr'])
+    self.assertIn('q90', av['latency_ms']['quantis']['cobertura'])
+    self.assertIn('q90', av['jitter_ms']['quantis']['pinball'])
+    self.assertNotIn('quantis', av['speedtest_down_mbps'])
+    self.assertIn('media', av['atende_completo'])
+    self.assertIn('media', av['atende_throughput'])
+
+  def test_promocao_em_latencia_usa_quantis(self):
+    r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', alvo='latency_ms', base='v1')
+    p = r['promocao']
+    self.assertIn('intervalo', p['delta_pinball'])
+    self.assertNotIn('delta_mae', p)
+    self.assertGreaterEqual(p['cobertura'], 0.0)
+    self.assertIn(p['veredito']['resultado'], {'melhor', 'empate', 'pior'})
+
+  def test_promocao_em_download_nao_muda(self):
+    r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
+    self.assertIn('delta_mae', r['promocao'])
+
 
 if __name__ == '__main__':
   unittest.main()

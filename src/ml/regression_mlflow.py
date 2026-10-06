@@ -4,13 +4,15 @@ Versão: MODELO=<nome> (padrão: a ativa em core/modelos.json). Alvo: ALVO= (pad
 download). Datasets: DATASETS=a.zip,b.zip (nomes em data/; padrão: o conjunto
 canônico, o mesmo do Studio). Cada configuração de árvore é avaliada deixando um
 prédio de fora por vez, e o modelo final é treinado com todas as linhas fora do
-teto de WAN.
+teto de WAN. Para ALVO=latency_ms ou jitter_ms, treina os dois modelos quantílicos
+(p50 e p90) em vez da varredura de árvores.
 """
 
 import os
 import sys
 
 import mlflow
+import numpy as np
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -21,6 +23,7 @@ from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import features as core_features
 from ml.core import modelos as core_modelos
+from ml.core import quantis as core_quantis
 from ml.core.data import validate_columns
 
 ALVO = os.environ.get('ALVO', 'speedtest_down_mbps')
@@ -57,6 +60,38 @@ def registrar_metricas(resumo: dict) -> None:
     mlflow.log_metric(f'mae_{site}', valor)
 
 
+def treinar_quantis(conj, features, vazadas, params: dict) -> None:
+  """Latência e jitter: p50 e p90 em escala log, medidos pela régua quantílica."""
+  with mlflow.start_run(run_name=f"{params['modelo_versao']}-quantis-{ALVO}"):
+    mlflow.log_params(dict(params, quantis=','.join(str(q) for q in core_quantis.QUANTIS)))
+    prev = core_quantis.prever_quantis_fora_do_fold(conj.df, features, ALVO, vazadas)
+    resumo = core_quantis.resumir_quantis(prev, len(features))
+    for q in core_quantis.QUANTIS:
+      c = core_quantis.coluna(q)
+      mlflow.log_metric(f'pinball_{c}', resumo['pinball'][c])
+      mlflow.log_metric(f'cobertura_{c}', resumo['cobertura'][c])
+      for site, metricas in resumo['por_local'].items():
+        mlflow.log_metric(f'pinball_{c}_{site}', metricas['pinball'][c])
+        mlflow.log_metric(f'cobertura_{c}_{site}', metricas['cobertura'][c])
+    for chave, intervalo in resumo['intervalos'].items():
+      if intervalo:
+        mlflow.log_metric(f'{chave}_lo90', intervalo[0])
+        mlflow.log_metric(f'{chave}_hi90', intervalo[1])
+    mlflow.log_metric('mediana_mae', resumo['mediana_mae'])
+    mlflow.log_metric('cruzados', resumo['cruzados'])
+    X = core_features.matriz(conj.df, features)
+    y_log = np.log1p(conj.df[ALVO].astype(float).clip(lower=0))
+    for q in core_quantis.QUANTIS:
+      modelo = core_quantis.modelo_quantil(q).fit(X, y_log)
+      mlflow.sklearn.log_model(sk_model=modelo, name=f'quantil_{core_quantis.coluna(q)}',
+                               serialization_format='skops')
+    print(f"Quantis {ALVO}: cobertura {resumo['cobertura']} (90%: "
+          f"{resumo['intervalos'].get('cobertura_q90')}), pinball {resumo['pinball']}, "
+          f"MAE da mediana {resumo['mediana_mae']}, cruzados {resumo['cruzados']}")
+    for site, metricas in resumo['por_local'].items():
+      print(f'  {site}: {metricas}')
+
+
 def main():
   registro = core_modelos.carregar()
   nome_modelo = os.environ.get('MODELO') or registro['ativo']
@@ -80,24 +115,27 @@ def main():
         + f" — {len(features)} features, alvo {ALVO}, datasets {conj.datasets}")
 
   impressoes = {d['id']: d['fingerprint'] for d in core_carga.descobertos() if d.get('usable')}
+  params = {
+    'modelo_versao': nome_modelo, 'alvo': ALVO,
+    'datasets': ','.join(conj.datasets),
+    'fingerprints': ','.join(impressoes[i] for i in conj.datasets),
+    'versao_tabela': core_features.versao_tabela(),
+    'versao_catalogo': core_features.CATALOGO_VERSAO,
+    'versao_regua': core_avaliacao.VERSAO_REGUA,
+    'features': ','.join(features),
+    'removidas_por_vazamento': ','.join(removidas),
+  }
+  mlflow.set_experiment('MLflow Wifi Regressions')
+  if ALVO in core_quantis.ALVOS_QUANTILICOS:
+    treinar_quantis(conj, features, vazadas, params)
+    return
+
   treino = ~conj.df['_limitado_wan']
   X_final = core_features.matriz(conj.df[treino], features)
   y_final = conj.df.loc[treino, ALVO].astype(float)
-
-  mlflow.set_experiment('MLflow Wifi Regressions')
   for config in CONFIGS:
     with mlflow.start_run(run_name=f"{nome_modelo}-{config['model_type']}-{config['max_depth']}"):
-      mlflow.log_params({
-        'modelo_versao': nome_modelo, 'alvo': ALVO,
-        'datasets': ','.join(conj.datasets),
-        'fingerprints': ','.join(impressoes[i] for i in conj.datasets),
-        'versao_tabela': core_features.versao_tabela(),
-        'versao_catalogo': core_features.CATALOGO_VERSAO,
-        'versao_regua': core_avaliacao.VERSAO_REGUA,
-        'features': ','.join(features),
-        'removidas_por_vazamento': ','.join(removidas),
-        **config,
-      })
+      mlflow.log_params(dict(params, **config))
       prev = core_avaliacao.prever_fora_do_fold(conj.df, features, ALVO, vazadas, estimador=montar(config))
       resumo = core_avaliacao.resumir(prev, len(features))
       registrar_metricas(resumo)

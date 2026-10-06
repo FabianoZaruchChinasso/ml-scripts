@@ -356,12 +356,16 @@
       <td class="num">${num(a.resumo_base.mae_por_local[s], 1)}</td><td class="num">${num(a.resumo.mae_por_local[s], 1)}</td></tr>`).join('');
     const faixa = (iv, casas) => (iv ? `<em>90%: ${num(iv[0], casas)} a ${num(iv[1], casas)}</em>` : '');
     const p = a.promocao;
+    const detalhePromocao = !p ? ''
+      : p.delta_pinball
+        ? `Δ pinball p90 ${num(p.delta_pinball.valor, 2)} ${u} ${faixa(p.delta_pinball.intervalo, 2)} · cobertura p90 ${num(p.cobertura, 2)}`
+        : `Δ MAE ${num(p.delta_mae.valor, 1)} ${u} ${faixa(p.delta_mae.intervalo, 1)}${p.delta_atende
+          ? ` · Δ atende ${num(p.delta_atende.valor, 3)} ${faixa(p.delta_atende.intervalo, 3)}` : ''}`;
     const promocao = p ? `<div class="veredito ${p.veredito.resultado}" style="margin-top:10px">
         <svg class="icon"><use href="#${VEREDITO[p.veredito.resultado][1]}"/></svg>
         <div><b>Régua de promoção: ${VEREDITO[p.veredito.resultado][0]}</b>
           <div class="gate-msg">${esc(p.veredito.motivo)}</div>
-          <div class="gate-msg">Δ MAE ${num(p.delta_mae.valor, 1)} ${u} ${faixa(p.delta_mae.intervalo, 1)}${p.delta_atende
-            ? ` · Δ atende ${num(p.delta_atende.valor, 3)} ${faixa(p.delta_atende.intervalo, 3)}` : ''}</div></div></div>` : '';
+          <div class="gate-msg">${detalhePromocao}</div></div></div>` : '';
     return `<div class="${atual ? '' : 'stale'}">
       <div class="veredito ${v.resultado}"><svg class="icon"><use href="#${icone}"/></svg>
         <div><b>${rotulo}</b>${v.provisorio ? ` <span class="tag mid" title="${esc(v.motivos_provisorio.join('; '))}">provisório</span>` : ''}

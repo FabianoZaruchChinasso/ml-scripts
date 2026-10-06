@@ -240,6 +240,9 @@
 
   function cardVersoes() {
     const u = UNIDADE[st.alvo];
+    // Latência e jitter são faixas (p50–p90): a tabela mostra cobertura e pinball do p90.
+    const quantil = st.alvo === 'latency_ms' || st.alvo === 'jitter_ms';
+    const faixa = (iv, casas) => (iv ? ` <em>(${num(iv[0], casas)} a ${num(iv[1], casas)})</em>` : '');
     const linhas = st.reg.versoes.map((v) => {
       const av = (v.avaliacao || {})[st.alvo];
       const motivo = motivoDesatualizada(av);
@@ -258,8 +261,14 @@
           <div class="gate-msg">${esc(v.descricao)}</div></td>
         <td class="num">${v.features.length}</td>
         <td>${tagsFora(v)}</td>
-        <td class="num">${nota ? num(nota.pooled, 3) : '–'}${marca}</td>
-        <td class="num">${nota ? num(nota.mae, 1) + ' ' + u : '–'}</td>
+        <td class="num">${quantil ? (nota && nota.quantis ? num(nota.quantis.cobertura.q90, 2) : '–')
+          : (nota ? num(nota.pooled, 3) : '–')}${marca}</td>
+        <td class="num">${quantil ? (nota && nota.quantis ? num(nota.quantis.pinball.q90, 1) + ' ' + u : '–')
+          : (nota ? num(nota.mae, 1) + ' ' + u : '–')}</td>
+        <td class="num">${(() => {
+          const ac = (v.avaliacao || {}).atende_completo;
+          return ac && ac.media != null ? num(ac.media, 3) + faixa(ac.intervalo, 3) : '–';
+        })()}</td>
         <td>${motivo ? `<span class="tag lab" title="${esc(motivo)}">desatualizada</span>` : `<span class="gate-msg">${esc(v.criado_em || '')}</span>`}</td>
         <td style="white-space:nowrap"><button class="btn" data-acao="base" data-nome="${esc(v.nome)}">Editar a partir desta</button>
           ${v.ativo ? '' : `<button class="btn" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button>`}</td></tr>`;
@@ -268,7 +277,9 @@
       <p class="hint">Cada versão é uma lista de features, imutável depois de salva, em <code>src/ml/core/modelos.json</code>.
         Os números são a avaliação guardada quando a versão foi salva; "desatualizada" diz o que mudou desde então. A versão ativa é a base do "ganho" em Features.</p>
       <div style="overflow-x:auto"><table><thead><tr><th>Versão</th><th class="num">Features</th><th>Fora do TR-069</th>
-        <th class="num">R² pooled</th><th class="num">MAE</th><th>Avaliação</th><th></th></tr></thead>
+        <th class="num">${quantil ? 'Cobertura p90' : 'R² pooled'}</th><th class="num">${quantil ? 'Pinball p90' : 'MAE'}</th>
+        <th class="num" title="download, upload, latência (p90) e jitter (p90) contra os limiares de cada aplicação">Atende completo</th>
+        <th>Avaliação</th><th></th></tr></thead>
       <tbody>${linhas}</tbody></table></div></div>`;
   }
 

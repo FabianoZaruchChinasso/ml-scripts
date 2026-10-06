@@ -1,3 +1,82 @@
+# Changelog — Latência e jitter por quantis
+
+**Data:** 2026-10-05
+
+## Por quê
+
+Latência e jitter eram tratados como regressão pontual, com R² pooled negativo nos dois (spec,
+seção 1-2). A distribuição tem cauda longa (p99 de 350 ms em latência e 205 ms em jitter, spec,
+seção 2), o que o MAE e o R² representam mal. E o "atende" só cobria download e upload: latência e
+jitter nunca entravam na decisão por aplicação.
+
+## Mudanças
+
+- `core/quantis.py` (novo): p50 e p90 em escala log por gradient boosting quantílico
+  (`HistGradientBoostingRegressor`, `loss='quantile'`), fora do fold (LOGO por prédio); pinball
+  loss, cobertura, intervalo de 90% por bootstrap de posições, correção de quantis cruzados,
+  `delta_pinball`, `veredito_quantis` e `atende_completo`.
+- `core/avaliacao.py`: versão da régua `2026-10-05.2`; `atende` passa a delegar a um
+  `_resumo_atende` reaproveitado por quantis.
+- `studio/api.py`: `avaliacao_completa` grava `quantis` e `atende_completo` em latência e jitter;
+  `_promocao` usa o veredito quantílico (cobertura e `delta_pinball`) nesses dois alvos.
+- `studio/static/modelos.js` e `studio/static/assistente.js`: cobertura e pinball do p90 de
+  latência e jitter nas versões salvas, coluna "Atende completo" e cartão de promoção com
+  `delta_pinball` e cobertura.
+- `regression_mlflow.py`: ramo quantílico quando `ALVO=latency_ms` ou `jitter_ms`.
+
+## Efeito medido (`v2-tr069` contra `v3-tr069`, LOGO por prédio, 4 prédios)
+
+| Alvo | Versão | Cobertura p50 | Cobertura p90 (IC 90%) | Pinball p50 | Pinball p90 | MAE mediana | MAE RF | Cruzados |
+|---|---|---|---|---|---|---|---|---|
+| Latência | v2-tr069 | 0,4241 | 0,73 (0,7087 a 0,751) | 11,5849 | 14,5874 | 23,1698 | 31,7348 | 44 |
+| Latência | v3-tr069 | 0,4249 | 0,7109 (0,6849 a 0,7383) | 11,3632 | 14,5556 | 22,7264 | 31,3342 | 54 |
+| Jitter | v2-tr069 | 0,4481 | 0,7435 (0,6945 a 0,8022) | 8,2032 | 10,077 | 16,4065 | 23,2775 | 12 |
+| Jitter | v3-tr069 | 0,4588 | 0,7176 (0,6659 a 0,7812) | 8,1315 | 10,1632 | 16,2629 | 22,3425 | 36 |
+
+Cobertura do p90 por prédio, `v3-tr069` (1.311 linhas em latência, 1.310 em jitter):
+
+| Prédio | Latência | Jitter |
+|---|---|---|
+| casa-marcelo | 0,8491 | 0,8145 |
+| coworking | 0,7413 | 0,6573 |
+| hotmilk | 0,6596 | 0,696 |
+| residencia | 0,6498 | 0,6878 |
+
+"Atende completo" (download e upload pela previsão pontual, latência e jitter pelo p90; n=1298):
+`v2-tr069` média 0,6526 (IC 0,6302 a 0,6903) e `v3-tr069` média 0,6522 (IC 0,6304 a 0,6878). Por
+aplicação, `v2-tr069` → `v3-tr069`: Navegação 0,5405 → 0,5426, Chamada de vídeo 0,6184 → 0,6063,
+Streaming 4K 0,7739 → 0,7751, Jogo em nuvem 0,6777 → 0,6848. Para referência, o "atende" só de
+throughput (régua anterior) é `v2-tr069` 0,6446 (0,6254 a 0,6647) e `v3-tr069` 0,6551 (0,6381 a
+0,6756).
+
+Veredito de promoção `v3-tr069` contra `v2-tr069`: latência **pior** (`delta_pinball` −0,0318, IC
+−0,1067 a 0,0245; cobertura do p90 0,71, fora da faixa de 0,80 a 0,95, "a faixa prevista não é
+confiável"); jitter **pior** pela mesma razão (`delta_pinball` 0,0862, IC −0,1373 a 0,2698;
+cobertura do p90 0,72).
+
+### Conclusão sobre a CQR
+
+O critério da spec (seção 7.3) pede que, se a cobertura do p90 de algum prédio deixado de fora sair
+da faixa de 0,80 a 0,95, o CHANGELOG registre isso e a recomendação passe a ser implementar a
+calibração conformal (CQR). Na `v3-tr069`, só a casa-marcelo fica dentro da faixa nos dois alvos
+(0,8491 em latência, 0,8145 em jitter); coworking, hotmilk e residencia ficam abaixo de 0,80 nos
+dois alvos. **Recomendação: implementar a CQR** antes de promover qualquer versão por latência ou
+jitter — o p90 sem calibração sub-cobre na maioria dos prédios, então o "atende" derivado dele é
+otimista fora da casa-marcelo.
+
+## Para o responsável pela coleta
+
+Confirmar em que momento do teste a latência e o jitter são medidos (enlace ocioso ou sob carga,
+durante o próprio download) — ver spec, seção 8. A correlação de −0,4 a −0,7 entre latência e
+download (spec, seção 2) é compatível com medição sob carga, mas isso não está confirmado pelo
+coletor.
+
+## Fica para depois
+
+A frente C (spec anterior, seção 10) e, pelo critério acima, a CQR em latência e jitter.
+
+---
+
 # Changelog — Régua única, carga canônica e concorrência
 
 **Data:** 2026-10-05

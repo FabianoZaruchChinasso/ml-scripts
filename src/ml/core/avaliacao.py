@@ -19,7 +19,7 @@ from ml.core.sites import teto_wan
 from ml.core.splits import outer_logo_folds
 
 # Muda quando a régua muda: avaliações guardadas com outra versão ficam "desatualizadas".
-VERSAO_REGUA = '2026-10-05.1'
+VERSAO_REGUA = '2026-10-05.2'
 ARVORES = 200
 ALVOS_COM_TETO = ('speedtest_down_mbps', 'speedtest_up_mbps')
 _COLUNAS_PREVISAO = ['_linha', 'y', 'yhat', '_site', '_pos']
@@ -257,17 +257,14 @@ def _atende_em(j: pd.DataFrame, limiares: dict, y_dn: str, y_up: str) -> np.ndar
   return ((j[y_dn] >= limiares['dn']) & (j[y_up] >= limiares['up'])).to_numpy()
 
 
-def atende(prev_down: pd.DataFrame, prev_up: pd.DataFrame, aplicacoes: dict, amostras=None) -> dict:
-  """Acurácia balanceada de "atende em throughput" por aplicação, real contra previsto.
+def _resumo_atende(j: pd.DataFrame, classes: dict, amostras=None) -> dict:
+  """Acurácia balanceada por aplicação, média e intervalo de 90%.
 
-  Atende = download >= limiar dn e upload >= limiar up, nas linhas com os dois alvos.
+  `classes`: nome da aplicação -> (real, previsto), vetores booleanos alinhados com `j`.
   Aplicação em que só uma classe aparece nos dados reais fica fora da média, com aviso.
   """
-  j = _juntar(dn=prev_down, up=prev_up)
   pares, por_aplicacao, avisos = {}, {}, []
-  for nome, limiares in aplicacoes.items():
-    real = _atende_em(j, limiares, 'y_dn', 'y_up')
-    previsto = _atende_em(j, limiares, 'p_dn', 'p_up')
+  for nome, (real, previsto) in classes.items():
     valor = _acuracia_balanceada(real, previsto)
     if np.isnan(valor):
       avisos.append(f'{nome}: só uma classe nos dados reais; fora da média')
@@ -282,6 +279,17 @@ def atende(prev_down: pd.DataFrame, prev_up: pd.DataFrame, aplicacoes: dict, amo
                             for i in amostras])
   return {'por_aplicacao': por_aplicacao, 'media': media, 'intervalo': intervalo,
           'n': int(len(j)), 'avisos': avisos}
+
+
+def atende(prev_down: pd.DataFrame, prev_up: pd.DataFrame, aplicacoes: dict, amostras=None) -> dict:
+  """Acurácia balanceada de "atende em throughput" por aplicação, real contra previsto.
+
+  Atende = download >= limiar dn e upload >= limiar up, nas linhas com os dois alvos.
+  """
+  j = _juntar(dn=prev_down, up=prev_up)
+  classes = {nome: (_atende_em(j, limiares, 'y_dn', 'y_up'), _atende_em(j, limiares, 'p_dn', 'p_up'))
+             for nome, limiares in aplicacoes.items()}
+  return _resumo_atende(j, classes, amostras)
 
 
 def delta_mae(nova: pd.DataFrame, base: pd.DataFrame, amostras=None) -> dict:
