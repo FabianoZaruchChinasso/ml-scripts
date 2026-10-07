@@ -243,5 +243,77 @@ class TestPromocao(Base):
     self.assertEqual(v['resultado'], 'melhor')
 
 
+class TestDenominador(Base):
+  def conj_com_den(self, valores, alvo='speedtest_down_mbps'):
+    f = frame()
+    f['router_tx_rate_mbps'] = valores(f)
+    return conjunto(alvo, f)
+
+  def test_previsao_e_constante_vezes_denominador(self):
+    conj = self.conj_com_den(lambda f: np.where(f['local'].str.startswith('hotmilk'), 600.0, 100.0))
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                                 denominador='router_tx_rate_mbps')
+    por_site = prev.groupby('_site')['yhat'].unique().map(list).to_dict()
+    self.assertEqual(por_site['hotmilk'], [300.0])
+    self.assertEqual(por_site['coworking'], [50.0])
+    self.assertFalse(prev['den_imputado'].any())
+
+  def test_treina_na_eficiencia(self):
+    conj = self.conj_com_den(lambda f: np.full(len(f), 10.0))
+    alvos = []
+
+    class Espiao(Constante):
+      def fit(self, X, y):
+        alvos.append(np.asarray(y, dtype=float))
+        return super().fit(X, y)
+
+    A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Espiao(0.0),
+                          denominador='router_tx_rate_mbps')
+    reais = conj.df['speedtest_down_mbps'].to_numpy(dtype=float) / 10.0
+    self.assertTrue(all(np.all(np.isin(np.round(a, 6), np.round(reais, 6))) for a in alvos))
+
+  def test_teto_depois_da_multiplicacao(self):
+    conj = self.conj_com_den(lambda f: np.full(len(f), 1000.0))
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                                 denominador='router_tx_rate_mbps')
+    por_site = prev.groupby('_site')['yhat'].unique().map(list).to_dict()
+    self.assertEqual(por_site['residencia'], [154.0])
+    self.assertEqual(por_site['hotmilk'], [500.0])
+
+  def test_den_vazio_usa_a_mediana_do_treino_do_fold(self):
+    def valores(f):
+      v = np.where(f['local'].str.startswith('hotmilk'), 1000.0, 100.0)
+      v[(f['local'] == 'hotmilk-copa').to_numpy()] = np.nan
+      return v
+    conj = self.conj_com_den(valores)
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                                 denominador='router_tx_rate_mbps')
+    copa, aquario = prev[prev['_pos'] == 'hotmilk-copa'], prev[prev['_pos'] == 'hotmilk-aquario']
+    # O treino do fold do hotmilk é residência + coworking, todos com 100: a mediana é 100, não 1000.
+    self.assertEqual(copa['yhat'].unique().tolist(), [50.0])
+    self.assertTrue(copa['den_imputado'].all())
+    self.assertEqual(aquario['yhat'].unique().tolist(), [500.0])
+    self.assertFalse(aquario['den_imputado'].any())
+    self.assertEqual(A.avaliar(conj, ['router_snr'], [], denominador='router_tx_rate_mbps')['den_imputados'],
+                     len(copa))
+
+  def test_sem_denominador_nada_muda(self):
+    conj = conjunto()
+    a = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(7.0))
+    b = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(7.0), denominador=None)
+    np.testing.assert_allclose(a['yhat'], b['yhat'])
+    self.assertFalse(a['den_imputado'].any())
+
+  def test_denominador_inexistente_levanta(self):
+    conj = conjunto()
+    with self.assertRaisesRegex(ValueError, 'nao_existe'):
+      A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], denominador='nao_existe')
+
+  def test_resumir_sem_a_coluna(self):
+    r = A.resumir(pd.DataFrame({'_linha': ['a', 'b'], 'y': [1.0, 2.0], 'yhat': [1.0, 2.0],
+                                '_site': ['s', 's'], '_pos': ['p', 'q']}), 1)
+    self.assertEqual(r['den_imputados'], 0)
+
+
 if __name__ == '__main__':
   unittest.main()

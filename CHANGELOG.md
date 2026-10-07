@@ -1,3 +1,139 @@
+# Changelog — Throughput como eficiência do enlace (C1): nova `v4-tr069`
+
+**Data:** 2026-10-06
+
+## Por quê
+
+No download, o hotmilk chega a 670,53 Mbps (máximo) com p90 de 487,39, enquanto o maior dos outros
+três prédios (coworking) não passa de 266,54; o MAE da `v3-tr069` no hotmilk era de 90,8652 Mbps.
+As árvores não extrapolam acima do que viram no treino, e sem o hotmilk no treino o modelo não
+consegue prever acima do que os outros prédios mostraram (spec, seção 1). O TR-069 já traz a taxa
+PHY nominal do enlace; esta entrega (frente C1) usa essa física como prior: a régua passa a prever
+a **eficiência** (alvo ÷ taxa PHY da direção) em vez do Mbps absoluto — comparável entre prédios —
+e a previsão volta a Mbps multiplicando pela taxa.
+
+## Mudanças
+
+- `core/modelos.py`: campo opcional `denominador` por versão (`{alvo: coluna}`, só para
+  `speedtest_down_mbps`/`speedtest_up_mbps`), validado em `validar_registro` e `salvar_versao`
+  (recusa coluna desconhecida ou com vazamento); `denominador_de` lê o valor de uma versão.
+- `core/avaliacao.py`: `prever_fora_do_fold`, `avaliar` e `avaliar_versao` ganham `denominador`:
+  treinam em `y ÷ den`, multiplicam a previsão por `den`, imputam `den` vazio pela mediana do
+  treino do fold (marcando `den_imputado`) e aplicam o teto de WAN depois da multiplicação;
+  `resumir` ganha `den_imputados`; versão da régua `2026-10-06.2`.
+- `studio/features.py` e `studio/api.py`: comparação, avaliação, promoção e salvamento passam o
+  denominador de cada versão; o rascunho do Assistente herda o denominador da base.
+- `studio/static/assistente.js`: o salvamento manda `base`. `studio/static/modelos.js`: versões
+  salvas com denominador ganham a etiqueta "eficiência ÷ tx/rx".
+- `regression_mlflow.py`: o ramo de eficiência treina em `y ÷ den` e registra o artefato
+  `eficiencia.json`.
+- Nova versão `v4-tr069` no registro: mesmas features da `v3-tr069`, download ÷
+  `router_tx_rate_mbps` e upload ÷ `router_rx_rate_mbps`. Salva via `salvar_versao`, mas **não
+  ativa** (`ativo` continua `v1`).
+
+## Efeito medido (`v3-tr069` × `v4-tr069`, régua `2026-10-06.2`)
+
+### Download (`speedtest_down_mbps`)
+
+| Versão | R² pooled (IC 90%) | MAE pooled (IC 90%) | MAE log | `den_imputados` |
+|---|---|---|---|---|
+| v3-tr069 | 0,4211 (0,3496 a 0,5453) | 40,7453 (29,8683 a 50,7613) | 0,7129 | 0 |
+| v4-tr069 | 0,5853 (0,4724 a 0,705) | 38,0974 (29,7219 a 46,1193) | 0,7534 | 0 |
+
+R² por prédio — v3-tr069: casa-marcelo 0,6589, coworking 0,6492, hotmilk 0,2469, residência 0,6766;
+v4-tr069: 0,364, 0,6648, 0,5034, 0,6881.
+
+MAE por prédio — v3-tr069: casa-marcelo 25,1794, coworking 26,8908, hotmilk 90,8652, residência
+16,1429; v4-tr069: 32,0921, 25,9624, 75,646, 16,3731.
+
+### Upload (`speedtest_up_mbps`)
+
+| Versão | R² pooled (IC 90%) | MAE pooled (IC 90%) | MAE log | `den_imputados` |
+|---|---|---|---|---|
+| v3-tr069 | 0,6194 (0,5447 a 0,7127) | 40,2498 (30,7914 a 49,5906) | 0,8311 | 0 |
+| v4-tr069 | 0,6754 (0,578 a 0,7993) | 36,5382 (27,662 a 45,7652) | 0,7571 | 0 |
+
+R² por prédio — v3-tr069: casa-marcelo 0,6286, coworking 0,3945, hotmilk 0,5016, residência 0,2531;
+v4-tr069: 0,6573, 0,3681, 0,586, 0,3.
+
+MAE por prédio — v3-tr069: casa-marcelo 36,9348, coworking 28,2538, hotmilk 79,1961, residência
+15,0927; v4-tr069: 35,4929, 28,8231, 69,2852, 13,4934.
+
+### Atende e promoção
+
+"Atende em throughput": `v3-tr069` média 0,6551 (IC 0,6381 a 0,6756) e `v4-tr069` 0,6425 (IC 0,6248
+a 0,6662). Por aplicação, `v3-tr069` → `v4-tr069`: Navegação 0,5188 → 0,5038; Chamada de vídeo
+0,5583 → 0,5474; Streaming 4K 0,7773 → 0,7824; Jogo em nuvem 0,7661 → 0,7363.
+
+"Atende completo": `v3-tr069` 0,6611 (IC 0,6418 a 0,6904) e `v4-tr069` 0,6624 (IC 0,6421 a 0,6926).
+
+Veredito de promoção `v4-tr069` contra `v3-tr069`, régua `2026-10-06.2`: download **pior**
+(`delta_mae` −2,6479, IC −6,8412 a 1,6579; `delta_atende` −0,0127, IC −0,0195 a −0,0031: "a
+acurácia de 'atende' caiu 0,013") e upload **pior** pelo mesmo motivo (`delta_mae` −3,7116, IC
+−5,4043 a −1,7916; `delta_atende` −0,0127, IC −0,0195 a −0,0031). O R² e o MAE pooled melhoram nos
+dois alvos, mas o critério de promoção pesa a acurácia de "atende", que piora um pouco nas duas
+direções — por isso a `v4-tr069` fica salva e medida, mas não promovida a ativa.
+
+## Exploração dos denominadores (spec, seção 2)
+
+Protótipo anterior a este plano, com as features da `v3-tr069` e a régua `2026-10-06.1`:
+
+| Denominador | Download R² / MAE / MAE log | Upload R² / MAE / MAE log |
+|---|---|---|
+| nenhum (Mbps absolutos, hoje) | 0,42 / 40,7 / 0,713 | 0,62 / 40,2 / 0,831 |
+| `router_tx_rate_mbps` | 0,59 / 38,1 / 0,753 | 0,19 / 53,6 / 1,009 |
+| `router_rx_rate_mbps` | 0,57 / 38,7 / 0,734 | 0,68 / 36,5 / 0,757 |
+| média de `tx` e `rx` | 0,59 / 35,9 / 0,650 | 0,67 / 38,3 / 0,868 |
+| máximo de `tx` e `rx` | 0,54 / 38,8 / 0,692 | 0,64 / 40,1 / 0,899 |
+| raiz de `expected × tx` | 0,58 / 38,1 / 0,710 | 0,09 / 54,4 / 0,956 |
+| `router_expected_throughput_mbps` | 0,54 / 38,4 / 0,677 | 0,04 / 54,9 / 0,906 |
+
+A escolha final (download ÷ `tx`, upload ÷ `rx`) não foi a de melhor número isolado nesta tabela —
+foi pela física da direção: download vai do roteador ao cliente (taxa de envio), upload vai do
+cliente ao roteador (taxa de recepção); usar o lado errado no upload derruba o R² de 0,68 para
+0,19. O efeito é físico, não acaso.
+
+## Critério da C2 (dados externos): corrigido, a C2 não entra
+
+O critério da spec (seção 8) comparava MAE **absoluto**: hotmilk 75,65 contra 23,22 nos outros três
+prédios juntos, razão 3,26, acima do dobro. Mas os valores de download do hotmilk são cerca de três
+vezes maiores que os dos outros prédios, então essa razão mede escala, não falta de conhecimento.
+Em termos relativos, com a `v4-tr069`, o hotmilk não se destaca mais:
+
+| Download, `v4-tr069` | hotmilk | outros três prédios |
+|---|---|---|
+| MAE absoluto (critério original) | 75,65 Mbps | 23,22 Mbps |
+| MAE em escala log | 0,74 | 0,76 |
+| Erro relativo mediano | 58% | 57% |
+
+Na `v3-tr069`, o hotmilk era pior também em termos relativos (MAE log 0,80 contra 0,68): a
+eficiência corrigiu isso. O critério passa a ser relativo: a C2 só entra se o MAE log de um prédio
+for mais que 1,5 vez o dos outros juntos. Com a `v4-tr069`, a razão é 0,97, e **a C2 não entra**.
+
+A lacuna real que sobra está nas 61 linhas do hotmilk acima de 267 Mbps, a faixa que nenhum outro
+prédio cobre: ali o MAE caiu de 346 (`v3-tr069`) para 181 Mbps (`v4-tr069`), mas segue alto. É uma
+lacuna de cobertura de coleta, que os dados externos listados dificilmente fecham (o IEEE 802.11ac
+ensina a eficiência por MCS, que a `v4-tr069` já tira da taxa PHY; o Komondor simula cenários
+densos, diferentes de um enlace de 160 MHz quase sem contenção).
+
+Com a `v4-tr069`, o MAE log piorou na casa-marcelo (0,58 para 0,73) e na residência (0,80 para
+0,86). Isso é compatível com a queda do "atende em throughput", mas a causa não foi isolada.
+
+## Para o responsável pela coleta
+
+Mais medições em enlaces de alta capacidade (160 MHz, Wi-Fi 6) em prédios além do hotmilk, para
+que a faixa acima de cerca de 270 Mbps apareça no treino quando qualquer prédio fica de fora.
+
+## Fica para depois
+
+- Entender a queda do "atende" na `v4-tr069` (e a piora relativa na casa-marcelo e na residência)
+  antes de qualquer promoção.
+- Variantes de denominador (média de `tx` e `rx`, máximo, `router_expected_throughput_mbps`) como
+  outras versões.
+- A C2 (dados externos) fica fora até o critério relativo indicar uma lacuna que ela possa explicar.
+
+---
+
 # Changelog — Calibração conformal (CQR) do p90 de latência e jitter
 
 **Data:** 2026-10-06

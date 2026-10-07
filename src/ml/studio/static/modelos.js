@@ -257,7 +257,12 @@
         : aninhada ? ' <span class="tag current" title="seleção refeita sem o local de teste: estimativa honesta">aninhada</span>'
         : sel ? ' <span class="tag mid" title="as features foram escolhidas olhando estes mesmos locais (para ' + esc(sel.alvo) + ')">otimista</span>' : '';
       return `<tr>
-        <td><code>${esc(v.nome)}</code>${v.ativo ? ' <span class="tag current">ativo</span>' : ''}
+        <td><code>${esc(v.nome)}</code>${v.ativo ? ' <span class="tag current">ativo</span>' : ''}${(() => {
+          const den = (v.denominador || {})[st.alvo];
+          if (!den) return '';
+          const lado = den.includes('_tx_') ? 'tx' : den.includes('_rx_') ? 'rx' : den;
+          return ` <span class="tag mid" title="prevê a eficiência (alvo ÷ ${esc(den)}) e volta para Mbps">eficiência ÷ ${esc(lado)}</span>`;
+        })()}
           <div class="gate-msg">${esc(v.descricao)}</div></td>
         <td class="num">${v.features.length}</td>
         <td>${tagsFora(v)}</td>

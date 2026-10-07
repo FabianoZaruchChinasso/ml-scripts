@@ -282,8 +282,11 @@ def veredito(delta: dict, n_locais: int, pendentes=(), unidade: str = '') -> dic
           'motivos_provisorio': provisorio}
 
 
-def comparar(conj: Conjunto, inv: dict, versoes: dict, ativo: str) -> dict:
-  """Avalia cada versão salva mais as duas referências: TR-069 completo e Tudo."""
+def comparar(conj: Conjunto, inv: dict, versoes: dict, ativo: str, denominadores: dict = None) -> dict:
+  """Avalia cada versão salva mais as duas referências: TR-069 completo e Tudo.
+
+  `denominadores` ({nome: {alvo: coluna}}) faz cada versão ser avaliada com o seu.
+  """
   _checar_locais(conj.df)
   inicio = time.time()
   ok = elegiveis(inv)
@@ -292,7 +295,9 @@ def comparar(conj: Conjunto, inv: dict, versoes: dict, ativo: str) -> dict:
   tr069 = [c for c in ok if por_nome[c]['classe'] == 'tr069']
   with warnings.catch_warnings(record=True) as capturados:
     warnings.simplefilter('always')
-    resultado = [dict(avaliar_versao(conj, feats, vazadas), nome=nome, ativo=nome == ativo)
+    resultado = [dict(avaliar_versao(conj, feats, vazadas,
+                                     denominador=((denominadores or {}).get(nome) or {}).get(conj.alvo)),
+                      nome=nome, ativo=nome == ativo)
                  for nome, feats in versoes.items()]
     referencias = {'tr069': avaliar(conj, tr069, vazadas), 'tudo': avaliar(conj, ok, vazadas)}
   return {'alvo': conj.alvo, 'datasets': conj.datasets, 'locais': sorted(conj.df['_site'].unique()),

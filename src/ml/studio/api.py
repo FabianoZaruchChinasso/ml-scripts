@@ -89,6 +89,10 @@ def _versoes_por_nome(registro) -> dict:
   return {nome: v['features'] for nome, v in registro['versoes'].items()}
 
 
+def _denominadores(registro) -> dict:
+  return {nome: v.get('denominador') or {} for nome, v in registro['versoes'].items()}
+
+
 def _chave_versoes():
   return (core_features.versao_tabela(), core_features.CATALOGO_VERSAO,
           core_features.versao_derivadas(), core_modelos.versao_registro())
@@ -174,7 +178,7 @@ def modelos_comparar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: 
     try:
       inv = studio_features.inventario(conj, core_modelos.ativo(registro))
       _modelos_cache[chave] = studio_features.comparar(conj, inv, _versoes_por_nome(registro),
-                                                       registro['ativo'])
+                                                       registro['ativo'], _denominadores(registro))
     except ValueError as erro:
       raise HTTPException(422, str(erro))
   return _modelos_cache[chave]
@@ -189,9 +193,10 @@ def _presentes(c, lista):
   return [f for f in lista if f in c.df.columns and f not in vazadas], vazadas
 
 
-def _prever_pontual(c, lista):
+def _prever_pontual(c, lista, denominador: dict = None):
   presentes, vazadas = _presentes(c, lista)
-  return core_avaliacao.prever_fora_do_fold(c.df, presentes, c.alvo, vazadas)
+  return core_avaliacao.prever_fora_do_fold(c.df, presentes, c.alvo, vazadas,
+                                            denominador=(denominador or {}).get(c.alvo))
 
 
 def _prever_quantis(c, lista):
@@ -199,11 +204,12 @@ def _prever_quantis(c, lista):
   return core_quantis.prever_quantis_fora_do_fold(c.df, presentes, c.alvo, vazadas)
 
 
-def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, conj) -> dict:
+def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, conj,
+              den_nova: dict = None, den_base: dict = None) -> dict:
   """Veredito de promoção da régua contra a versão base.
 
   Latência e jitter: Δ pinball do p90 e cobertura da nova versão. Download e upload:
-  Δ MAE e Δ "atende em throughput".
+  Δ MAE e Δ "atende em throughput", cada lado com o seu denominador ({alvo: coluna}).
   """
   if alvo in core_quantis.ALVOS_QUANTILICOS:
     nova = _prever_quantis(conj, feats)
@@ -212,13 +218,15 @@ def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, 
     return {'delta_pinball': d_pinball, 'cobertura': cobertura,
             'veredito': core_quantis.veredito_quantis(d_pinball, cobertura),
             'versao_regua': core_avaliacao.VERSAO_REGUA}
-  d_mae = core_avaliacao.delta_mae(_prever_pontual(conj, feats), _prever_pontual(conj, feats_base))
+  d_mae = core_avaliacao.delta_mae(_prever_pontual(conj, feats, den_nova),
+                                   _prever_pontual(conj, feats_base, den_base))
   d_atende = None
   if alvo in core_avaliacao.ALVOS_COM_TETO:
     dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
     up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
-    d_atende = core_avaliacao.delta_atende(_prever_pontual(dn, feats), _prever_pontual(up, feats),
-                                           _prever_pontual(dn, feats_base), _prever_pontual(up, feats_base),
+    d_atende = core_avaliacao.delta_atende(_prever_pontual(dn, feats, den_nova), _prever_pontual(up, feats, den_nova),
+                                           _prever_pontual(dn, feats_base, den_base),
+                                           _prever_pontual(up, feats_base, den_base),
                                            core_aplicacoes.carregar())
   return {'delta_mae': d_mae, 'delta_atende': d_atende,
           'veredito': core_avaliacao.veredito_promocao(d_mae, d_atende),
@@ -238,28 +246,33 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
   chave = ('avaliar', tuple(conj.datasets), alvo, _ambiente(ambiente), tuple(feats), base) + _chave_versoes()
   if chave not in _modelos_cache:
     vazadas = studio_features.vazadas_do_conjunto(conj)
+    # O rascunho herda o denominador da versão de onde partiu (ou da ativa, sem base).
+    den_nova = registro['versoes'][base or registro['ativo']].get('denominador') or {}
+    den_base = (registro['versoes'][base].get('denominador') or {}) if base else {}
     try:
       studio_features.assert_sem_vazamento(feats, vazadas)
       studio_features._checar_locais(conj.df)
-      resumo = studio_features.avaliar(conj, feats, vazadas)
+      resumo = studio_features.avaliar(conj, feats, vazadas, denominador=den_nova.get(alvo))
       saida = {'alvo': alvo, 'features': feats, 'resumo': resumo,
                'correlacoes': studio_features.correlacoes(conj.df, feats),
                'fora_do_tr069': core_modelos.fora_do_tr069(feats, conj.tabela)}
       if base:
         saida['base'] = base
-        saida['resumo_base'] = studio_features.avaliar_versao(conj, registro['versoes'][base]['features'], vazadas)
+        saida['resumo_base'] = studio_features.avaliar_versao(conj, registro['versoes'][base]['features'], vazadas,
+                                                              denominador=den_base.get(alvo))
         saida['delta'] = studio_features.delta_por_local(resumo, saida['resumo_base'])
         pendentes = [f for f in feats if conj.classes.get(f) is not None and conj.classes[f].pendente]
         saida['veredito'] = studio_features.veredito(saida['delta'], int(conj.df['_site'].nunique()),
                                                      pendentes, studio_features.UNIDADES[alvo])
-        saida['promocao'] = _promocao(ds, ambiente, alvo, feats, registro['versoes'][base]['features'], conj)
+        saida['promocao'] = _promocao(ds, ambiente, alvo, feats, registro['versoes'][base]['features'], conj,
+                                      den_nova, den_base)
     except (ValueError, AssertionError) as erro:
       raise HTTPException(422, str(erro))
     _modelos_cache[chave] = saida
   return _modelos_cache[chave]
 
 
-def avaliacao_completa(ds: str, ambiente: str, features: list) -> dict:
+def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None) -> dict:
   """Avaliação dos quatro alvos, de "atende em throughput" e de "atende completo", guardada junto da versão.
 
   Latência e jitter levam também o resumo quantílico (p50 e p90).
@@ -269,7 +282,8 @@ def avaliacao_completa(ds: str, ambiente: str, features: list) -> dict:
   for alvo in studio_features.TARGETS:
     conj, _ = _conjunto(ds, alvo, ambiente)
     resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, features, studio_features.vazadas_do_conjunto(conj),
-                                                     com_previsoes=True)
+                                                     com_previsoes=True,
+                                                     denominador=(denominador or {}).get(alvo))
     saida[alvo] = dict(resumo, datasets=conj.datasets, ambiente=_ambiente(ambiente) or 'todos',
                        versao_tabela=core_features.versao_tabela(),
                        versao_catalogo=core_features.CATALOGO_VERSAO)
@@ -565,6 +579,7 @@ class NovaVersao(BaseModel):
   ds: str = ''
   ambiente: str = ''
   desenho: Optional[str] = None
+  base: Optional[str] = None
 
 
 @app.post('/api/modelos')
@@ -576,14 +591,18 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
   registro, _ = _registro()
   if corpo.nome in registro['versoes']:
     raise HTTPException(422, f'a versão {corpo.nome!r} já existe e é imutável; escolha outro nome')
+  if corpo.base and corpo.base not in registro['versoes']:
+    raise HTTPException(422, f'versão base {corpo.base!r} não existe')
+  # Mesma regra da avaliação do rascunho: herda o denominador da base (ou da ativa).
+  denominador = registro['versoes'][corpo.base or registro['ativo']].get('denominador') or None
   try:
     core_modelos.validar_registro({'ativo': corpo.nome, 'versoes': {corpo.nome: {
       'features': corpo.features, 'descricao': corpo.descricao or '-'}}})
     selecao = _metadados_do_desenho(corpo.desenho, corpo.features) if corpo.desenho else None
-    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features)
+    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador)
     core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, _colunas_conhecidas(),
                                tabela, origem='selecao-gulosa' if selecao else 'studio',
-                               avaliacao=avaliacao, selecao=selecao)
+                               avaliacao=avaliacao, selecao=selecao, denominador=denominador)
   except (ValueError, AssertionError) as erro:
     raise HTTPException(422, str(erro))
   _ajustes.clear()

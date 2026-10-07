@@ -423,7 +423,7 @@
     if (!st.desc.trim()) { st.pubErro = 'Escreva uma descrição: ela é o que explica a versão no git log.'; desenhar(); return; }
     const nome = st.nome;
     st.publicando = true; desenhar();
-    post('api/modelos', { nome, descricao: st.desc, features: selLista(), ds: st.ctx.enabledIds.join(','), ambiente: st.ctx.ambiente })
+    post('api/modelos', { nome, descricao: st.desc, features: selLista(), ds: st.ctx.enabledIds.join(','), ambiente: st.ctx.ambiente, base: st.base })
       .then((reg) => {
         st.reg = reg; st.base = nome; st.nome = ''; st.nomeTocada = false; st.descTocada = false;
         st.invKey = null; st.sugKey = null;

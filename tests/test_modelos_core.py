@@ -130,5 +130,36 @@ class TestAvaliacaoComRegua(unittest.TestCase):
                     'atende_throughput': {'media': 0.8}}}}})
 
 
+class TestDenominador(Base):
+  def registro(self, denominador):
+    return {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
+                                              'denominador': denominador}}}
+
+  def test_denominador_valido(self):
+    M.validar_registro(self.registro({'speedtest_down_mbps': 'router_tx_rate_mbps',
+                                      'speedtest_up_mbps': 'router_rx_rate_mbps'}))
+
+  def test_denominador_invalido(self):
+    for ruim in ({'latency_ms': 'router_snr'}, {'speedtest_down_mbps': ''},
+                 {'speedtest_down_mbps': 3}, {}, ['router_snr'], 'router_snr'):
+      with self.assertRaises(ValueError, msg=repr(ruim)):
+        M.validar_registro(self.registro(ruim))
+
+  def test_salvar_grava_e_le_o_denominador(self):
+    M.salvar_versao('v2', ['router_snr'], 'eficiência', CONHECIDAS, TABELA,
+                    denominador={'speedtest_down_mbps': 'router_signal_dbm'}, path=self.path)
+    reg = M.carregar(self.path)
+    self.assertEqual(M.denominador_de(reg, 'v2', 'speedtest_down_mbps'), 'router_signal_dbm')
+    self.assertIsNone(M.denominador_de(reg, 'v2', 'speedtest_up_mbps'))
+    self.assertIsNone(M.denominador_de(reg, 'v1', 'speedtest_down_mbps'))
+    self.assertIsNone(M.denominador_de(reg, 'nao-existe', 'speedtest_down_mbps'))
+
+  def test_salvar_recusa_denominador_desconhecido_ou_com_vazamento(self):
+    for coluna in ('nao_existe', 'router_tx_bytes', 'RSSI'):
+      with self.assertRaises(ValueError, msg=coluna):
+        M.salvar_versao('v2', ['router_snr'], 'x', CONHECIDAS, TABELA,
+                        denominador={'speedtest_down_mbps': coluna}, path=self.path)
+
+
 if __name__ == '__main__':
   unittest.main()

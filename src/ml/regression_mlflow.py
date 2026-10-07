@@ -7,6 +7,8 @@ prédio de fora por vez, e o modelo final é treinado com todas as linhas fora d
 teto de WAN. Para ALVO=latency_ms ou jitter_ms, treina os dois modelos quantílicos
 (p50 e p90) em vez da varredura de árvores, e registra em conformal.json a correção conformal do
 p90 (em escala log) que a produção soma à previsão do modelo antes de voltar para ms.
+Se a versão tiver denominador para o ALVO (core/modelos.json), o modelo aprende a eficiência
+(alvo ÷ coluna) e eficiencia.json diz como voltar para Mbps.
 """
 
 import os
@@ -14,6 +16,7 @@ import sys
 
 import mlflow
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -121,6 +124,9 @@ def main():
   if removidas:
     print(f'features com vazamento fora da conta: {removidas}')
   validate_columns(conj.df, features, 'feature')
+  denominador = core_modelos.denominador_de(registro, nome_modelo, ALVO)
+  if denominador:
+    validate_columns(conj.df, [denominador], 'denominador')
   print(f"Modelo: {nome_modelo}" + (' (ativo)' if nome_modelo == registro['ativo'] else '')
         + f" — {len(features)} features, alvo {ALVO}, datasets {conj.datasets}")
 
@@ -134,6 +140,7 @@ def main():
     'versao_regua': core_avaliacao.VERSAO_REGUA,
     'features': ','.join(features),
     'removidas_por_vazamento': ','.join(removidas),
+    'denominador': denominador or '',
   }
   mlflow.set_experiment('MLflow Wifi Regressions')
   if ALVO in core_quantis.ALVOS_QUANTILICOS:
@@ -143,16 +150,28 @@ def main():
   treino = ~conj.df['_limitado_wan']
   X_final = core_features.matriz(conj.df[treino], features)
   y_final = conj.df.loc[treino, ALVO].astype(float)
+  eficiencia = None
+  if denominador:
+    den = pd.to_numeric(conj.df.loc[treino, denominador], errors='coerce')
+    mediana = float(den[den >= core_avaliacao.DEN_MINIMO].median())
+    y_final = y_final / den.where(den >= core_avaliacao.DEN_MINIMO, mediana)
+    eficiencia = {'alvo': ALVO, 'denominador': denominador, 'mediana_imputacao': mediana,
+                  'den_minimo': core_avaliacao.DEN_MINIMO,
+                  'uso': 'mbps = predict(X) * denominador (vazio ou abaixo de den_minimo: mediana_imputacao)'}
   for config in CONFIGS:
     with mlflow.start_run(run_name=f"{nome_modelo}-{config['model_type']}-{config['max_depth']}"):
       mlflow.log_params(dict(params, **config))
-      prev = core_avaliacao.prever_fora_do_fold(conj.df, features, ALVO, vazadas, estimador=montar(config))
+      prev = core_avaliacao.prever_fora_do_fold(conj.df, features, ALVO, vazadas, estimador=montar(config),
+                                                denominador=denominador)
       resumo = core_avaliacao.resumir(prev, len(features))
       registrar_metricas(resumo)
       final = montar(config).fit(X_final, y_final)
       # O imputer guarda um numpy.dtype, que o skops não confia por padrão.
       mlflow.sklearn.log_model(sk_model=final, name=config['model_type'], serialization_format='skops',
                                skops_trusted_types=['numpy.dtype'])
+      if eficiencia:
+        mlflow.log_dict(eficiencia, 'eficiencia.json')
+        mlflow.log_metric('den_imputados', resumo['den_imputados'])
       print('-' * 61)
       print(f"{config['model_type']} {config}: R² pooled {resumo['pooled']} "
             f"(90%: {resumo['intervalos'].get('pooled')}), MAE {resumo['mae']}, MAE log {resumo['mae_log']}")

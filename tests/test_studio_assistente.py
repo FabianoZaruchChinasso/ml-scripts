@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -320,6 +321,57 @@ class TestRotasAssistente(Base):
   def test_promocao_em_download_nao_muda(self):
     r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
     self.assertIn('delta_mae', r['promocao'])
+
+
+REGISTRO_DEN = {'ativo': 'v1', 'versoes': {
+  'v1': {'features': ['router_snr'], 'descricao': 'teste', 'denominador': {'speedtest_down_mbps': 'router_snr'}},
+  'v2': {'features': ['router_snr'], 'descricao': 'absoluta'}}}
+
+
+class TestDenominadorNaApi(Base):
+  def setUp(self):
+    super().setUp()
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', TABELA)
+    self.patches = [mock.patch.object(api, '_conjunto', return_value=(conj, None)),
+                    mock.patch.object(api, '_registro', return_value=(REGISTRO_DEN, None)),
+                    mock.patch.object(api, '_colunas_conhecidas', return_value={'router_snr', 'router_signal_dbm'})]
+    for p in self.patches:
+      p.start()
+    api._modelos_cache.clear()
+
+  def tearDown(self):
+    for p in self.patches:
+      p.stop()
+    super().tearDown()
+
+  def denominadores_usados(self, chamada):
+    with mock.patch.object(A, 'prever_fora_do_fold', wraps=A.prever_fora_do_fold) as espiao:
+      chamada()
+    return [c.kwargs.get('denominador') for c in espiao.call_args_list]
+
+  def test_rascunho_herda_o_denominador_da_base(self):
+    usados = self.denominadores_usados(lambda: api.modelos_avaliar(features='router_snr,router_signal_dbm',
+                                                                   ds='a.csv', base='v1'))
+    self.assertIn('router_snr', usados)
+    self.assertNotIn(None, usados)
+
+  def test_promocao_contra_base_absoluta(self):
+    usados = self.denominadores_usados(lambda: api.modelos_avaliar(features='router_snr,router_signal_dbm',
+                                                                   ds='a.csv', base='v2'))
+    self.assertEqual(set(usados), {None})
+
+  def test_comparar_usa_o_denominador_de_cada_versao(self):
+    r = api.modelos_comparar(ds='a.csv')
+    por_nome = {v['nome']: v for v in r['versoes']}
+    self.assertEqual(por_nome['v1']['denominador'], 'router_snr')
+    self.assertIsNone(por_nome['v2']['denominador'])
+
+  def test_salvar_copia_o_denominador_da_base(self):
+    pedido = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
+    corpo = api.NovaVersao(nome='v9', features=['router_snr'], descricao='x', ds='a.csv', base='v1')
+    with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar:
+      api.modelos_salvar(corpo, pedido)
+    self.assertEqual(salvar.call_args.kwargs['denominador'], {'speedtest_down_mbps': 'router_snr'})
 
 
 if __name__ == '__main__':

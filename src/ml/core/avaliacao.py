@@ -19,10 +19,12 @@ from ml.core.sites import teto_wan
 from ml.core.splits import outer_logo_folds
 
 # Muda quando a régua muda: avaliações guardadas com outra versão ficam "desatualizadas".
-VERSAO_REGUA = '2026-10-06.1'
+VERSAO_REGUA = '2026-10-06.2'
 ARVORES = 200
 ALVOS_COM_TETO = ('speedtest_down_mbps', 'speedtest_up_mbps')
-_COLUNAS_PREVISAO = ['_linha', 'y', 'yhat', '_site', '_pos']
+_COLUNAS_PREVISAO = ['_linha', 'y', 'yhat', 'den_imputado', '_site', '_pos']
+# Abaixo disto a taxa PHY é sinal de leitura ruim, não de enlace: a linha usa a mediana do treino.
+DEN_MINIMO = 1.0
 N_BOOTSTRAP = 1000
 SEMENTE = 42
 # Intervalo de 90%.
@@ -52,18 +54,27 @@ def assert_sem_vazamento(colunas, vazadas) -> None:
 
 def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores: int = None,
                         min_teste: int = 1, min_treino: int = 1, estimador=None,
-                        ao_ajustar=None) -> pd.DataFrame:
+                        ao_ajustar=None, denominador: str = None) -> pd.DataFrame:
   """Previsão de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
   Para download e upload, linhas `_limitado_wan` saem do treino e a previsão é
   cortada no teto de WAN do prédio de teste. `estimador` troca o modelo da régua
   (é clonado a cada fold); `ao_ajustar(fold, modelo)` é chamado depois de cada ajuste.
-  Devolve colunas _linha, y, yhat, _site, _pos, indexadas como `df`.
+  Com `denominador` (nome de coluna), o modelo aprende a eficiência `y ÷ den` e a
+  previsão volta para a unidade do alvo multiplicando por `den`; `den` vazio ou menor
+  que DEN_MINIMO vira a mediana das linhas de treino do fold, e a linha fica com
+  `den_imputado`. O teto de WAN é aplicado depois da multiplicação.
+  Devolve colunas _linha, y, yhat, den_imputado, _site, _pos, indexadas como `df`.
   """
   assert_sem_vazamento(colunas, vazadas)
   if not colunas:
     return pd.DataFrame(columns=_COLUNAS_PREVISAO)
   sub = df[df[y_col].notna()]
+  den = None
+  if denominador is not None:
+    if denominador not in sub.columns:
+      raise ValueError(f'denominador {denominador!r} não existe no conjunto')
+    den = pd.to_numeric(sub[denominador], errors='coerce')
   X = matriz(sub, colunas)
   y = sub[y_col].astype(float)
   com_teto = y_col in ALVOS_COM_TETO
@@ -77,9 +88,24 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
     treino = ~limitado.loc[fold.X_train.index].to_numpy()
     if len(fold.y_test) < min_teste or int(treino.sum()) < min_treino:
       continue
+    alvo_treino = fold.y_train[treino]
+    imputado = np.zeros(len(fold.y_test), dtype=bool)
+    if den is not None:
+      den_treino = den.loc[fold.X_train.index]
+      validos = (den_treino >= DEN_MINIMO).to_numpy() & treino
+      if not validos.any():
+        raise ValueError(f'nenhuma linha de treino com {denominador!r} válido no fold de {fold.test_site!r}')
+      mediana = float(den_treino[validos].median())
+      den_treino = den_treino.where(den_treino >= DEN_MINIMO, mediana).to_numpy()
+      den_teste = den.loc[fold.X_test.index]
+      imputado = ~(den_teste >= DEN_MINIMO).to_numpy()
+      den_teste = den_teste.where(den_teste >= DEN_MINIMO, mediana).to_numpy()
+      alvo_treino = alvo_treino / den_treino[treino]
     modelo = clone(estimador) if estimador is not None else modelo_regua(arvores)
-    modelo.fit(fold.X_train[treino], fold.y_train[treino])
+    modelo.fit(fold.X_train[treino], alvo_treino)
     previsto = np.asarray(modelo.predict(fold.X_test), dtype=float)
+    if den is not None:
+      previsto = previsto * den_teste
     teto = teto_wan(fold.test_site, y_col) if com_teto else None
     if teto is not None:
       previsto = np.minimum(previsto, teto)
@@ -87,7 +113,7 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
       ao_ajustar(fold, modelo)
     indice = fold.X_test.index
     partes.append(pd.DataFrame({'_linha': linha.loc[indice].to_numpy(), 'y': fold.y_test.to_numpy(),
-                                'yhat': previsto, '_site': fold.test_site,
+                                'yhat': previsto, 'den_imputado': imputado, '_site': fold.test_site,
                                 '_pos': posicao.loc[indice].to_numpy()}, index=indice))
   if not partes:
     return pd.DataFrame(columns=_COLUNAS_PREVISAO)
@@ -197,30 +223,34 @@ def resumir(prev: pd.DataFrame, n: int) -> dict:
   resumo['mae_log_por_local'] = {} if vazio else {
     s: round(mae_log(g['y'], g['yhat']), 4) for s, g in sorted(prev.groupby('_site'), key=lambda kv: kv[0])}
   resumo['intervalos'] = intervalos(prev)
+  resumo['den_imputados'] = (int(prev['den_imputado'].astype(bool).sum())
+                             if 'den_imputado' in prev.columns else 0)
   resumo['versao_regua'] = VERSAO_REGUA
   return resumo
 
 
-def avaliar(conj, features, vazadas, com_previsoes: bool = False):
+def avaliar(conj, features, vazadas, com_previsoes: bool = False, denominador: str = None):
   """LOGO por local de coleta de uma lista de features, como está.
 
   Feature ausente do conjunto sai da conta e é listada; feature com vazamento
-  levanta (assert_sem_vazamento), nunca é descartada em silêncio. Com
-  `com_previsoes`, devolve (resumo, previsões fora do fold).
+  levanta (assert_sem_vazamento), nunca é descartada em silêncio. `denominador`
+  faz o modelo prever a eficiência (ver prever_fora_do_fold). Com `com_previsoes`,
+  devolve (resumo, previsões fora do fold).
   """
   presentes = [f for f in features if f in conj.df.columns]
-  prev = prever_fora_do_fold(conj.df, presentes, conj.alvo, vazadas)
+  prev = prever_fora_do_fold(conj.df, presentes, conj.alvo, vazadas, denominador=denominador)
   resumo = resumir(prev, len(presentes))
   resumo['ausentes'] = [f for f in features if f not in conj.df.columns]
+  resumo['denominador'] = denominador
   return (resumo, prev) if com_previsoes else resumo
 
 
-def avaliar_versao(conj, features, vazadas, com_previsoes: bool = False):
+def avaliar_versao(conj, features, vazadas, com_previsoes: bool = False, denominador: str = None):
   """Como avaliar, mas uma versão salva que usa coluna hoje marcada como vazamento é
   avaliada sem ela, e a lista sai em `removidas_por_vazamento`. Assim a comparação
   continua de pé quando alguém confirma um vazamento depois de a versão existir."""
   removidas = [f for f in features if f in vazadas]
-  saida = avaliar(conj, [f for f in features if f not in vazadas], vazadas, com_previsoes)
+  saida = avaliar(conj, [f for f in features if f not in vazadas], vazadas, com_previsoes, denominador)
   resumo = saida[0] if com_previsoes else saida
   resumo['removidas_por_vazamento'] = removidas
   return saida

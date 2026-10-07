@@ -396,6 +396,435 @@
         "concorrentes_mesmo_radio"
       ],
       "origem": "studio"
+    },
+    "v4-tr069": {
+      "avaliacao": {
+        "atende_completo": {
+          "avisos": [],
+          "intervalo": [
+            0.6421,
+            0.6926
+          ],
+          "media": 0.6624,
+          "n": 1298,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.6956,
+            "Jogo em nuvem": 0.5933,
+            "Navegação": 0.5893,
+            "Streaming 4K": 0.7713
+          }
+        },
+        "atende_throughput": {
+          "avisos": [],
+          "intervalo": [
+            0.6248,
+            0.6662
+          ],
+          "media": 0.6425,
+          "n": 1300,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.5474,
+            "Jogo em nuvem": 0.7363,
+            "Navegação": 0.5038,
+            "Streaming 4K": 0.7824
+          }
+        },
+        "jitter_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              16.3425,
+              28.9833
+            ],
+            "mae_log": [
+              0.9505,
+              1.0832
+            ],
+            "pooled": [
+              -1.3575,
+              -0.069
+            ]
+          },
+          "mae": 22.3425,
+          "mae_log": 1.0131,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.4579,
+            "coworking": 0.651,
+            "hotmilk": 0.9439,
+            "residencia": 0.8788
+          },
+          "mae_por_local": {
+            "casa-marcelo": 35.9928,
+            "coworking": 8.0985,
+            "hotmilk": 16.8198,
+            "residencia": 21.8513
+          },
+          "media": -1.9091,
+          "n": 12,
+          "pooled": -0.3852,
+          "por_local": {
+            "casa-marcelo": -7.3391,
+            "coworking": -0.2645,
+            "hotmilk": -0.03,
+            "residencia": -0.003
+          },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4588,
+              "q90": 0.9008
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.7572,
+              "coworking": 1.1929,
+              "hotmilk": 0.847,
+              "residencia": 1.025
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.3917,
+                0.5434
+              ],
+              "cobertura_q90": [
+                0.874,
+                0.9294
+              ],
+              "pinball_q50": [
+                5.2792,
+                10.9015
+              ],
+              "pinball_q90": [
+                5.8705,
+                12.8412
+              ]
+            },
+            "mediana_mae": 16.2629,
+            "n": 12,
+            "pinball": {
+              "q50": 8.1315,
+              "q90": 9.217
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.6667,
+                  "q90": 0.9119
+                },
+                "pinball": {
+                  "q50": 6.0028,
+                  "q90": 6.9837
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3427,
+                  "q90": 0.986
+                },
+                "pinball": {
+                  "q50": 3.5444,
+                  "q90": 4.3645
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3333,
+                  "q90": 0.872
+                },
+                "pinball": {
+                  "q50": 7.5715,
+                  "q90": 10.4877
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.4536,
+                  "q90": 0.8903
+                },
+                "pinball": {
+                  "q50": 11.3865,
+                  "q90": 11.1739
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-06.2"
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-06.2",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "latency_ms": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              20.4707,
+              42.9207
+            ],
+            "mae_log": [
+              0.6822,
+              0.8395
+            ],
+            "pooled": [
+              -1.2826,
+              -0.0488
+            ]
+          },
+          "mae": 31.3342,
+          "mae_log": 0.7603,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.2849,
+            "coworking": 0.4064,
+            "hotmilk": 0.6449,
+            "residencia": 0.6065
+          },
+          "mae_por_local": {
+            "casa-marcelo": 51.6658,
+            "coworking": 8.8762,
+            "hotmilk": 30.6626,
+            "residencia": 25.0021
+          },
+          "media": -3.2622,
+          "n": 12,
+          "pooled": -0.1528,
+          "por_local": {
+            "casa-marcelo": -12.1184,
+            "coworking": -0.915,
+            "hotmilk": -0.0204,
+            "residencia": 0.0051
+          },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4249,
+              "q90": 0.923
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.6428,
+              "coworking": 0.9248,
+              "hotmilk": 0.5993,
+              "residencia": 0.858
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.3662,
+                0.485
+              ],
+              "cobertura_q90": [
+                0.9058,
+                0.9413
+              ],
+              "pinball_q50": [
+                6.7745,
+                16.391
+              ],
+              "pinball_q90": [
+                6.9101,
+                22.1237
+              ]
+            },
+            "mediana_mae": 22.7264,
+            "n": 12,
+            "pinball": {
+              "q50": 11.3632,
+              "q90": 14.227
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.7138,
+                  "q90": 0.9371
+                },
+                "pinball": {
+                  "q50": 6.9174,
+                  "q90": 7.925
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3706,
+                  "q90": 1.0
+                },
+                "pinball": {
+                  "q50": 3.9926,
+                  "q90": 4.8132
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3032,
+                  "q90": 0.8856
+                },
+                "pinball": {
+                  "q50": 15.0113,
+                  "q90": 23.4677
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.3439,
+                  "q90": 0.9198
+                },
+                "pinball": {
+                  "q50": 13.6756,
+                  "q90": 13.9647
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-06.2"
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-06.2",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "speedtest_down_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "den_imputados": 0,
+          "denominador": "router_tx_rate_mbps",
+          "intervalos": {
+            "mae": [
+              29.7219,
+              46.1193
+            ],
+            "mae_log": [
+              0.6016,
+              0.9034
+            ],
+            "pooled": [
+              0.4724,
+              0.705
+            ]
+          },
+          "mae": 38.0974,
+          "mae_log": 0.7534,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.7281,
+            "coworking": 0.4841,
+            "hotmilk": 0.7396,
+            "residencia": 0.8632
+          },
+          "mae_por_local": {
+            "casa-marcelo": 32.0921,
+            "coworking": 25.9624,
+            "hotmilk": 75.646,
+            "residencia": 16.3731
+          },
+          "media": 0.5551,
+          "n": 12,
+          "pooled": 0.5853,
+          "por_local": {
+            "casa-marcelo": 0.364,
+            "coworking": 0.6648,
+            "hotmilk": 0.5034,
+            "residencia": 0.6881
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-06.2",
+          "versao_tabela": "730e9c46f15f"
+        },
+        "speedtest_up_mbps": {
+          "ambiente": "todos",
+          "ausentes": [],
+          "datasets": [
+            "20260827-metrics.zip",
+            "20260917-metrics-fix.zip",
+            "20260921-metrics-distcalc.zip",
+            "20260925-metrics.zip",
+            "20260928-metrics.zip"
+          ],
+          "den_imputados": 0,
+          "denominador": "router_rx_rate_mbps",
+          "intervalos": {
+            "mae": [
+              27.662,
+              45.7652
+            ],
+            "mae_log": [
+              0.657,
+              0.8596
+            ],
+            "pooled": [
+              0.578,
+              0.7993
+            ]
+          },
+          "mae": 36.5382,
+          "mae_log": 0.7571,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.788,
+            "coworking": 0.5785,
+            "hotmilk": 0.7137,
+            "residencia": 0.8249
+          },
+          "mae_por_local": {
+            "casa-marcelo": 35.4929,
+            "coworking": 28.8231,
+            "hotmilk": 69.2852,
+            "residencia": 13.4934
+          },
+          "media": 0.4778,
+          "n": 12,
+          "pooled": 0.6754,
+          "por_local": {
+            "casa-marcelo": 0.6573,
+            "coworking": 0.3681,
+            "hotmilk": 0.586,
+            "residencia": 0.3
+          },
+          "versao_catalogo": "2026-10-02.1",
+          "versao_regua": "2026-10-06.2",
+          "versao_tabela": "730e9c46f15f"
+        }
+      },
+      "criado_em": "2026-10-06",
+      "denominador": {
+        "speedtest_down_mbps": "router_tx_rate_mbps",
+        "speedtest_up_mbps": "router_rx_rate_mbps"
+      },
+      "descricao": "v3-tr069 prevendo a eficiência do enlace: download ÷ taxa PHY de envio, upload ÷ taxa PHY de recepção (spec 2026-10-06, frente C1).",
+      "features": [
+        "router_expected_throughput_mbps",
+        "client_mode",
+        "radio",
+        "router_rx_rate_mbps",
+        "router_snr",
+        "router_signal_dbm",
+        "router_tx_rate_mbps",
+        "channel_width",
+        "eficiencia_espectral_tx",
+        "perda_percurso_db",
+        "n_clients",
+        "concorrentes_mesmo_radio"
+      ],
+      "origem": "studio"
     }
   }
 }

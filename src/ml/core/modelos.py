@@ -19,7 +19,9 @@ from ml.core.arquivos import gravar_json_atomico
 
 MODELOS_PATH = os.path.join(os.path.dirname(__file__), 'modelos.json')
 NOME = re.compile(r'^[a-z0-9][a-z0-9-]{1,39}$')
-CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao'}
+CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao', 'denominador'}
+# Alvos em que a versão pode prever a eficiência (alvo ÷ coluna) em vez de Mbps absolutos.
+ALVOS_COM_DENOMINADOR = ('speedtest_down_mbps', 'speedtest_up_mbps')
 
 _lock = threading.Lock()
 
@@ -40,6 +42,12 @@ def validar_registro(registro) -> None:
       raise ValueError(f'{nome!r}: features precisa ser uma lista não vazia de nomes')
     if len(set(feats)) != len(feats):
       raise ValueError(f'{nome!r}: features repetidas')
+    if 'denominador' in versao:
+      den = versao['denominador']
+      if (not isinstance(den, dict) or not den or not set(den) <= set(ALVOS_COM_DENOMINADOR)
+          or not all(isinstance(c, str) and c.strip() for c in den.values())):
+        raise ValueError(f'{nome!r}: denominador precisa ser {{alvo: coluna}}, só para '
+                         f'{list(ALVOS_COM_DENOMINADOR)}, com nomes de coluna não vazios')
   if registro['ativo'] not in versoes:
     raise ValueError(f"versão ativa {registro['ativo']!r} não existe no registro")
 
@@ -63,6 +71,12 @@ def ativo(registro: dict) -> list:
   return list(registro['versoes'][registro['ativo']]['features'])
 
 
+def denominador_de(registro: dict, nome: str, alvo: str):
+  """Coluna que divide o alvo na versão `nome` (eficiência), ou None se ela prevê Mbps absolutos."""
+  versao = registro['versoes'].get(nome) or {}
+  return (versao.get('denominador') or {}).get(alvo)
+
+
 def classificar_features(features, tabela: dict) -> dict:
   """Classe de cada feature, olhando o catálogo de derivadas antes da tabela."""
   derivadas = {d.nome: d for d in F.catalogo_completo()}
@@ -82,7 +96,8 @@ def fora_do_tr069(features, tabela: dict) -> list:
 
 def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabela: dict,
                   origem: str = 'studio', avaliacao: Optional[dict] = None,
-                  selecao: Optional[dict] = None, path: str = MODELOS_PATH) -> dict:
+                  selecao: Optional[dict] = None, denominador: Optional[dict] = None,
+                  path: str = MODELOS_PATH) -> dict:
   """Acrescenta uma versão. Recusa nome existente, feature desconhecida e vazamento."""
   features = list(features)
   if not isinstance(descricao, str) or not descricao.strip() or len(descricao) > 500:
@@ -97,6 +112,16 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
   vazadas = [f for f in features if classes[f].vazamento]
   if vazadas:
     raise ValueError(f'features com vazamento não entram em modelo: {vazadas}')
+  if denominador:
+    colunas = list(denominador.values())
+    fora = [c for c in colunas if c not in colunas_conhecidas]
+    if fora:
+      raise ValueError(f'denominador com colunas que não existem nos datasets: {fora}')
+    classes_den = classificar_features(colunas, tabela)
+    ruins = [c for c in colunas if classes_den[c] is None or classes_den[c].classe != 'tr069'
+             or classes_den[c].vazamento]
+    if ruins:
+      raise ValueError(f'o denominador precisa ser coluna TR-069 sem vazamento: {ruins}')
   with _lock:
     registro = carregar(path)
     if nome in registro['versoes']:
@@ -107,6 +132,8 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
       versao['avaliacao'] = avaliacao
     if selecao:
       versao['selecao'] = selecao
+    if denominador:
+      versao['denominador'] = dict(denominador)
     registro['versoes'][nome] = versao
     validar_registro(registro)
     gravar_json_atomico(path, registro)
