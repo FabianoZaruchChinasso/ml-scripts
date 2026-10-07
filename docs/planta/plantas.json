@@ -31,27 +31,27 @@
     "andares": [
       {
         "id": "cima",
-        "z_min": 0,
         "paredes": {
           "arquivo": "planta-casa-cima.csv",
-          "formato": "metros",
-          "origem": "superior-esquerdo",
-          "eixo_x": "horizontal",
           "dx": 0.0,
-          "dy": 0.0
-        }
+          "dy": 0.0,
+          "eixo_x": "horizontal",
+          "formato": "metros",
+          "origem": "superior-esquerdo"
+        },
+        "z_min": 0
       },
       {
         "id": "baixo",
-        "z_min": null,
         "paredes": {
           "arquivo": "planta-casa-baixo.csv",
-          "formato": "metros",
-          "origem": "superior-esquerdo",
-          "eixo_x": "horizontal",
           "dx": 0.0,
-          "dy": 0.0
-        }
+          "dy": 110.0,
+          "eixo_x": "horizontal",
+          "formato": "metros",
+          "origem": "superior-esquerdo"
+        },
+        "z_min": null
       }
     ]
   }

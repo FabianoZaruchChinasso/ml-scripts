@@ -280,8 +280,8 @@
           return ac && ac.media != null ? num(ac.media, 3) + faixa(ac.intervalo, 3) : '–';
         })()}</td>
         <td>${motivo ? `<span class="tag lab" title="${esc(motivo)}">desatualizada</span>` : `<span class="gate-msg">${esc(v.criado_em || '')}</span>`}</td>
-        <td style="white-space:nowrap"><button class="btn" data-acao="base" data-nome="${esc(v.nome)}">Editar a partir desta</button>
-          ${v.ativo ? '' : `<button class="btn" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button>`}</td></tr>`;
+        <td style="width:1%"><div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;white-space:nowrap"><button class="btn" data-acao="base" data-nome="${esc(v.nome)}">Editar a partir desta</button>
+          ${v.ativo ? '' : `<button class="btn" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button>`}</div></td></tr>`;
     }).join('');
     return `<div class="card"><h2>Versões salvas</h2>
       <p class="hint">Cada versão é uma lista de features, imutável depois de salva, em <code>src/ml/core/modelos.json</code>.
