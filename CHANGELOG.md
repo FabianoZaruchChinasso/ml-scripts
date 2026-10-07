@@ -1,3 +1,144 @@
+# Changelog — Eficiência só em 5 GHz (`v5-tr069`) e scripts de classificação na régua
+
+**Data:** 2026-10-07
+
+## Por quê
+
+A `v4-tr069` teve veredito "pior" por causa do "atende". A causa está em 2,4 GHz, onde a eficiência
+(download ÷ `router_tx_rate_mbps`) acompanha o aparelho cliente, não o prédio (spec
+`2026-10-07-banda-e-classificacao-design.md`, seção 2). Eficiência mediana por prédio e banda
+(tabela da spec, régua `2026-10-06.2`):
+
+| | casa-marcelo | coworking | hotmilk | residência |
+|---|---|---|---|---|
+| 2,4 GHz | 0,38 | 0,10 | 0,13 | 0,08 |
+| 5 GHz | 0,68 | 0,48 | 0,34 | 0,33 |
+
+Em 2,4 GHz, ideapad3 (0,21) e Samsung SM-A566E (0,29) contra moto g9 play (0,09), moto g9 plus (0,08)
+e netprobe (0,10); cliente e prédio estão confundidos na coleta. Além disso, 63 de 66 linhas (Jogo em
+nuvem), 67 de 73 (Streaming 4K), 27 de 27 (Chamada de vídeo) e 4 de 4 (Navegação) em que `v3` e `v4`
+decidem "atende" de forma diferente são de 2,4 GHz (spec, seção 2).
+
+Os scripts `classification_benchmark.py` e `compare_protocols.py` ainda mediam com o carregador antigo,
+por posição, com features que vazam (contadores da janela do teste). O primeiro classificava
+`qoe_dw_score`, coluna que só existe em `metrics-20260630-out.csv` (dataset da geração antiga,
+excluído pelo Studio) e que não existe em nenhum dataset atual.
+
+## Mudanças
+
+- `core/modelos.py`: o denominador de uma versão aceita a forma condicional
+  `{"coluna": ..., "radio": "5ghz"}` (a forma texto continua válida); `coluna_do_denominador` lê a
+  coluna nas duas formas.
+- `core/avaliacao.py`: `prever_fora_do_fold` resolve a forma condicional treinando dois modelos por
+  fold (eficiência e absoluto, mesmos folds) e escolhendo a previsão por linha conforme o rádio; linha
+  sem rádio usa a absoluta; versão da régua `2026-10-07.1`.
+- `studio/static/modelos.js`: a etiqueta da versão mostra a banda.
+- `regression_mlflow.py`: com denominador condicional, registra dois modelos finais por configuração
+  (sufixos `_eficiencia` e `_absoluto`) e `eficiencia.json` descreve como combiná-los.
+- Nova versão `v5-tr069` no registro: features da `v3-tr069`, download ÷ `router_tx_rate_mbps` e
+  upload ÷ `router_rx_rate_mbps` só em 5 GHz, Mbps absoluto em 2,4 GHz. Salva via `salvar_versao`,
+  **não ativa** (`ativo` continua `v1`).
+- Novo `core/classificacao.py`: alvo "atende" por aplicação, classificação fora do prédio,
+  referência da régua e resumo por acurácia balanceada.
+- `classification_benchmark.py` e `compare_protocols.py` reescritos sobre a carga canônica, a régua e
+  o novo módulo; o benchmark agora classifica "atende" por aplicação.
+- A C2 (dados externos) foi descartada.
+
+## Efeito medido (`v3-tr069` × `v4-tr069` × `v5-tr069`, régua `2026-10-07.1`)
+
+### Download (`speedtest_down_mbps`)
+
+| Versão | R² pooled (IC 90%) | MAE pooled (IC 90%) | MAE log | `den_imputados` |
+|---|---|---|---|---|
+| v3-tr069 | 0,4211 (0,3496 a 0,5453) | 40,7453 (29,8683 a 50,7613) | 0,7129 | 0 |
+| v4-tr069 | 0,5853 (0,4724 a 0,705) | 38,0974 (29,7219 a 46,1193) | 0,7534 | 0 |
+| v5-tr069 | 0,5863 (0,4731 a 0,7081) | 37,839 (29,2162 a 46,2073) | 0,6939 | 0 |
+
+R² por prédio (casa-marcelo, coworking, hotmilk, residência) — v3: 0,6589, 0,6492, 0,2469, 0,6766;
+v4: 0,364, 0,6648, 0,5034, 0,6881; v5: 0,3982, 0,6744, 0,5005, 0,7032.
+
+MAE log por prédio — v3: 0,5806, 0,499, 0,7976, 0,801; v4: 0,7281, 0,4841, 0,7396, 0,8632;
+v5: 0,6307, 0,4863, 0,755, 0,7518.
+
+### Upload (`speedtest_up_mbps`)
+
+| Versão | R² pooled (IC 90%) | MAE pooled (IC 90%) | MAE log | `den_imputados` |
+|---|---|---|---|---|
+| v3-tr069 | 0,6194 (0,5447 a 0,7127) | 40,2498 (30,7914 a 49,5906) | 0,8311 | 0 |
+| v4-tr069 | 0,6754 (0,578 a 0,7993) | 36,5382 (27,662 a 45,7652) | 0,7571 | 0 |
+| v5-tr069 | 0,6758 (0,578 a 0,7993) | 36,8068 (28,1566 a 45,4899) | 0,792 | 0 |
+
+R² por prédio — v3: 0,6286, 0,3945, 0,5016, 0,2531; v4: 0,6573, 0,3681, 0,586, 0,3;
+v5: 0,6776, 0,3685, 0,5847, 0,2364.
+
+MAE log por prédio — v3: 0,8302, 0,608, 0,7737, 0,9451; v4: 0,788, 0,5785, 0,7137, 0,8249;
+v5: 0,784, 0,6093, 0,7302, 0,9021.
+
+### Atende
+
+"Atende em throughput": `v3-tr069` 0,6551 (IC 0,6381 a 0,6756), `v4-tr069` 0,6425 (IC 0,6248 a
+0,6662), `v5-tr069` 0,6608 (IC 0,6409 a 0,6801). Por aplicação, `v3` → `v4` → `v5`: Navegação
+0,5188 → 0,5038 → 0,5188; Chamada de vídeo 0,5583 → 0,5474 → 0,5583; Streaming 4K 0,7773 → 0,7824 →
+0,8007; Jogo em nuvem 0,7661 → 0,7363 → 0,7655.
+
+"Atende completo": `v3-tr069` 0,6611 (IC 0,6418 a 0,6904), `v4-tr069` 0,6624 (IC 0,6421 a 0,6926),
+`v5-tr069` 0,6664 (IC 0,6469 a 0,6927).
+
+### Promoção de `v5-tr069` contra `v3-tr069` (régua `2026-10-07.1`)
+
+- Download: **melhor** (`delta_mae` −2,9062, IC −6,8294 a 1,2714; `delta_atende` +0,0057, IC 0,0005 a
+  0,0095): "a acurácia de 'atende' subiu 0,006 (90%: 0,001 a 0,009) sem piorar o MAE".
+- Upload: **melhor** (`delta_mae` −3,443, IC −4,9452 a −1,7933; `delta_atende` +0,0057, IC 0,0005 a
+  0,0095): "o MAE caiu 3,4 (90%: −4,9 a −1,8) sem piorar 'atende'".
+
+**Ressalva: a divisão por banda foi escolhida olhando estes mesmos 4 prédios; o ganho é otimista e
+precisa de prédio novo para ser confirmado.** O ganho em "atende" é pequeno (+0,006, intervalo
+chegando perto de zero) e o MAE de download em si não tem melhora distinguível no intervalo.
+
+### MLflow
+
+Execução com `MODELO=v5-tr069`: sem traceback, run `v5-tr069-GradientBoostingRegressor-20` com
+`denominador = router_tx_rate_mbps` e `denominador_radio = 5ghz`, artefato `eficiencia.json` e dois
+modelos registrados (`GradientBoostingRegressor_eficiencia` e `GradientBoostingRegressor_absoluto`).
+
+## Benchmark de classificação por aplicação (`classification_benchmark.py --modelo v5-tr069`)
+
+Acurácia balanceada fora do prédio (pooled, IC 90%); "régua" é o "atende" derivado da regressão.
+
+| Aplicação (linhas / atendem) | régua | rf | extra_trees | hist_gb | log_reg |
+|---|---|---|---|---|---|
+| Navegação (1300 / 1167) | 0,519 (0,505 a 0,548) | 0,762 (0,697 a 0,796) | 0,724 (0,664 a 0,750) | 0,661 (0,584 a 0,696) | 0,766 (0,722 a 0,809) |
+| Chamada de vídeo (1300 / 1037) | 0,558 (0,545 a 0,573) | 0,726 (0,680 a 0,748) | 0,726 (0,696 a 0,749) | 0,628 (0,609 a 0,652) | 0,744 (0,711 a 0,782) |
+| Streaming 4K (1300 / 719) | 0,801 (0,758 a 0,841) | 0,751 (0,707 a 0,801) | 0,747 (0,704 a 0,797) | 0,784 (0,743 a 0,831) | 0,722 (0,671 a 0,784) |
+| Jogo em nuvem (1300 / 862) | 0,765 (0,732 a 0,792) | 0,771 (0,728 a 0,818) | 0,755 (0,712 a 0,804) | 0,780 (0,746 a 0,813) | 0,723 (0,681 a 0,777) |
+
+Leitura: em Navegação e Chamada de vídeo, os classificadores diretos superam a referência com
+folga (intervalos sem sobreposição com a régua em rf, extra_trees e log_reg). Em Streaming 4K e
+Jogo em nuvem a régua empata (Jogo em nuvem) ou fica à frente (Streaming 4K, 0,801 contra 0,722 a
+0,784). **Controle do balanceamento** (`rf`, mesmas features e folds, acurácia balanceada pooled com
+intervalo de 90%): Navegação 0,762 (0,697 a 0,796) com `class_weight='balanced'` e **0,623** (0,580
+a 0,671) sem peso, contra 0,519 da régua; Chamada de vídeo 0,726 (0,680 a 0,748) com peso e
+**0,613** (0,591 a 0,630) sem peso, contra 0,558 da régua. Sem o peso, o classificador ainda supera a
+régua (cerca de +0,10), mas **mais da metade da vantagem aparente (de cerca de +0,24) vinha do
+balanceamento de classes**, não de classificar melhor: Navegação e Chamada de vídeo têm 90% e 80%
+das linhas atendendo, e a classe rara é justamente "não atende". O controle foi feito só com `rf`;
+`extra_trees` e `log_reg` não foram testados sem peso. Um equivalente barato do balanceamento na
+régua (ajustar o limiar de decisão da previsão de Mbps) não foi testado.
+
+## Protocolo antigo (`compare_protocols.py --modelo v5-tr069`, download)
+
+Divisão aleatória 80/20 com linhas do mesmo prédio dos dois lados: R² 0,8245, MAE 19,55. Régua
+(prédio inteiro de fora): R² pooled 0,4211 (IC 90%: 0,3496 a 0,5453), MAE 40,75 (IC 29,8683 a
+50,7613). Otimismo do protocolo antigo: R² +0,4034, MAE −21,20. O script compara só o protocolo,
+por isso usa o mesmo modelo da régua sem denominador (números iguais aos da `v3-tr069`).
+
+## Para o responsável pela coleta
+
+Rodízio dos aparelhos clientes entre prédios: separaria o efeito do aparelho do efeito do prédio em
+2,4 GHz, onde hoje os dois estão confundidos.
+
+---
+
 # Changelog — Throughput como eficiência do enlace (C1): nova `v4-tr069`
 
 **Data:** 2026-10-06

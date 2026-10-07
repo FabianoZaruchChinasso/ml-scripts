@@ -1,81 +1,66 @@
-"""Quantify the optimism of the legacy evaluation protocol.
+"""Quanto o protocolo antigo (divisão aleatória) é otimista contra a régua (LOGO por prédio).
 
-Runs one model under the legacy protocol (random split) and under leave-one-site-out
-on identical data, then prints the delta. Run once; record the output.
+Mesmas linhas (carga canônica), mesmas features (versão do registro, sem vazamento) e o
+mesmo modelo da régua, sem denominador, para comparar só o protocolo. Rode quando quiser
+lembrar por que a régua deixa um prédio inteiro de fora.
 """
 
 import argparse
 import os
 import sys
 
-import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from ml.core.data import SITE_COLUMN, load_datasets, validate_columns
-from ml.core.metrics import assert_comparable_scales, regression_metrics
-from ml.core.splits import outer_logo_folds
-
-FEATURES = [
-  'router_expected_throughput_mbps', 'router_noise', 'router_rx_drop_misc',
-  'router_rx_duration_us', 'router_rx_rate_mbps', 'router_signal_avg_dbm',
-  'router_signal_dbm', 'router_snr', 'router_tx_duration_us', 'router_tx_failed',
-  'router_tx_rate_mbps', 'router_tx_retries', 'router_opportunity_medium_use',
-  'client_opportunity_medium_use',
-]
-
-
-def build_model(seed):
-  return Pipeline([
-    ('imputer', SimpleImputer(strategy='median')),
-    ('reg', RandomForestRegressor(n_estimators=300, min_samples_leaf=2,
-                                  n_jobs=-1, random_state=seed)),
-  ])
+from ml.core import avaliacao as core_avaliacao
+from ml.core import carga as core_carga
+from ml.core import features as core_features
+from ml.core import modelos as core_modelos
+from ml.core.metrics import regression_metrics
 
 
 def main():
-  parser = argparse.ArgumentParser(description='Legacy vs LOGO protocol comparison')
-  parser.add_argument('--csv', required=True, help='Comma-separated CSV paths')
-  parser.add_argument('--target', default='speedtest_down_mbps')
-  parser.add_argument('--group-level', choices=['position', 'building'], default='position',
-                      help="'position' (padrão) ou 'building' (viabilidade, n=2)")
+  parser = argparse.ArgumentParser(description='Protocolo antigo (aleatório) contra a régua (LOGO por prédio)')
+  parser.add_argument('--datasets', default='',
+                      help='Nomes de arquivo em data/, separados por vírgula (padrão: o conjunto canônico)')
+  parser.add_argument('--alvo', '--target', dest='alvo', default='speedtest_down_mbps')
+  parser.add_argument('--modelo', default='', help='Versão de core/modelos.json (padrão: a ativa)')
   parser.add_argument('--seed', type=int, default=42)
+  parser.add_argument('--csv', default=None, help='REMOVIDO; use --datasets')
+  parser.add_argument('--group-level', default=None, help='IGNORADO; a régua agrupa sempre por prédio')
   args = parser.parse_args()
+  if args.csv is not None:
+    raise SystemExit('--csv saiu: use --datasets com nomes de data/ (padrão: o conjunto canônico)')
+  if args.group_level is not None:
+    print('WARNING: --group-level é ignorado; a régua agrupa sempre por prédio.')
 
-  df = load_datasets(args.csv.split(','), target=args.target, group_level=args.group_level)
-  print(f'Sites: {sorted(df[SITE_COLUMN].unique())}')
-  print(f'Group level: {args.group_level}')
-  validate_columns(df, FEATURES, 'feature')
-  X, y = df[FEATURES], df[args.target]
-  assert_comparable_scales(y, df[SITE_COLUMN], args.target)
+  registro = core_modelos.carregar()
+  nome = args.modelo or registro['ativo']
+  if nome not in registro['versoes']:
+    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  ids = [x for x in args.datasets.split(',') if x] or None
+  conj = core_carga.carregar(args.alvo, ids=ids)
+  vazadas = [c for c, k in conj.classes.items() if k is not None and k.vazamento]
+  features = [f for f in registro['versoes'][nome]['features'] if f in conj.df.columns and f not in vazadas]
+  print(f'Modelo {nome}: {len(features)} features; alvo {args.alvo}; {len(conj.df)} linhas; '
+        f'prédios {sorted(conj.df["_site"].unique())}')
 
-  # Legacy protocol: random split, rows from one site on both sides.
+  X = core_features.matriz(conj.df, features)
+  y = conj.df[args.alvo].astype(float)
   X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=args.seed)
-  legacy = regression_metrics(
-    y_te.to_numpy(), build_model(args.seed).fit(X_tr, y_tr).predict(X_te))
+  antigo = regression_metrics(y_te.to_numpy(), core_avaliacao.modelo_regua().fit(X_tr, y_tr).predict(X_te))
+  prev = core_avaliacao.prever_fora_do_fold(conj.df, features, args.alvo, vazadas)
+  regua = core_avaliacao.resumir(prev, len(features))
 
-  # Corrected protocol: leave one site out.
-  per_site = []
-  for fold in outer_logo_folds(X, y, df[SITE_COLUMN]):
-    scores = regression_metrics(
-      fold.y_test.to_numpy(),
-      build_model(args.seed).fit(fold.X_train, fold.y_train).predict(fold.X_test))
-    scores['test_site'] = fold.test_site
-    per_site.append(scores)
-
-  logo = pd.DataFrame(per_site)
-  print('\nLegacy protocol (random split):')
-  print(f"  r2={legacy['r2']:.5f}  rmse={legacy['rmse']:.5f}")
-  print(f'\nLeave-one-{args.group_level}-out, per site:')
-  print(logo[['test_site', 'r2', 'rmse']].to_string(
-    index=False, float_format=lambda x: f'{x:.5f}'))
-  print(f"\nLOGO mean r2={logo['r2'].mean():.5f} "
-        f"(min={logo['r2'].min():.5f}, max={logo['r2'].max():.5f})")
-  print(f"\nOptimism of the legacy number: {legacy['r2'] - logo['r2'].mean():.5f} r2")
+  print('\nProtocolo antigo (divisão aleatória 80/20, linhas do mesmo prédio dos dois lados):')
+  print(f"  R² {antigo['r2']:.4f}  MAE {antigo['mae']:.2f}")
+  print('\nRégua (deixa um prédio inteiro de fora):')
+  print(f"  R² pooled {regua['pooled']:.4f} (90%: {regua['intervalos'].get('pooled')})  "
+        f"MAE {regua['mae']:.2f} (90%: {regua['intervalos'].get('mae')})")
+  print(f"  R² por prédio: {regua['por_local']}")
+  print(f"\nOtimismo do protocolo antigo: R² +{antigo['r2'] - regua['pooled']:.4f}, "
+        f"MAE {antigo['mae'] - regua['mae']:+.2f}")
 
 
 if __name__ == '__main__':

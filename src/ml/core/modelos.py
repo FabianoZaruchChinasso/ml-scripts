@@ -23,6 +23,24 @@ CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao'
 # Alvos em que a versão pode prever a eficiência (alvo ÷ coluna) em vez de Mbps absolutos.
 ALVOS_COM_DENOMINADOR = ('speedtest_down_mbps', 'speedtest_up_mbps')
 
+
+def _texto(valor) -> bool:
+  return isinstance(valor, str) and bool(valor.strip())
+
+
+def _valor_denominador_valido(valor) -> bool:
+  """Texto (nome da coluna) ou {'coluna': texto, 'radio': texto}: eficiência só nessa banda."""
+  if isinstance(valor, dict):
+    return set(valor) == {'coluna', 'radio'} and _texto(valor['coluna']) and _texto(valor['radio'])
+  return _texto(valor)
+
+
+def coluna_do_denominador(valor):
+  """Coluna de um valor de denominador nas duas formas (texto ou dicionário condicional)."""
+  if isinstance(valor, dict):
+    return valor.get('coluna')
+  return valor
+
 _lock = threading.Lock()
 
 
@@ -45,9 +63,9 @@ def validar_registro(registro) -> None:
     if 'denominador' in versao:
       den = versao['denominador']
       if (not isinstance(den, dict) or not den or not set(den) <= set(ALVOS_COM_DENOMINADOR)
-          or not all(isinstance(c, str) and c.strip() for c in den.values())):
-        raise ValueError(f'{nome!r}: denominador precisa ser {{alvo: coluna}}, só para '
-                         f'{list(ALVOS_COM_DENOMINADOR)}, com nomes de coluna não vazios')
+          or not all(_valor_denominador_valido(v) for v in den.values())):
+        raise ValueError(f'{nome!r}: denominador precisa ser {{alvo: coluna}} ou '
+                         f'{{alvo: {{"coluna": ..., "radio": ...}}}}, só para {list(ALVOS_COM_DENOMINADOR)}')
   if registro['ativo'] not in versoes:
     raise ValueError(f"versão ativa {registro['ativo']!r} não existe no registro")
 
@@ -113,7 +131,7 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
   if vazadas:
     raise ValueError(f'features com vazamento não entram em modelo: {vazadas}')
   if denominador:
-    colunas = list(denominador.values())
+    colunas = [coluna_do_denominador(v) for v in denominador.values()]
     fora = [c for c in colunas if c not in colunas_conhecidas]
     if fora:
       raise ValueError(f'denominador com colunas que não existem nos datasets: {fora}')

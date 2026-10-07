@@ -315,5 +315,49 @@ class TestDenominador(Base):
     self.assertEqual(r['den_imputados'], 0)
 
 
+class TestDenominadorPorBanda(Base):
+  DEN = {'coluna': 'router_tx_rate_mbps', 'radio': '5ghz'}
+
+  def conj(self):
+    f = frame()
+    f['router_tx_rate_mbps'] = 100.0
+    f['radio'] = np.where(np.arange(len(f)) % 2 == 0, '5ghz', '2.4ghz')
+    f.loc[2, 'radio'] = None
+    return conjunto('speedtest_down_mbps', f)
+
+  def test_cada_linha_usa_a_previsao_da_sua_banda(self):
+    conj = self.conj()
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                                 denominador=self.DEN)
+    banda = prev['_linha'].map(conj.df.set_index('_linha')['radio'])
+    # 5 GHz: eficiência 0,5 × 100; 2,4 GHz e sem banda: o absoluto, 0,5.
+    self.assertEqual(prev.loc[banda.eq('5ghz').to_numpy(), 'yhat'].unique().tolist(), [50.0])
+    self.assertEqual(prev.loc[~banda.eq('5ghz').to_numpy(), 'yhat'].unique().tolist(), [0.5])
+    self.assertEqual(prev.loc[prev['_linha'] == 'a.csv:2', 'yhat'].tolist(), [0.5])
+
+  def test_den_imputado_so_nas_linhas_da_banda(self):
+    f = frame()
+    f['router_tx_rate_mbps'] = 100.0
+    f['radio'] = np.where(np.arange(len(f)) % 2 == 0, '5ghz', '2.4ghz')
+    f.loc[[0, 1], 'router_tx_rate_mbps'] = np.nan
+    conj = conjunto('speedtest_down_mbps', f)
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                                 denominador=self.DEN)
+    imputadas = prev.loc[prev['den_imputado'], '_linha'].tolist()
+    self.assertEqual(imputadas, ['a.csv:0'])
+
+  def test_dois_modelos_por_fold(self):
+    conj = self.conj()
+    ajustes = []
+    A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(0.5),
+                          denominador=self.DEN, ao_ajustar=lambda fold, m: ajustes.append(fold.test_site))
+    self.assertEqual(sorted(ajustes), sorted(['coworking', 'hotmilk', 'residencia'] * 2))
+
+  def test_sem_coluna_radio_levanta(self):
+    conj = conjunto('speedtest_down_mbps', frame().assign(router_tx_rate_mbps=100.0))
+    with self.assertRaisesRegex(ValueError, 'radio'):
+      A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], denominador=self.DEN)
+
+
 if __name__ == '__main__':
   unittest.main()

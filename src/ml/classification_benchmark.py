@@ -1,92 +1,40 @@
+"""Benchmark de classificadores de "atende" por aplicação, medidos na régua única.
+
+Para cada aplicação de core/aplicacoes.json, o alvo é "atende" (download e upload acima dos
+limiares). Os classificadores são avaliados deixando um prédio de fora por vez e comparados
+com a referência da régua: o "atende" tirado das previsões de regressão da mesma versão (com
+o denominador dela). Responde se classificar direto decide melhor que regredir Mbps e
+comparar com o limiar.
+"""
+
 import argparse
 import os
 import sys
+import warnings
 
 import numpy as np
-import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from ml.core.data import SITE_COLUMN, load_datasets, validate_columns
-from ml.core.metrics import (CLASS_NAMES, apply_thresholds, assert_comparable_scales,
-                             assert_multiclass, quartile_thresholds)
-from ml.core.reporting import format_fold_plan, format_per_site_table
-from ml.core.splits import inner_logo_splits, outer_logo_folds
+from ml.core import aplicacoes as core_aplicacoes
+from ml.core import avaliacao as core_avaliacao
+from ml.core import carga as core_carga
+from ml.core import classificacao as core_classificacao
+from ml.core import features as core_features
+from ml.core import modelos as core_modelos
+from ml.core.splits import inner_logo_splits
 
-
-DEFAULT_FEATURES = [
-  "router_expected_throughput_mbps",
-  "router_noise",
-  "router_rx_drop_misc",
-  "router_rx_duration_us",
-  "router_rx_rate_mbps",
-  "router_signal_avg_dbm",
-  "router_signal_dbm",
-  "router_snr",
-  "router_tx_duration_us",
-  "router_tx_failed",
-  "router_tx_rate_mbps",
-  "router_tx_retries",
-  "router_opportunity_medium_use",
-  "client_opportunity_medium_use",
-]
-
-
-def parse_csv_list(raw: str):
-  return [item.strip() for item in raw.split(",") if item.strip()]
-
-
-def parse_args():
-  parser = argparse.ArgumentParser(description="Benchmark WiFi QoE classifiers")
-  parser.add_argument('--csv', required=True,
-                      help='Comma-separated dataset CSV paths (merged into one site pool)')
-  parser.add_argument('--group-level', choices=['position', 'building'], default='position',
-                      help="'position' (padrão): 7 grupos, um por ponto de medição. "
-                           "'building': 2 grupos, residencia/coworking (viabilidade, n=2)")
-  parser.add_argument("--qoe-column", default="qoe_dw_score", help="Raw QoE score column")
-  parser.add_argument(
-    "--features",
-    default=",".join(DEFAULT_FEATURES),
-    help="Comma-separated feature columns",
-  )
-  parser.add_argument(
-    "--class-mode",
-    choices=["quartile", "fixed"],
-    default="quartile",
-    help="Class binning strategy",
-  )
-  parser.add_argument(
-    "--fixed-thresholds",
-    default="0.25,0.74",
-    help="Two thresholds for fixed mode: bad<x<t1, mid<t2, good>=t2",
-  )
-  parser.add_argument("--tune-iter", type=int, default=20, help="Randomized search iterations per tuned model")
-  parser.add_argument('--no-tune', action='store_true', default=False,
-                      help='Skip hyperparameter tuning (recommended with few sites)')
-  parser.add_argument("--seed", type=int, default=42, help="Random seed")
-  parser.add_argument('--test-size', type=float, default=None,
-                      help='IGNORED under leave-one-site-out; accepted only to warn')
-  parser.add_argument('--cv-folds', type=int, default=None,
-                      help='IGNORED under leave-one-site-out; fold count is the site count')
-  parser.add_argument('--cv-gap', type=int, default=None,
-                      help='IGNORED; leave-one-site-out has no time-ordered gap')
-  parser.add_argument('--target-column', default=None,
-                      help='IGNORED; class labels are computed per fold, not stored in a column')
-  parser.add_argument('--time-column', default=None,
-                      help='IGNORED; no split in this script is time-ordered')
-  parser.add_argument('--tune-top-k', type=int, default=None,
-                      help='IGNORED; every model is tuned, not just the top-k by CV score')
-  parser.add_argument('--plot-confusion', action='store_true', default=None,
-                      help='IGNORED; this script no longer builds a confusion matrix')
-  return parser.parse_args()
+ALVO_DN, ALVO_UP = 'speedtest_down_mbps', 'speedtest_up_mbps'
+REMOVIDAS = ('--qoe-column', '--class-mode', '--fixed-thresholds', '--group-level', '--features',
+             '--test-size', '--cv-folds', '--cv-gap', '--target-column', '--time-column', '--tune-top-k')
+REMOVIDAS_FLAG = ('--no-tune', '--plot-confusion')
 
 
 def build_models(seed: int):
@@ -184,107 +132,105 @@ def get_search_space(model_name: str):
   raise ValueError(f"No search space defined for model: {model_name}")
 
 
-def evaluate(df, features, qoe_column, models, no_tune, tune_iter, seed, group_level):
-  X = df[features]
-  y_raw = df[qoe_column]
-  sites = df[SITE_COLUMN]
-  assert_comparable_scales(y_raw, sites, qoe_column)
+def parse_args():
+  parser = argparse.ArgumentParser(description='Benchmark de classificadores de "atende" por aplicação')
+  parser.add_argument('--datasets', default='',
+                      help='Nomes de arquivo em data/, separados por vírgula (padrão: o conjunto canônico)')
+  parser.add_argument('--modelo', default='', help='Versão de core/modelos.json (padrão: a ativa)')
+  parser.add_argument('--aplicacoes', default='',
+                      help='Aplicações separadas por vírgula (padrão: todas de core/aplicacoes.json)')
+  parser.add_argument('--tune', action='store_true', default=False,
+                      help='Busca de hiperparâmetros por LOGO interno (lenta com poucos prédios)')
+  parser.add_argument('--tune-iter', type=int, default=20, help='Iterações da busca por modelo')
+  parser.add_argument('--seed', type=int, default=42, help='Semente')
+  parser.add_argument('--csv', default=None, help='REMOVIDO; use --datasets')
+  for flag in REMOVIDAS:
+    parser.add_argument(flag, default=None, help='REMOVIDO')
+  for flag in REMOVIDAS_FLAG:
+    parser.add_argument(flag, action='store_true', default=None, help='REMOVIDO')
+  return parser.parse_args()
 
-  folds = list(outer_logo_folds(X, y_raw, sites))
-  print(format_fold_plan([f.train_sites for f in folds], [f.test_site for f in folds],
-                         group_level=group_level))
 
-  rows = []
-  for fold in folds:
-    # Thresholds come from the TRAINING sites only (M3 fix) and depend only on
-    # the fold, not the model, so they're computed once per fold here.
-    t_low, t_high = quartile_thresholds(fold.y_train)
-    y_train = apply_thresholds(fold.y_train, t_low, t_high)
-    y_test = apply_thresholds(fold.y_test, t_low, t_high)
-    assert_multiclass(y_train, f'train for test_site={fold.test_site}')
-    assert_multiclass(y_test, f'test_site={fold.test_site}')
-    print(f'  test_site={fold.test_site}: thresholds low={t_low:.5f} high={t_high:.5f}')
+def ajuste_com_busca(nome_modelo: str, tune_iter: int, seed: int):
+  def ajustar(estimador, fold):
+    busca = RandomizedSearchCV(estimator=clone(estimador), param_distributions=get_search_space(nome_modelo),
+                               n_iter=tune_iter, scoring='balanced_accuracy',
+                               cv=inner_logo_splits(fold.train_site_ids), n_jobs=-1, random_state=seed,
+                               refit=True)
+    return busca.fit(fold.X_train, fold.y_train).best_estimator_
+  return ajustar
 
-    for name, model in models.items():
-      if no_tune:
-        fitted = clone(model).fit(fold.X_train, y_train)
-      else:
-        search = RandomizedSearchCV(
-          estimator=clone(model),
-          param_distributions=get_search_space(name),
-          n_iter=tune_iter,
-          scoring='f1_macro',
-          cv=inner_logo_splits(fold.train_site_ids),
-          n_jobs=-1,
-          random_state=seed,
-          refit=True,
-        )
-        search.fit(fold.X_train, y_train)
-        fitted = search.best_estimator_
 
-      y_pred = fitted.predict(fold.X_test)
-      report = classification_report(
-        y_test, y_pred, labels=CLASS_NAMES, output_dict=True, zero_division=0)
-      rows.append({
-        'model': name,
-        'test_site': fold.test_site,
-        'f1_macro': report['macro avg']['f1-score'],
-        'balanced_accuracy': report['macro avg']['recall'],
-        'threshold_low': t_low,
-        'threshold_high': t_high,
-      })
-  return pd.DataFrame(rows)
+def imprimir(app: str, limiares: dict, df, linhas) -> None:
+  sites = sorted(df['_site'].unique())
+  print(f"\n{app} (download >= {limiares['dn']}, upload >= {limiares['up']}): "
+        f"{len(df)} linhas, {int(df['_atende'].sum())} atendem")
+  print(f"  {'modelo':22s} {'pooled':>8s} {'90%':>17s} " + ' '.join(f'{s:>13s}' for s in sites))
+  for nome, r in linhas:
+    faixa = f"{r['intervalo'][0]:.3f} a {r['intervalo'][1]:.3f}" if r['intervalo'] else '-'
+    pooled = f"{r['pooled']:.3f}" if r['pooled'] is not None else '-'
+    locais = ' '.join(f"{r['por_local'][s]:13.3f}" if s in r['por_local'] else f"{'-':>13s}" for s in sites)
+    print(f'  {nome:22s} {pooled:>8s} {faixa:>17s} {locais}')
 
 
 def main():
   args = parse_args()
-
-  ignored_flags = (
-    ('--test-size', args.test_size,
-     'the fold count equals the number of sites'),
-    ('--cv-folds', args.cv_folds,
-     'the fold count equals the number of sites'),
-    ('--cv-gap', args.cv_gap,
-     'leave-one-site-out has no time-ordered gap'),
-    ('--target-column', args.target_column,
-     'class labels are computed per fold, not stored in a column'),
-    ('--time-column', args.time_column,
-     'no split in this script is time-ordered'),
-    ('--tune-top-k', args.tune_top_k,
-     'every model is tuned, not just the top-k by CV score'),
-    ('--plot-confusion', args.plot_confusion,
-     'this script no longer builds a confusion matrix'),
-  )
-  for flag, value, reason in ignored_flags:
-    if value is not None:
-      print(f'WARNING: {flag} is ignored under leave-one-site-out; {reason}.')
-
+  if args.csv is not None:
+    raise SystemExit('--csv saiu: use --datasets com nomes de data/ (padrão: o conjunto canônico)')
+  for flag in REMOVIDAS + REMOVIDAS_FLAG:
+    if getattr(args, flag.lstrip('-').replace('-', '_')) is not None:
+      print(f'WARNING: {flag} saiu; o alvo agora é "atende" por aplicação (core/aplicacoes.json) '
+            'e a carga é a canônica.')
   np.random.seed(args.seed)
 
-  if args.class_mode != 'quartile':
-    print('WARNING: --class-mode/--fixed-thresholds are not yet honored; '
-          'evaluate() always uses per-fold quartile thresholds.')
+  registro = core_modelos.carregar()
+  nome = args.modelo or registro['ativo']
+  if nome not in registro['versoes']:
+    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  ids = [x for x in args.datasets.split(',') if x] or None
+  tabela = core_features.carregar_tabela()
+  conj_dn = core_carga.carregar(ALVO_DN, ids=ids, tabela=tabela)
+  conj_up = core_carga.carregar(ALVO_UP, ids=ids, tabela=tabela)
+  vazadas = [c for c, k in conj_dn.classes.items() if k is not None and k.vazamento]
+  pedidas = registro['versoes'][nome]['features']
+  features = [f for f in pedidas if f in conj_dn.df.columns and f not in vazadas]
+  fora = [f for f in pedidas if f not in features]
+  print(f'Modelo {nome}: {len(features)} features' + (f'; fora da conta (vazamento ou ausentes): {fora}' if fora else ''))
+  print(f'Datasets: {conj_dn.datasets}')
 
-  features = parse_csv_list(args.features)
-  df = load_datasets(parse_csv_list(args.csv), target=args.qoe_column,
-                     group_level=args.group_level)
-  validate_columns(df, features, 'feature')
+  # Referência: as previsões de regressão da régua, calculadas uma vez para todas as aplicações.
+  vazadas_up = [c for c, k in conj_up.classes.items() if k is not None and k.vazamento]
+  prev_dn = core_avaliacao.avaliar(conj_dn, features, vazadas, com_previsoes=True,
+                                   denominador=core_modelos.denominador_de(registro, nome, ALVO_DN))[1]
+  prev_up = core_avaliacao.avaliar(conj_up, [f for f in features if f not in vazadas_up], vazadas_up,
+                                   com_previsoes=True,
+                                   denominador=core_modelos.denominador_de(registro, nome, ALVO_UP))[1]
 
-  df = df.dropna(subset=features).reset_index(drop=True)
+  aplicacoes = core_aplicacoes.carregar()
+  pedidas_apps = [a for a in args.aplicacoes.split(',') if a] or list(aplicacoes)
+  desconhecidas = [a for a in pedidas_apps if a not in aplicacoes]
+  if desconhecidas:
+    raise SystemExit(f'aplicações desconhecidas: {desconhecidas}; disponíveis: {list(aplicacoes)}')
+  modelos = build_models(args.seed)
+  for app in pedidas_apps:
+    limiares = aplicacoes[app]
+    df = core_classificacao.alvo_atende(conj_dn, conj_up, limiares)
+    if df['_atende'].nunique() < 2:
+      print(f'\n{app}: só uma classe no "atende" real; fora da tabela')
+      continue
+    linhas = [('régua (regressão)', core_classificacao.resumir_classe(
+      core_classificacao.referencia_regua(prev_dn, prev_up, limiares)))]
+    for nome_modelo, estimador in modelos.items():
+      ajustar = ajuste_com_busca(nome_modelo, args.tune_iter, args.seed) if args.tune else None
+      with warnings.catch_warnings(record=True) as avisos:
+        warnings.simplefilter('always')
+        prev = core_classificacao.prever_classe_fora_do_fold(df, features, vazadas, estimador, ajustar=ajustar)
+      for aviso in avisos:
+        if 'pulado' in str(aviso.message):
+          print(f'  aviso ({nome_modelo}): {aviso.message}')
+      linhas.append((nome_modelo, core_classificacao.resumir_classe(prev)))
+    imprimir(app, limiares, df, linhas)
 
-  print(f'Dataset rows: {len(df)}')
-  print(f'Sites: {sorted(df[SITE_COLUMN].unique())}')
-  print(f'Split strategy: leave-one-{args.group_level}-out '
-        f'({df[SITE_COLUMN].nunique()} folds)')
 
-  models = build_models(args.seed)
-  results = evaluate(df, features, args.qoe_column, models,
-                     args.no_tune, args.tune_iter, args.seed, args.group_level)
-
-  print('\n' + '=' * 110)
-  print(format_per_site_table(results, 'f1_macro'))
-  print(format_per_site_table(results, 'balanced_accuracy'))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
   main()

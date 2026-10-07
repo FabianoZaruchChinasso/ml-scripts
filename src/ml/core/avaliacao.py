@@ -19,7 +19,7 @@ from ml.core.sites import teto_wan
 from ml.core.splits import outer_logo_folds
 
 # Muda quando a régua muda: avaliações guardadas com outra versão ficam "desatualizadas".
-VERSAO_REGUA = '2026-10-06.2'
+VERSAO_REGUA = '2026-10-07.1'
 ARVORES = 200
 ALVOS_COM_TETO = ('speedtest_down_mbps', 'speedtest_up_mbps')
 _COLUNAS_PREVISAO = ['_linha', 'y', 'yhat', 'den_imputado', '_site', '_pos']
@@ -54,7 +54,7 @@ def assert_sem_vazamento(colunas, vazadas) -> None:
 
 def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores: int = None,
                         min_teste: int = 1, min_treino: int = 1, estimador=None,
-                        ao_ajustar=None, denominador: str = None) -> pd.DataFrame:
+                        ao_ajustar=None, denominador=None) -> pd.DataFrame:
   """Previsão de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
   Para download e upload, linhas `_limitado_wan` saem do treino e a previsão é
@@ -64,9 +64,16 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   previsão volta para a unidade do alvo multiplicando por `den`; `den` vazio ou menor
   que DEN_MINIMO vira a mediana das linhas de treino do fold, e a linha fica com
   `den_imputado`. O teto de WAN é aplicado depois da multiplicação.
+  `denominador` também pode ser {'coluna': ..., 'radio': ...}: dois modelos por fold
+  (eficiência e absoluto, mesmas linhas de treino), e cada linha de teste recebe a
+  eficiência se `radio` for igual ao valor indicado, e o absoluto nos demais casos
+  (inclusive `radio` vazio).
   Devolve colunas _linha, y, yhat, den_imputado, _site, _pos, indexadas como `df`.
   """
   assert_sem_vazamento(colunas, vazadas)
+  if isinstance(denominador, dict):
+    return _prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
+                             ao_ajustar, denominador)
   if not colunas:
     return pd.DataFrame(columns=_COLUNAS_PREVISAO)
   sub = df[df[y_col].notna()]
@@ -118,6 +125,26 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   if not partes:
     return pd.DataFrame(columns=_COLUNAS_PREVISAO)
   return pd.concat(partes)
+
+
+def _prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
+                      ao_ajustar, denominador: dict) -> pd.DataFrame:
+  """Eficiência nas linhas de uma banda, absoluto nas demais (mesmos folds, dois modelos)."""
+  if 'radio' not in df.columns:
+    raise ValueError("denominador por banda precisa da coluna 'radio' no conjunto")
+  eficiencia = prever_fora_do_fold(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
+                                   ao_ajustar, denominador['coluna'])
+  absoluto = prever_fora_do_fold(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
+                                 ao_ajustar, None)
+  if eficiencia.empty:
+    return eficiencia
+  absoluto = absoluto.loc[eficiencia.index]
+  na_banda = (df.loc[eficiencia.index, 'radio'] == denominador['radio']).to_numpy()
+  saida = eficiencia.copy()
+  saida['yhat'] = np.where(na_banda, eficiencia['yhat'].to_numpy(dtype=float),
+                           absoluto['yhat'].to_numpy(dtype=float))
+  saida['den_imputado'] = na_banda & eficiencia['den_imputado'].to_numpy(dtype=bool)
+  return saida
 
 
 def mae_log(y, yhat) -> float:

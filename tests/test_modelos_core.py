@@ -161,5 +161,37 @@ class TestDenominador(Base):
                         denominador={'speedtest_down_mbps': coluna}, path=self.path)
 
 
+class TestDenominadorPorBanda(Base):
+  def registro(self, valor):
+    return {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
+                                              'denominador': {'speedtest_down_mbps': valor}}}}
+
+  def test_forma_condicional_valida(self):
+    M.validar_registro(self.registro({'coluna': 'router_tx_rate_mbps', 'radio': '5ghz'}))
+    M.validar_registro(self.registro('router_tx_rate_mbps'))
+
+  def test_forma_condicional_invalida(self):
+    for ruim in ({'coluna': 'x'}, {'coluna': 'x', 'radio': ''}, {'coluna': '', 'radio': '5ghz'},
+                 {'coluna': 'x', 'radio': '5ghz', 'extra': 1}, {'coluna': 3, 'radio': '5ghz'}):
+      with self.assertRaises(ValueError, msg=repr(ruim)):
+        M.validar_registro(self.registro(ruim))
+
+  def test_coluna_do_denominador(self):
+    self.assertEqual(M.coluna_do_denominador('router_tx_rate_mbps'), 'router_tx_rate_mbps')
+    self.assertEqual(M.coluna_do_denominador({'coluna': 'router_rx_rate_mbps', 'radio': '5ghz'}),
+                     'router_rx_rate_mbps')
+    self.assertIsNone(M.coluna_do_denominador(None))
+
+  def test_salvar_checa_a_coluna_dentro_do_dicionario(self):
+    with self.assertRaises(ValueError):
+      M.salvar_versao('v2', ['router_snr'], 'x', CONHECIDAS, TABELA,
+                      denominador={'speedtest_down_mbps': {'coluna': 'router_tx_bytes', 'radio': '5ghz'}},
+                      path=self.path)
+    den = {'speedtest_down_mbps': {'coluna': 'router_signal_dbm', 'radio': '5ghz'}}
+    M.salvar_versao('v3', ['router_snr'], 'x', CONHECIDAS, TABELA, denominador=den, path=self.path)
+    self.assertEqual(M.denominador_de(M.carregar(self.path), 'v3', 'speedtest_down_mbps'),
+                     {'coluna': 'router_signal_dbm', 'radio': '5ghz'})
+
+
 if __name__ == '__main__':
   unittest.main()

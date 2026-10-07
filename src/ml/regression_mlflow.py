@@ -9,6 +9,7 @@ teto de WAN. Para ALVO=latency_ms ou jitter_ms, treina os dois modelos quantíli
 p90 (em escala log) que a produção soma à previsão do modelo antes de voltar para ms.
 Se a versão tiver denominador para o ALVO (core/modelos.json), o modelo aprende a eficiência
 (alvo ÷ coluna) e eficiencia.json diz como voltar para Mbps.
+Com denominador condicional ({"coluna", "radio"}), registra dois modelos finais por configuração (<modelo>_eficiencia e <modelo>_absoluto).
 """
 
 import os
@@ -125,8 +126,10 @@ def main():
     print(f'features com vazamento fora da conta: {removidas}')
   validate_columns(conj.df, features, 'feature')
   denominador = core_modelos.denominador_de(registro, nome_modelo, ALVO)
-  if denominador:
-    validate_columns(conj.df, [denominador], 'denominador')
+  coluna_den = core_modelos.coluna_do_denominador(denominador)
+  radio_den = denominador.get('radio') if isinstance(denominador, dict) else None
+  if coluna_den:
+    validate_columns(conj.df, [coluna_den] + (['radio'] if radio_den else []), 'denominador')
   print(f"Modelo: {nome_modelo}" + (' (ativo)' if nome_modelo == registro['ativo'] else '')
         + f" — {len(features)} features, alvo {ALVO}, datasets {conj.datasets}")
 
@@ -140,7 +143,8 @@ def main():
     'versao_regua': core_avaliacao.VERSAO_REGUA,
     'features': ','.join(features),
     'removidas_por_vazamento': ','.join(removidas),
-    'denominador': denominador or '',
+    'denominador': coluna_den or '',
+    'denominador_radio': radio_den or '',
   }
   mlflow.set_experiment('MLflow Wifi Regressions')
   if ALVO in core_quantis.ALVOS_QUANTILICOS:
@@ -150,14 +154,17 @@ def main():
   treino = ~conj.df['_limitado_wan']
   X_final = core_features.matriz(conj.df[treino], features)
   y_final = conj.df.loc[treino, ALVO].astype(float)
-  eficiencia = None
-  if denominador:
-    den = pd.to_numeric(conj.df.loc[treino, denominador], errors='coerce')
+  y_eficiencia, eficiencia = None, None
+  if coluna_den:
+    den = pd.to_numeric(conj.df.loc[treino, coluna_den], errors='coerce')
     mediana = float(den[den >= core_avaliacao.DEN_MINIMO].median())
-    y_final = y_final / den.where(den >= core_avaliacao.DEN_MINIMO, mediana)
-    eficiencia = {'alvo': ALVO, 'denominador': denominador, 'mediana_imputacao': mediana,
-                  'den_minimo': core_avaliacao.DEN_MINIMO,
-                  'uso': 'mbps = predict(X) * denominador (vazio ou abaixo de den_minimo: mediana_imputacao)'}
+    y_eficiencia = y_final / den.where(den >= core_avaliacao.DEN_MINIMO, mediana)
+    uso = 'mbps = predict(X) * denominador (vazio ou abaixo de den_minimo: mediana_imputacao)'
+    if radio_den:
+      uso = (f'radio == {radio_den!r}: mbps = <modelo>_eficiencia.predict(X) * denominador '
+             '(vazio ou abaixo de den_minimo: mediana_imputacao); demais linhas: mbps = <modelo>_absoluto.predict(X)')
+    eficiencia = {'alvo': ALVO, 'denominador': coluna_den, 'radio': radio_den, 'mediana_imputacao': mediana,
+                  'den_minimo': core_avaliacao.DEN_MINIMO, 'uso': uso}
   for config in CONFIGS:
     with mlflow.start_run(run_name=f"{nome_modelo}-{config['model_type']}-{config['max_depth']}"):
       mlflow.log_params(dict(params, **config))
@@ -165,10 +172,16 @@ def main():
                                                 denominador=denominador)
       resumo = core_avaliacao.resumir(prev, len(features))
       registrar_metricas(resumo)
-      final = montar(config).fit(X_final, y_final)
-      # O imputer guarda um numpy.dtype, que o skops não confia por padrão.
-      mlflow.sklearn.log_model(sk_model=final, name=config['model_type'], serialization_format='skops',
-                               skops_trusted_types=['numpy.dtype'])
+      finais = {config['model_type']: y_final}
+      if coluna_den and radio_den:
+        finais = {f"{config['model_type']}_eficiencia": y_eficiencia, f"{config['model_type']}_absoluto": y_final}
+      elif coluna_den:
+        finais = {config['model_type']: y_eficiencia}
+      for nome_final, y_treino in finais.items():
+        final = montar(config).fit(X_final, y_treino)
+        # O imputer guarda um numpy.dtype, que o skops não confia por padrão.
+        mlflow.sklearn.log_model(sk_model=final, name=nome_final, serialization_format='skops',
+                                 skops_trusted_types=['numpy.dtype'])
       if eficiencia:
         mlflow.log_dict(eficiencia, 'eficiencia.json')
         mlflow.log_metric('den_imputados', resumo['den_imputados'])

@@ -258,10 +258,15 @@
         : sel ? ' <span class="tag mid" title="as features foram escolhidas olhando estes mesmos locais (para ' + esc(sel.alvo) + ')">otimista</span>' : '';
       return `<tr>
         <td><code>${esc(v.nome)}</code>${v.ativo ? ' <span class="tag current">ativo</span>' : ''}${(() => {
-          const den = (v.denominador || {})[st.alvo];
-          if (!den) return '';
+          const valor = (v.denominador || {})[st.alvo];
+          if (!valor) return '';
+          // Texto: eficiência em todas as linhas. {coluna, radio}: só nas linhas dessa banda.
+          const den = typeof valor === 'string' ? valor : valor.coluna;
+          const radio = typeof valor === 'string' ? '' : valor.radio;
+          const banda = radio === '5ghz' ? '5 GHz' : radio === '2.4ghz' ? '2,4 GHz' : radio;
           const lado = den.includes('_tx_') ? 'tx' : den.includes('_rx_') ? 'rx' : den;
-          return ` <span class="tag mid" title="prevê a eficiência (alvo ÷ ${esc(den)}) e volta para Mbps">eficiência ÷ ${esc(lado)}</span>`;
+          const titulo = `prevê a eficiência (alvo ÷ ${den})${banda ? ` só em ${banda}, absoluto nas demais bandas` : ''} e volta para Mbps`;
+          return ` <span class="tag mid" title="${esc(titulo)}">eficiência ÷ ${esc(lado)}${banda ? ` (${esc(banda)})` : ''}</span>`;
         })()}
           <div class="gate-msg">${esc(v.descricao)}</div></td>
         <td class="num">${v.features.length}</td>
