@@ -360,7 +360,7 @@
       : p.delta_pinball
         ? `Δ pinball p90 ${num(p.delta_pinball.valor, 2)} ${u} ${faixa(p.delta_pinball.intervalo, 2)} · cobertura p90 ${num(p.cobertura, 2)}`
         : `Δ MAE ${num(p.delta_mae.valor, 1)} ${u} ${faixa(p.delta_mae.intervalo, 1)}${p.delta_atende
-          ? ` · Δ atende ${num(p.delta_atende.valor, 3)} ${faixa(p.delta_atende.intervalo, 3)}` : ''}`;
+          ? ` · Δ atende${p.delta_atende.ajustado ? ' (limiar ajustado)' : ''} ${num(p.delta_atende.valor, 3)} ${faixa(p.delta_atende.intervalo, 3)}` : ''}`;
     const promocao = p ? `<div class="veredito ${p.veredito.resultado}" style="margin-top:10px">
         <svg class="icon"><use href="#${VEREDITO[p.veredito.resultado][1]}"/></svg>
         <div><b>Régua de promoção: ${VEREDITO[p.veredito.resultado][0]}</b>

@@ -310,6 +310,19 @@ class TestRotasAssistente(Base):
     self.assertIn('media', av['atende_completo'])
     self.assertIn('media', av['atende_throughput'])
 
+  def test_avaliacao_completa_traz_atende_ajustado(self):
+    av = api.avaliacao_completa('a.csv', '', ['router_snr'])
+    self.assertIn('media', av['atende_ajustado'])
+    self.assertIn('fatores', av['atende_ajustado'])
+    self.assertIn('fatores_producao', av['atende_ajustado'])
+    self.assertIn('media', av['atende_throughput'])
+
+  def test_promocao_em_download_usa_o_atende_ajustado(self):
+    r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
+    d = r['promocao']['delta_atende']
+    if d is not None:
+      self.assertTrue(d['ajustado'])
+
   def test_promocao_em_latencia_usa_quantis(self):
     r = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', alvo='latency_ms', base='v1')
     p = r['promocao']

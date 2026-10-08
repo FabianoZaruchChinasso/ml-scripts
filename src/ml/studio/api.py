@@ -21,6 +21,7 @@ from ml.core import aplicacoes as core_aplicacoes
 from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import features as core_features
+from ml.core import limiar as core_limiar
 from ml.core import formulas as core_formulas
 from ml.core import modelos as core_modelos
 from ml.core import quantis as core_quantis
@@ -209,7 +210,7 @@ def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, 
   """Veredito de promoção da régua contra a versão base.
 
   Latência e jitter: Δ pinball do p90 e cobertura da nova versão. Download e upload:
-  Δ MAE e Δ "atende em throughput", cada lado com o seu denominador ({alvo: coluna}).
+  Δ MAE e Δ "atende em throughput" com o fator de decisão ajustado, cada lado com o seu denominador ({alvo: coluna}).
   """
   if alvo in core_quantis.ALVOS_QUANTILICOS:
     nova = _prever_quantis(conj, feats)
@@ -224,10 +225,12 @@ def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, 
   if alvo in core_avaliacao.ALVOS_COM_TETO:
     dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
     up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
-    d_atende = core_avaliacao.delta_atende(_prever_pontual(dn, feats, den_nova), _prever_pontual(up, feats, den_nova),
-                                           _prever_pontual(dn, feats_base, den_base),
-                                           _prever_pontual(up, feats_base, den_base),
-                                           core_aplicacoes.carregar())
+    aplicacoes = core_aplicacoes.carregar()
+    den_nova, den_base = den_nova or {}, den_base or {}
+    # "Atende" com o fator de decisão escolhido sem o prédio de teste (core/limiar.py).
+    d_atende = core_limiar.delta_decisoes(
+      core_limiar.decisoes_atende(dn, up, feats, aplicacoes, den_nova.get(dn.alvo), den_nova.get(up.alvo)),
+      core_limiar.decisoes_atende(dn, up, feats_base, aplicacoes, den_base.get(dn.alvo), den_base.get(up.alvo)))
   return {'delta_mae': d_mae, 'delta_atende': d_atende,
           'veredito': core_avaliacao.veredito_promocao(d_mae, d_atende),
           'versao_regua': core_avaliacao.VERSAO_REGUA}
@@ -292,6 +295,15 @@ def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict
       saida[alvo]['quantis'] = core_quantis.resumir_quantis(quantis[alvo], resumo['n'])
   saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
                                                      previsoes['speedtest_up_mbps'], aplicacoes)
+  conj_dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
+  conj_up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
+  den = denominador or {}
+  decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, features, aplicacoes,
+                                         den.get(conj_dn.alvo), den.get(conj_up.alvo))
+  saida['atende_ajustado'] = dict(core_limiar.resumir_decisoes(decisoes),
+                                  fatores_producao=core_limiar.fatores_producao(
+                                    conj_dn, conj_up, features, aplicacoes, den.get(conj_dn.alvo),
+                                    den.get(conj_up.alvo)))
   saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
                                                           previsoes['speedtest_up_mbps'],
                                                           quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)

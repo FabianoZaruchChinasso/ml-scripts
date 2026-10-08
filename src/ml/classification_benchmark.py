@@ -28,6 +28,7 @@ from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import classificacao as core_classificacao
 from ml.core import features as core_features
+from ml.core import limiar as core_limiar
 from ml.core import modelos as core_modelos
 from ml.core.splits import inner_logo_splits
 
@@ -165,12 +166,12 @@ def imprimir(app: str, limiares: dict, df, linhas) -> None:
   sites = sorted(df['_site'].unique())
   print(f"\n{app} (download >= {limiares['dn']}, upload >= {limiares['up']}): "
         f"{len(df)} linhas, {int(df['_atende'].sum())} atendem")
-  print(f"  {'modelo':22s} {'pooled':>8s} {'90%':>17s} " + ' '.join(f'{s:>13s}' for s in sites))
+  print(f"  {'modelo':24s} {'pooled':>8s} {'90%':>17s} " + ' '.join(f'{s:>13s}' for s in sites))
   for nome, r in linhas:
     faixa = f"{r['intervalo'][0]:.3f} a {r['intervalo'][1]:.3f}" if r['intervalo'] else '-'
     pooled = f"{r['pooled']:.3f}" if r['pooled'] is not None else '-'
     locais = ' '.join(f"{r['por_local'][s]:13.3f}" if s in r['por_local'] else f"{'-':>13s}" for s in sites)
-    print(f'  {nome:22s} {pooled:>8s} {faixa:>17s} {locais}')
+    print(f'  {nome:24s} {pooled:>8s} {faixa:>17s} {locais}')
 
 
 def main():
@@ -211,6 +212,10 @@ def main():
   desconhecidas = [a for a in pedidas_apps if a not in aplicacoes]
   if desconhecidas:
     raise SystemExit(f'aplicações desconhecidas: {desconhecidas}; disponíveis: {list(aplicacoes)}')
+  # Referência com o fator de decisão ajustado (core/limiar.py), uma vez para todas as aplicações.
+  decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, features, {a: aplicacoes[a] for a in pedidas_apps},
+                                         core_modelos.denominador_de(registro, nome, ALVO_DN),
+                                         core_modelos.denominador_de(registro, nome, ALVO_UP))
   modelos = build_models(args.seed)
   for app in pedidas_apps:
     limiares = aplicacoes[app]
@@ -218,8 +223,10 @@ def main():
     if df['_atende'].nunique() < 2:
       print(f'\n{app}: só uma classe no "atende" real; fora da tabela')
       continue
+    ajustada = decisoes[app].rename(columns={'real': 'y', 'previsto': 'yhat'})[['_linha', 'y', 'yhat', '_site', '_pos']]
     linhas = [('régua (regressão)', core_classificacao.resumir_classe(
-      core_classificacao.referencia_regua(prev_dn, prev_up, limiares)))]
+                core_classificacao.referencia_regua(prev_dn, prev_up, limiares))),
+              ('régua (limiar ajustado)', core_classificacao.resumir_classe(ajustada))]
     for nome_modelo, estimador in modelos.items():
       ajustar = ajuste_com_busca(nome_modelo, args.tune_iter, args.seed) if args.tune else None
       with warnings.catch_warnings(record=True) as avisos:

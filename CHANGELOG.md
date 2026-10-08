@@ -1,3 +1,101 @@
+# Changelog — Fator de decisão do "atende" em throughput (`atende_ajustado`)
+
+**Data:** 2026-10-08
+
+## Por quê
+
+A régua decidia "atende" comparando a previsão de Mbps direto com o limiar da aplicação e errava nas
+aplicações de limiar baixo: acurácia balanceada de 0,519 em Navegação e 0,558 em Chamada de vídeo,
+contra classificadores diretos de até 0,81. A causa é a regressão superestimar enlaces quase mortos
+(prevê alguns Mbps onde o enlace entrega menos de 1), então diz "atende" demais (spec
+`2026-10-08-limiar-atende-design.md`, seções 1 e 2).
+
+## Mudanças
+
+- Novo `core/limiar.py`: fator de decisão por aplicação (`previsão >= k x limiar`), escolhido por LOGO
+  interno nos prédios de treino de cada fold (aninhado), grade geométrica de 0,5 a 16
+  (`escolher_fator`, `decisoes_atende`, `resumir_decisoes`, `fatores_producao`).
+- `core/avaliacao.py`: versão da régua `2026-10-08.1`.
+- A avaliação das versões grava `atende_ajustado` (com `fatores` por prédio) e `fatores_producao`; o
+  "atende" bruto continua visível.
+- `_promocao` (Studio) passa a usar o "atende ajustado" (`delta_decisoes`).
+- Assistente: rótulo "Δ atende (limiar ajustado)".
+- `classification_benchmark.py`: nova linha de referência "régua (limiar ajustado)" ao lado de "régua
+  (regressão)".
+- Validação do `--tune` desta rodada (spec, seção 2): o melhor classificador com busca de
+  hiperparâmetros fica em 0,807 (`rf`) em Navegação, 0,772 (`rf`) em Chamada de vídeo, 0,773
+  (`hist_gb`) em Streaming 4K e 0,770 (`hist_gb`) em Jogo em nuvem; o ajuste empata ou supera esses
+  valores sem trocar o modelo.
+- Correção de layout da tabela de versões no Studio.
+
+## Efeito medido (régua `2026-10-08.1`)
+
+"Atende em throughput", bruto contra ajustado (pooled, IC 90%):
+
+| Versão | Bruto | Ajustado |
+|---|---|---|
+| v3-tr069 | 0,6551 (0,6381 a 0,6756) | 0,7856 (0,7539 a 0,8128) |
+| v4-tr069 | 0,6425 (0,6248 a 0,6662) | 0,7776 (0,7308 a 0,8065) |
+| v5-tr069 | 0,6608 (0,6409 a 0,6801) | 0,7882 (0,7457 a 0,8176) |
+
+Por aplicação, bruto → ajustado:
+
+| Aplicação | v3-tr069 | v4-tr069 | v5-tr069 |
+|---|---|---|---|
+| Navegação | 0,5188 → 0,7985 | 0,5038 → 0,7544 | 0,5188 → 0,8039 |
+| Chamada de vídeo | 0,5583 → 0,7811 | 0,5474 → 0,7734 | 0,5583 → 0,7860 |
+| Streaming 4K | 0,7773 → 0,7892 | 0,7824 → 0,7866 | 0,8007 → 0,7799 |
+| Jogo em nuvem | 0,7661 → 0,7735 | 0,7363 → 0,7960 | 0,7655 → 0,7830 |
+
+Fatores escolhidos por prédio de teste (casa-marcelo, coworking, hotmilk, residência), `v5-tr069`:
+Navegação 8,0 / 6,7272 / 6,7272 / 8,7241; Chamada de vídeo 2,8284 / 6,1688 / 3,0844 / 4,362;
+Streaming 4K 2,0 / 1,1892 / 1,5422 / 1,0905; Jogo em nuvem 2,5937 / 1,834 / 2,181 / 1,6818.
+
+Fatores de produção (LOGO com todos os prédios):
+
+| Aplicação | v3-tr069 | v4-tr069 | v5-tr069 |
+|---|---|---|---|
+| Navegação | 6,1688 | 8,0 | 6,1688 |
+| Chamada de vídeo | 3,3636 | 2,8284 | 3,3636 |
+| Streaming 4K | 2,181 | 1,834 | 1,834 |
+| Jogo em nuvem | 3,0844 | 2,3784 | 2,3784 |
+
+### Promoção de `v5-tr069` contra `v3-tr069` (com o "atende ajustado")
+
+- Download: **empate** (`delta_mae` -2,9062, IC -6,8294 a 1,2714; `delta_atende` +0,0026, IC -0,0154 a
+  0,0157): "os intervalos das diferenças incluem 0: com estes locais, não dá para separar as duas
+  versões". Com o "atende" bruto, o veredito do download era "melhor" (entrada anterior); com o
+  ajustado, a vantagem de `v5` em "atende" some dentro do intervalo.
+- Upload: **melhor** (`delta_mae` -3,443, IC -4,9452 a -1,7933; `delta_atende` +0,0026, IC -0,0154 a
+  0,0157): "o MAE caiu 3,4 (90%: -4,9 a -1,8) sem piorar 'atende'".
+
+### Benchmark (`classification_benchmark.py --modelo v5-tr069`)
+
+Acurácia balanceada fora do prédio (pooled, IC 90%). Os classificadores são os da entrada anterior;
+aqui entram as duas linhas de referência da régua.
+
+| Aplicação | régua (regressão) | régua (limiar ajustado) | rf | extra_trees | hist_gb | log_reg |
+|---|---|---|---|---|---|---|
+| Navegação | 0,519 (0,505 a 0,548) | 0,804 (0,733 a 0,838) | 0,762 (0,697 a 0,796) | 0,724 (0,664 a 0,750) | 0,661 (0,584 a 0,696) | 0,766 (0,722 a 0,809) |
+| Chamada de vídeo | 0,558 (0,545 a 0,573) | 0,786 (0,721 a 0,828) | 0,726 (0,680 a 0,748) | 0,726 (0,696 a 0,749) | 0,628 (0,609 a 0,652) | 0,744 (0,711 a 0,782) |
+| Streaming 4K | 0,801 (0,758 a 0,841) | 0,780 (0,735 a 0,828) | 0,751 (0,707 a 0,801) | 0,747 (0,704 a 0,797) | 0,784 (0,743 a 0,831) | 0,722 (0,671 a 0,784) |
+| Jogo em nuvem | 0,765 (0,732 a 0,792) | 0,783 (0,737 a 0,829) | 0,771 (0,728 a 0,818) | 0,755 (0,712 a 0,804) | 0,780 (0,746 a 0,813) | 0,723 (0,681 a 0,777) |
+
+## Ressalvas
+
+- O fator corrige a decisão, não a previsão: o MAE de Mbps não muda.
+- Em Streaming 4K o ajuste perde um pouco (spec, seção 2): nesta rodada, `v5-tr069` vai de 0,8007
+  (bruto) a 0,7799 (ajustado), e no benchmark de 0,801 a 0,780. O fator 1 já era bom ali e a escolha
+  em 3 prédios de treino por fold adiciona ruído.
+- A escolha do fator usa só 3 prédios de treino por fold; os fatores variam bastante entre prédios
+  (por exemplo, Chamada de vídeo de 2,8284 a 6,1688 na `v5-tr069`).
+- Os intervalos de bruto e ajustado se sobrepõem em Streaming 4K e Jogo em nuvem; o ganho claro está
+  em Navegação e Chamada de vídeo.
+- O veredito de download da `v5-tr069` contra a `v3-tr069` passou de "melhor" para "empate" com a
+  nova medida de "atende".
+
+---
+
 # Changelog — Eficiência só em 5 GHz (`v5-tr069`) e scripts de classificação na régua
 
 **Data:** 2026-10-07
