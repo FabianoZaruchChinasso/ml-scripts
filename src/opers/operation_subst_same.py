@@ -5,14 +5,20 @@ from opers.directive_operation_itf import DirectiveOperationItf
 class DirectiveOperationSubstSame(DirectiveOperationItf):
   def __init__(self):
     self.match_val = ""
+    self.match_num = None
     self.replace_val = 1.0
     self.fallback_val = 0.0
     self.has_fallback = False
 
   def set_values(self, values: List[str]):
     self.has_fallback = len(values) >= 3
+    self.match_num = None
     if len(values) >= 1:
       self.match_val = values[0].strip().strip('"').strip("'")
+      try:
+        self.match_num = float(self.match_val)
+      except ValueError:
+        self.match_num = None
     if len(values) >= 2:
       try:
         self.replace_val = float(values[1])
@@ -33,8 +39,15 @@ class DirectiveOperationSubstSame(DirectiveOperationItf):
         target_mask = mask if mask is not None else pd.Series(True, index=df.index)
         
         # Calculate masks before modifying the column
-        is_match = (df[col].astype(str) == self.match_val) & target_mask
+        if self.match_num is not None:
+          numeric_col = pd.to_numeric(df[col], errors='coerce')
+          is_match = (numeric_col == self.match_num) & target_mask
+        else:
+          is_match = (df[col].astype(str) == self.match_val) & target_mask
         is_fallback = (df[col].astype(str) != self.match_val) & target_mask
+
+        if self.has_fallback and self.match_num is not None:
+          is_fallback = (~is_match) & target_mask
         
         df.loc[is_match, col] = self.replace_val
 
