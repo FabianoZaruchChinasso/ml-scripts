@@ -106,6 +106,31 @@ class TestResumo(unittest.TestCase):
     self.assertEqual((r['pooled'], r['por_local'], r['intervalo'], r['n']), (None, {}, None, 0))
 
 
+class TestMatrizConfusao(unittest.TestCase):
+  def test_vazio(self):
+    geral, por_local = K.matriz_confusao(pd.DataFrame(columns=['_linha', 'y', 'yhat', '_site', '_pos']))
+    self.assertIsNone(geral)
+    self.assertEqual(por_local, {})
+
+  def test_geral_e_por_local_normalizados_por_linha(self):
+    prev = pd.DataFrame({'_linha': range(4), 'y': [True, True, False, False],
+                         'yhat': [True, False, False, True], '_site': ['s1', 's1', 's2', 's2'],
+                         '_pos': range(4)})
+    geral, por_local = K.matriz_confusao(prev)
+    # Rótulos (False, True): linha 0 é "não atende" real, linha 1 é "atende" real.
+    np.testing.assert_allclose(geral, [[0.5, 0.5], [0.5, 0.5]])
+    np.testing.assert_allclose(por_local['s1'], [[np.nan, np.nan], [0.5, 0.5]])
+    np.testing.assert_allclose(por_local['s2'], [[0.5, 0.5], [np.nan, np.nan]])
+
+  def test_predio_com_classe_unica_vira_nan_em_vez_de_zero(self):
+    prev = pd.DataFrame({'_linha': ['a', 'b'], 'y': [True, True], 'yhat': [True, False],
+                         '_site': ['s', 's'], '_pos': ['p', 'q']})
+    geral, por_local = K.matriz_confusao(prev)
+    self.assertTrue(np.all(np.isnan(geral[0])))
+    np.testing.assert_allclose(geral[1], [0.5, 0.5])
+    np.testing.assert_allclose(por_local['s'], geral)
+
+
 class TestReferencia(unittest.TestCase):
   def test_atende_tirado_das_previsoes_de_regressao(self):
     def p(y, yhat):

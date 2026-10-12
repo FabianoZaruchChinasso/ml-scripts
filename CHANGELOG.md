@@ -1,3 +1,32 @@
+# Changelog — Matriz de confusão no `classification_benchmark.py`
+
+**Data:** 2026-10-12
+
+## Mudanças
+
+- Novo `core/classificacao.matriz_confusao(prev, normalize='true')`: matriz de confusão do
+  "atende" (rótulos fixos `ROTULOS_ATENDE = (False, True)`), geral e por prédio, a partir de
+  qualquer `prev` no formato `y`/`yhat`/`_site` (classificadores e as duas réguas de referência
+  usam o mesmo formato). Diverge de propósito do `sklearn.metrics.confusion_matrix(normalize=...)`:
+  o sklearn zera uma linha/coluna sem suporte (0/0 → 0); aqui ela fica `NaN`, porque "0% de acerto"
+  e "a classe não apareceu nesse prédio" são coisas diferentes.
+  `classification_benchmark.py`: `--plot-confusion` nserido e `--plot-dir` (padrão `plots`).
+  Para cada aplicação, modelo e as duas réguas (regressão e limiar
+  ajustado), acumula uma linha `{app, model, test_site, cm}`; `plot_confusion_matrices` (média entre
+  prédios, `nanmean` ignora os prédios de classe única) e `plot_confusion_matrices_by_fold` (uma
+  célula por prédio) passam a agrupar por `(app, model)` em vez de só `model`, salvando em
+  `<plot_dir>/<aplicação>/confusion_matrix_<modelo>[_by_fold].png`.
+- `tests/test_classificacao.py`: `TestMatrizConfusao` (vazio, dois prédios com as duas classes,
+  prédio de classe única virando `NaN` em vez de `0`).
+
+## Verificação
+
+- `python3 -m unittest discover -s tests` — 419 testes, sem falhas.
+- Pipeline de plotagem testado de ponta a ponta com dados sintéticos (múltiplas aplicações,
+  modelos e prédios, grades de fold pares e ímpares) sob o backend `Agg`.
+
+---
+
 # Changelog — Fator de decisão do "atende" em throughput (`atende_ajustado`)
 
 **Data:** 2026-10-08
