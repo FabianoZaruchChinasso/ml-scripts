@@ -45,7 +45,7 @@ class TestEscolherFator(unittest.TestCase):
 
 
 ALVOS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
-TABELA = {'prefixos': {'router_': {'classe': 'tr069'}}, 'colunas': {a: {'classe': 'alvo'} for a in ALVOS}}
+TABELA = {'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}}, 'colunas': {a: {'classe': 'alvo'} for a in ALVOS}}
 LOCAIS = ['sala', 'quarto', 'cwpb-1', 'cwpb-2', 'hotmilk-copa', 'hotmilk-aquario']
 APPS = {'Baixa': {'dn': 5.0, 'up': 1.0, 'lat': 100, 'jit': 30}, 'Alta': {'dn': 40.0, 'up': 10.0, 'lat': 100, 'jit': 30}}
 
@@ -142,6 +142,17 @@ class TestResumoEDelta(unittest.TestCase):
   def test_delta_sem_aplicacao_com_duas_classes_e_none(self):
     tudo = {'X': decisao([True] * 4, [True] * 4)}
     self.assertIsNone(L.delta_decisoes(tudo, tudo))
+
+
+class TestDeltaPorPredio(unittest.TestCase):
+  def test_delta_decisoes_traz_a_diferenca_por_predio(self):
+    def decisoes(previsto):
+      return {'App': pd.DataFrame({'_linha': [f'a:{i}' for i in range(5)], '_site': ['s1', 's1', 's2', 's2', 's2'],
+                                   '_pos': [f'p{i}' for i in range(5)], 'real': [True, False, True, False, True],
+                                   'previsto': previsto, 'fator': 1.0})}
+    # s1: nova acerta tudo (1,0), base diz "atende" para todos (0,5). s2: o contrário.
+    d = L.delta_decisoes(decisoes([True, False, True, True, True]), decisoes([True, True, True, False, True]))
+    self.assertEqual(d['por_predio'], {'s1': 0.5, 's2': -0.5})
 
 
 if __name__ == '__main__':

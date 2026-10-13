@@ -94,7 +94,7 @@ class TestDerivadasUsuario(unittest.TestCase):
 
 
 TABELA = {
-  'prefixos': {'router_': {'classe': 'tr069'}, 'stats_80211_': {'classe': 'sniffer'}},
+  'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}, 'stats_80211_': {'classe': 'sniffer'}},
   'colunas': {'speedtest_down_mbps': {'classe': 'alvo'}, 'speedtest_up_mbps': {'classe': 'alvo'},
               'latency_ms': {'classe': 'alvo'}, 'jitter_ms': {'classe': 'alvo'},
               'local': {'classe': 'identificador'}, 'router_tx_bytes': {'classe': 'tr069', 'vazamento': True}},
@@ -168,6 +168,17 @@ class TestParalelos(unittest.TestCase):
     self.assertTrue(vaz['vazamento'])
     lab = P.testar(self.conj, 'com_sniffer', 'stats_80211_diferenca * 1', ['router_ruido'])
     self.assertEqual((lab['classe'], lab['status']), (F.CLASSE_AUXILIAR, 'hipotese'))
+
+  def test_extensao_e_laboratorio_e_nao_entra_em_receita_aprovada(self):
+    t = json.loads(json.dumps(TABELA))
+    t['colunas']['router_b'] = {'classe': 'tr069', 'tr181': {'status': 'extensao', 'nota': 'só por fabricante'}}
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', t)
+    inv = SF.inventario(conj, ['router_ruido'])
+    self.assertIn('router_b', [c['coluna'] for c in P.colunas_de_laboratorio(inv)])
+    self.assertEqual(P.previa(conj, 'so_a', 'router_a * 2')['tr181'], 'derivavel')
+    r = P.testar(conj, 'com_ext', 'router_a - router_b', ['router_ruido'])
+    self.assertEqual((r['tr181'], r['status']), ('extensao', 'hipotese'))
+    self.assertFalse(r['criterios'][0]['ok'])
 
   def test_previa_recusa_nome_existente(self):
     with self.assertRaises(ValueError):

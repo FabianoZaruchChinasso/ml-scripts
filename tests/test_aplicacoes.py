@@ -1,6 +1,8 @@
 import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
@@ -38,6 +40,26 @@ class TestAplicacoes(unittest.TestCase):
   def test_booleano_nao_conta_como_numero(self):
     with self.assertRaises(ValueError):
       AP.validar({'aplicacoes': {'X': app(dn=True)}})
+
+
+  def test_versao_muda_com_o_conteudo(self):
+    with tempfile.TemporaryDirectory() as pasta:
+      path = os.path.join(pasta, 'aplicacoes.json')
+      with open(path, 'w', encoding='utf-8') as handle:
+        handle.write('{"a": 1}')
+      antes = AP.versao(path)
+      with open(path, 'w', encoding='utf-8') as handle:
+        handle.write('{"a": 2}')
+      self.assertNotEqual(antes, AP.versao(path))
+      self.assertEqual(AP.versao(os.path.join(pasta, 'nao-existe.json')), 'ausente')
+
+  def test_chave_de_cache_do_studio_inclui_as_aplicacoes(self):
+    from ml.studio import api
+    with mock.patch.object(AP, 'versao', return_value='x1'):
+      antes = api._chave_versoes()
+    with mock.patch.object(AP, 'versao', return_value='x2'):
+      depois = api._chave_versoes()
+    self.assertNotEqual(antes, depois)
 
 
 if __name__ == '__main__':

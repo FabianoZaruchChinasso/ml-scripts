@@ -1,3 +1,175 @@
+# Changelog — Cobertura TR-069 por versão (status TR-181, registro de versões, travas no Studio)
+
+**Data:** 2026-10-09
+
+## Por quê
+
+O Studio passa a buscar o melhor treino com tudo o que a coleta mede e a mostrar o que falta para levar
+cada versão a produção pelo TR-069. A revisão do coletor mostrou que ele não usa TR-069 (usa `iw`/`iwinfo`
+por SSH), que `n_clients` é desenho do teste e que `expected_throughput` não é parâmetro TR-181 padrão.
+Spec: `docs/superpowers/specs/2026-10-09-cobertura-tr069-design.md`; plano:
+`docs/superpowers/plans/2026-10-09-cobertura-tr069.md`.
+
+## Mudanças
+
+- Task 1: `core/features.py` ganha `tr181` nas regras, `STATUS_TR181`, `TR069_PURO`, `IMPLANTAVEIS`,
+  `status_tr181` (derivadas herdam o status) e `cobertura_tr069`.
+- Task 2: a gravação da tabela de classificação preserva o `tr181` das colunas.
+- Task 3: o registro de versões ganha `cobertura` e `historico`; `fora_do_tr069` passa a olhar o status
+  TR-181; o denominador da eficiência usa colunas TR-181.
+- Task 4: o inventário do Studio e o Assistente trazem `tr181` e `implantavel`; sem trava por classe.
+- Task 5: o desenho (`selecao.desenhar`/`candidatas`) aceita um escopo.
+- Task 6: os paralelos separam TR-069 e laboratório pelo status e usam o critério "derivável".
+- Task 7: as rotas do Studio devolvem a cobertura.
+- Task 8: o MLflow registra a cobertura (parâmetro `cobertura_tr069` e artefato `cobertura_tr069.json`).
+- Task 9: tabela TR-181 real (28 colunas); `n_clients` e `concorrentes_mesmo_radio` viram classe
+  `ambiente` com status `proxy`; ajuste em `tests/test_carga.py`.
+- Task 10: registro de versões: `v4-tr069` removida, `v5-tr069` vira `v4` com `historico`, e nasce a nova `v5`.
+- Task 11: front de Modelos mostra a cobertura TR-069 e o escopo do desenho.
+- Task 12: front de Paralelos usa o status.
+- Task 13: Assistente com trava de cobertura; Features com card de edição da proveniência TR-181; ajuste
+  no editor de Modelos para o resumo "100% TR-069" olhar o status TR-181 e não a classe.
+
+## Registro de versões
+
+| Antes (até 2026-10-08) | Agora |
+|---|---|
+| `v4-tr069` | removida |
+| `v5-tr069` | `v4` |
+| (não existia) | `v5` (nova) |
+
+Runs do MLflow anteriores a 2026-10-09 usam os nomes antigos. Esta é uma exceção, pedida pelo usuário,
+à regra de versão imutável.
+
+## Efeito medido
+
+Suíte completa: `Ran 457 tests`, `OK` (96 s). Os 18 testes novos somam à base de 439.
+
+Nova `v5` (avaliação da régua 2026-10-08.1, salva em `modelos.json`):
+
+- Download: R² pooled 0.5426 (IC 0.3961 a 0.7015), MAE 38.2514.
+- Upload: R² 0.659 (IC 0.5531 a 0.7925), MAE 37.1669.
+- "atende ajustado": 0.7701 (IC 0.7237 a 0.8017).
+- Latência e jitter têm R² pontual negativo; não é a métrica de decisão (decide o pinball do p90).
+
+Medidas da spec (seção 2), contra a antiga `v5-tr069` (agora `v4`):
+
+- Remoção de uma feature por vez no download: sem `expected_throughput` fica pior ("atende" -0.031, IC
+  -0.042 a -0.016); sem `eficiencia_espectral_tx` empata; sem `perda_percurso_db` fica melhor ("atende" +0.008).
+- Conjunto padrão+proxy (a nova `v5`) contra a `v4`: download pior ("atende" -0.018, IC -0.028 a -0.010;
+  MAE +0.41, IC -1.01 a 1.87); upload pior ("atende" -0.018; MAE +0.36, IC -0.11 a 0.82); latência pior
+  (pinball p90 +0.28, IC 0.08 a 0.51); jitter empata.
+- `expected_throughput` é reconstruível pelas colunas padrão com R² de 0.79 (casa-marcelo) a 0.99 (residência).
+
+Cobertura TR-069 por versão (lida de `/api/modelos`):
+
+| Versão | Nível | Lacunas (status) |
+|---|---|---|
+| `v1` | parcial | `router_expected_throughput_mbps` (extensao), `router_rx_drop_misc` (extensao), `router_rx_duration_us` (extensao), `router_signal_avg_dbm` (extensao), `router_tx_duration_us` (extensao), `client_opportunity_medium_use` (ausente) |
+| `v2-tr069` | parcial | `router_expected_throughput_mbps`, `eficiencia_espectral_tx`, `perda_percurso_db` (todas extensao) |
+| `v3-tr069` | parcial | as três da `v2-tr069`, mais `n_clients` e `concorrentes_mesmo_radio` (proxy) |
+| `v4` | parcial | as mesmas da `v3-tr069` |
+| `v5` | proxy | `n_clients` e `concorrentes_mesmo_radio` (proxy), caminho `Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries` |
+
+Rodada do MLflow (banco sqlite temporário, `MODELO=v5`, `ALVO=speedtest_down_mbps`): saída
+`Cobertura TR-069: proxy; lacunas [('n_clients', 'proxy'), ('concorrentes_mesmo_radio', 'proxy')]`,
+parâmetro `cobertura_tr069=proxy` e `cobertura_tr069.json` entre os artefatos (junto de `contrato.json`,
+`eficiencia.json` e `fatores_atende.json`).
+
+## Ressalvas
+
+- Os caminhos TR-181 estão "a confirmar com o ACS".
+- O `client_mode` precisa de uma tabela de valores (n/ac/ax contra "WiFi 5 (11ac)") para produção.
+- Sinal e taxas são lidos depois do teste.
+- A contenção é proxy: no teste todos os clientes saturam o enlace ao mesmo tempo.
+- A régua não mudou, mas as avaliações salvas de `v2-tr069`, `v3-tr069` e `v4` aparecem como
+  "desatualizadas" porque a tabela de classificação mudou (conferido em `/api/modelos`: tabela atual
+  `f52a9c6f0b02`; `v2-tr069` guarda `3f15e1fe0a59`, `v3-tr069` e `v4` guardam `730e9c46f15f`; a `v5` guarda a
+  atual). Observação: a versão da régua também difere nelas (atual 2026-10-08.1; `v3-tr069` 2026-10-05.1,
+  `v4` 2026-10-07.1), efeito de avaliações feitas antes de regras anteriores.
+- A conferência no navegador (Step 3 do plano) não foi feita e fica pendente para o usuário: Modelos
+  (coluna "Cobertura TR-069": `v1`, `v2-tr069`, `v3-tr069` e `v4` "parcial", `v5` "com proxy", lacunas em
+  etiquetas; seletor de escopo e cobertura no Desenhar), Assistente (status TR-181; `router_expected_throughput_mbps`
+  liberada como "extensão de fabricante"; rascunho com ela fica com a trava "TR-069 parcial"; não salvar nem
+  ativar), Features (colunas TR-181 e Caminho; card "Proveniência TR-181" carrega o valor ao trocar de
+  coluna; não clicar em Salvar) e console sem erro.
+
+---
+
+# Changelog — Revisão do treino e do Studio (promoção pela régua, contrato do MLflow, Host/Origin)
+
+**Data:** 2026-10-09
+
+## Por quê
+
+A revisão de 2026-10-09 achou a ativação no Assistente decidida pelo veredito antigo de R², o MLflow
+sem o que a produção precisa (colunas da matriz e fatores do "atende"), números diferentes para a mesma
+versão entre as views Features e Modelos e entre a nota da seleção e a aninhada, posições que somem do
+Studio sem aviso, a escolha entre duplicatas por ordem alfabética e POST aceito de outra origem.
+
+## Mudanças
+
+- Task 1: o botão "Salvar e tornar ativa" do Assistente passa a seguir a régua de promoção
+  (`a.promocao.veredito`) e a trava cita a régua; "Ver nos outros alvos" diz "pela régua de promoção".
+- Task 2: a view Features avalia cada versão com o denominador dela, e `v4-tr069` e `v5-tr069` mostram
+  o mesmo R² pooled e MAE da view Modelos.
+- Task 3: a nota aninhada do desenho passa a aplicar as regras de teto de WAN.
+- Task 4: o cache do Studio passa a incluir `aplicacoes.json`.
+- Task 5: o payload decide o prédio pelo `core/sites.py` e devolve `locaisDesconhecidos`; o Studio avisa
+  de local desconhecido em vez de sumir com as posições.
+- Task 6: duplicatas com preferência explícita pela versão corrigida, em vez de ordem alfabética.
+- Task 7: `veredito_promocao` sem intervalo não quebra.
+- Task 8: a promoção mostra a diferença por prédio (`predios_contra`), que alimenta a trava do
+  Assistente (`promocaoDe`).
+- Task 9: novo `core/producao.py`; o `regression_mlflow.py` grava `contrato.json` (colunas da matriz e
+  categorias) e `fatores_atende.json` (fatores do "atende" para produção).
+- Task 10: `regression_benchmark.py` usa o denominador da versão.
+- Task 11: o Studio aceita POST só da própria máquina, conferindo Host e Origin.
+- Task 12: `classifier_mlflow.py` aposentado, movido para `src/ml/experimental/`.
+
+## Efeito medido
+
+Suíte completa: `Ran 439 tests`, `OK` (98 s).
+
+Run de teste do MLflow (banco sqlite temporário, `v5-tr069`, alvo `speedtest_down_mbps`):
+
+- Artefatos do run: `contrato.json`, `eficiencia.json`, `fatores_atende.json`; os modelos
+  `..._eficiencia` e `..._absoluto` ficam como modelos registrados do MLflow (logged models) do run,
+  não na lista de artefatos.
+- `contrato.json`: categorias `radio` (`['2.4ghz', '5ghz']`) e `client_mode` (`WiFi 4 (11n)`,
+  `WiFi 5 (11ac)`, `WiFi 6 (11ax)`); 15 colunas, a primeira `router_expected_throughput_mbps`.
+- Fatores de produção: Navegação 6,1688; Chamada de vídeo 3,3636; Streaming 4K 1,834; Jogo em nuvem
+  2,3784. Batem com a linha `v5-tr069` da entrada de 2026-10-08.
+
+Benchmark `regression_benchmark.py`, `v5-tr069`, download (R² pooled, MAE em Mbps):
+
+| Modelo | R² pooled | MAE |
+|---|---|---|
+| rf | 0,6089 (0,4936 a 0,7312) | 37,5408 |
+| extra_trees | 0,5984 | 36,0454 |
+| hist_gb | 0,5623 | 38,9876 |
+| xgb | 0,5896 | 36,8269 |
+| mlp | 0,1631 | 49,6187 |
+
+O `rf` do benchmark usa 600 árvores; a régua usa 200.
+
+Studio no ar (porta 8123, dados reais): `/api/payload` devolveu 26584 linhas e `locaisDesconhecidos`
+vazio (`[]`). POST local: 200; POST com Host `evil.example:8123`: 403; POST com Origin
+`http://evil.example`: 403; GET com Host `evil.example:8123`: 200.
+
+## Ressalvas
+
+- A conferência no navegador (Assistente, view Features, aviso de local desconhecido, console sem erro
+  de JS) ficou pendente para o usuário: não foi possível fazer na execução.
+- A régua (`VERSAO_REGUA`) não mudou e nenhuma avaliação salva ficou desatualizada.
+- `predios_contra` não muda o veredito, só a trava do Assistente.
+- O intervalo continua reamostrando posições com os prédios fixos.
+- O modo Avançado continua ativando sem trava.
+- Quem sobe o Studio com `--host 0.0.0.0` não grava nem dispara jobs de outra máquina.
+- As decisões da seção "Decisões que ficam com você" do plano continuam abertas.
+
+---
+
 # Changelog — Fator de decisão do "atende" em throughput (`atende_ajustado`)
 
 **Data:** 2026-10-08

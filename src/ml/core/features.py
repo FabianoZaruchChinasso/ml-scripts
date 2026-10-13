@@ -9,7 +9,7 @@ import json
 import os
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import numpy as np
@@ -24,6 +24,17 @@ DERIVADAS_PATH = os.path.join(os.path.dirname(__file__), 'derivadas.json')
 CLASSES = ('tr069', 'sniffer', 'cliente', 'ambiente', 'geometria', 'identificador', 'alvo')
 # Só derivadas recebem esta classe: algum insumo não é TR-069.
 CLASSE_AUXILIAR = 'auxiliar'
+
+# Como a produção obtém a coluna pelo TR-181, do mais implantável para o menos.
+# 'derivavel': conta só com parâmetros padrão; 'proxy': parâmetro padrão que mede algo
+# parecido, não o mesmo; 'extensao': só por extensão de fabricante; 'ausente': sem caminho
+# pelo ACS (cliente, sniffer, planta, desenho do teste); 'desconhecido': ninguém classificou.
+STATUS_TR181 = ('padrao', 'derivavel', 'proxy', 'extensao', 'ausente', 'desconhecido')
+# "100% TR-069": o ACS lê direto ou calcula só com parâmetros padrão.
+TR069_PURO = ('padrao', 'derivavel')
+# Implantável com ressalva declarada.
+IMPLANTAVEIS = TR069_PURO + ('proxy',)
+_CAMPOS_TR181 = {'status', 'caminho', 'nota'}
 
 # Cópia de compare_protocols.FEATURES. Unificar as duas listas está fora do escopo.
 MODELO_ATUAL = (
@@ -45,12 +56,14 @@ class Classificacao:
   origem: str
   # Vazamento ainda não confirmado: conta como sem vazamento, mas a interface avisa.
   pendente: bool = False
+  # Como a produção obtém a coluna ({'status', 'caminho', 'nota'}); None = não declarado.
+  tr181: Optional[dict] = field(default=None, compare=False, hash=False)
 
 
 def validar_regra(nome: str, regra) -> None:
   if not isinstance(regra, dict) or regra.get('classe') not in CLASSES:
     raise ValueError(f'{nome!r}: classe inválida em {regra!r}; esperado uma de {list(CLASSES)}')
-  extras = set(regra) - {'classe', 'vazamento', 'parametro', 'pendente'}
+  extras = set(regra) - {'classe', 'vazamento', 'parametro', 'pendente', 'tr181'}
   if extras:
     raise ValueError(f'{nome!r}: campos desconhecidos {sorted(extras)}')
   if not isinstance(regra.get('vazamento', False), bool):
@@ -62,6 +75,18 @@ def validar_regra(nome: str, regra) -> None:
   parametro = regra.get('parametro')
   if parametro is not None and (not isinstance(parametro, str) or len(parametro) > 200):
     raise ValueError(f'{nome!r}: parametro precisa ser texto de até 200 caracteres')
+  tr181 = regra.get('tr181')
+  if tr181 is not None:
+    if (not isinstance(tr181, dict) or tr181.get('status') not in STATUS_TR181
+        or not set(tr181) <= _CAMPOS_TR181):
+      raise ValueError(f'{nome!r}: tr181 precisa de status em {list(STATUS_TR181)} '
+                       f'e só os campos {sorted(_CAMPOS_TR181)}')
+    for campo in ('caminho', 'nota'):
+      valor = tr181.get(campo)
+      if valor is not None and (not isinstance(valor, str) or len(valor) > 200):
+        raise ValueError(f'{nome!r}: tr181.{campo} precisa ser texto de até 200 caracteres')
+    if tr181['status'] in ('padrao', 'proxy') and not tr181.get('caminho'):
+      raise ValueError(f'{nome!r}: tr181 com status {tr181["status"]!r} precisa de caminho')
 
 
 def validar_tabela(tabela) -> None:
@@ -97,7 +122,22 @@ def classificar(coluna: str, tabela: dict) -> Optional[Classificacao]:
     regra = tabela['prefixos'][max(casados, key=len)]
     origem = 'prefixo'
   return Classificacao(regra['classe'], bool(regra.get('vazamento', False)),
-                       regra.get('parametro'), origem, bool(regra.get('pendente', False)))
+                       regra.get('parametro'), origem, bool(regra.get('pendente', False)),
+                       regra.get('tr181'))
+
+
+def status_tr181(c: Optional[Classificacao]) -> str:
+  """Status TR-181 de uma classificação.
+
+  Sem `tr181` declarado: coluna de roteador (classe 'tr069') fica 'desconhecido', porque
+  ninguém classificou; as outras classes (cliente, sniffer, ambiente, geometria...) são
+  'ausente', porque por definição não vêm do roteador. Nada é adivinhado como implantável.
+  """
+  if c is None:
+    return 'desconhecido'
+  if c.tr181:
+    return c.tr181['status']
+  return 'desconhecido' if c.classe == 'tr069' else 'ausente'
 
 
 def _tokens_em_comum(a, b) -> int:
@@ -128,7 +168,8 @@ def sugerir(coluna: str, tabela: dict) -> Optional[str]:
 
 
 def gravar_classificacao(coluna: str, classe: str, vazamento: bool, parametro: Optional[str],
-                         colunas_conhecidas, path: str = TABELA_PATH) -> dict:
+                         colunas_conhecidas, path: str = TABELA_PATH, tr181: Optional[dict] = None) -> dict:
+  """Grava a regra exata de uma coluna. `tr181` None preserva o que a regra já tinha."""
   if not isinstance(coluna, str) or not coluna.strip():
     raise ValueError('coluna vazia')
   regra = {'classe': classe}
@@ -136,11 +177,16 @@ def gravar_classificacao(coluna: str, classe: str, vazamento: bool, parametro: O
     regra['vazamento'] = vazamento
   if parametro:
     regra['parametro'] = parametro
+  if tr181:
+    regra['tr181'] = tr181
   validar_regra(coluna, regra)
   with _lock:
     tabela = carregar_tabela(path)
     if coluna not in colunas_conhecidas and coluna not in tabela['colunas']:
       raise ValueError(f'coluna {coluna!r} não existe em nenhum dataset')
+    anterior = tabela['colunas'].get(coluna) or {}
+    if tr181 is None and 'tr181' in anterior:
+      regra['tr181'] = anterior['tr181']
     tabela['colunas'][coluna] = regra
     gravar_json_atomico(path, tabela)
   return tabela
@@ -177,6 +223,9 @@ def gravar_estado_contadores(estado: str, path: str = TABELA_PATH) -> dict:
       elif estado == 'nao_sei':
         regra['pendente'] = True
       regra['parametro'] = 'contador do roteador: medido na janela do teste? (view Modelos)'
+      anterior = tabela['colunas'].get(coluna) or {}
+      if 'tr181' in anterior:
+        regra['tr181'] = anterior['tr181']
       validar_regra(coluna, regra)
       tabela['colunas'][coluna] = regra
     gravar_json_atomico(path, tabela)
@@ -354,7 +403,10 @@ def classificar_derivada(derivada: Derivada, tabela: dict) -> Optional[Classific
   classe = 'tr069' if all(c.classe == 'tr069' for c in insumos) else CLASSE_AUXILIAR
   vazamento = any(c.vazamento for c in insumos)
   pendente = any(c.pendente for c in insumos) and not vazamento
-  return Classificacao(classe, vazamento, None, 'derivada', pendente)
+  status = [status_tr181(c) for c in insumos]
+  # Só com insumos padrão ou deriváveis a conta é derivável; senão vale o pior insumo.
+  herdado = 'derivavel' if all(s in TR069_PURO for s in status) else max(status, key=STATUS_TR181.index)
+  return Classificacao(classe, vazamento, None, 'derivada', pendente, {'status': herdado})
 
 
 def aplicar_derivadas(df: pd.DataFrame, catalogo=CATALOGO):
@@ -385,3 +437,25 @@ def matriz(df: pd.DataFrame, colunas: list) -> pd.DataFrame:
     else:
       partes.append(pd.get_dummies(serie.astype('string'), prefix=coluna, dtype=float))
   return pd.concat(partes, axis=1)
+
+
+def cobertura_tr069(features, tabela: dict, catalogo=None) -> dict:
+  """Nível de cobertura TR-069 de uma lista de features, com as lacunas.
+
+  'nivel': '100%' (tudo padrão ou derivável), 'proxy' (o pior é proxy) ou 'parcial'.
+  'lacunas': features fora de TR069_PURO, com status, caminho e nota da tabela.
+  `catalogo` é o de derivadas (padrão: catalogo_completo()).
+  """
+  derivadas = {d.nome: d for d in (catalogo_completo() if catalogo is None else catalogo)}
+  por_feature, lacunas = {}, []
+  for f in features:
+    c = classificar_derivada(derivadas[f], tabela) if f in derivadas else classificar(f, tabela)
+    status = status_tr181(c)
+    por_feature[f] = status
+    if status not in TR069_PURO:
+      tr181 = (c.tr181 if c is not None else None) or {}
+      lacunas.append({'feature': f, 'status': status, 'caminho': tr181.get('caminho'),
+                      'nota': tr181.get('nota')})
+  piores = set(por_feature.values()) - set(TR069_PURO)
+  nivel = '100%' if not piores else 'proxy' if piores == {'proxy'} else 'parcial'
+  return {'nivel': nivel, 'por_feature': por_feature, 'lacunas': lacunas}

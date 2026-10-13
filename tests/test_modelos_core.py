@@ -14,7 +14,7 @@ from ml.core import features as F
 from ml.core import modelos as M
 
 TABELA = {
-  'prefixos': {'router_': {'classe': 'tr069'}, 'router_tx_bytes': {'classe': 'tr069', 'vazamento': True}},
+  'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}, 'router_tx_bytes': {'classe': 'tr069', 'vazamento': True}},
   'colunas': {'RSSI': {'classe': 'cliente'}, 'client_opportunity_medium_use': {'classe': 'cliente'}},
 }
 CONHECIDAS = {'router_snr', 'router_noise', 'router_tx_bytes', 'RSSI', 'mystery',
@@ -82,6 +82,19 @@ class TestRegistro(Base):
   def test_fora_do_tr069_olha_derivadas(self):
     self.assertEqual(M.fora_do_tr069(['router_snr', 'RSSI', 'perda_percurso_db'], TABELA), ['RSSI'])
 
+  def test_versao_salva_grava_a_cobertura(self):
+    reg = self.salvar('v2', ('router_snr', 'RSSI'))
+    cob = reg['versoes']['v2']['cobertura']
+    self.assertEqual(cob['nivel'], 'parcial')
+    self.assertEqual([l['feature'] for l in cob['lacunas']], ['RSSI'])
+
+  def test_historico_precisa_ser_lista_de_textos(self):
+    base = {'features': ['router_snr'], 'descricao': 'x'}
+    M.validar_registro({'ativo': 'v1', 'versoes': {'v1': dict(base, historico=['2026-10-09: era v5-tr069'])}})
+    for ruim in ('texto solto', [1], ['']):
+      with self.assertRaises(ValueError):
+        M.validar_registro({'ativo': 'v1', 'versoes': {'v1': dict(base, historico=ruim)}})
+
 
 class TestSemente(unittest.TestCase):
   def test_registro_do_repositorio(self):
@@ -90,6 +103,23 @@ class TestSemente(unittest.TestCase):
     self.assertEqual(reg['ativo'], 'v1')
     self.assertEqual(reg['versoes']['v1']['features'], list(F.MODELO_ATUAL))
     self.assertNotIn('avaliacao', reg['versoes']['v1'])
+
+  def test_v4_renomeada_e_nova_v5(self):
+    reg = M.carregar()
+    self.assertEqual(sorted(reg['versoes']), ['v1', 'v2-tr069', 'v3-tr069', 'v4', 'v5'])
+    v4, v5 = reg['versoes']['v4'], reg['versoes']['v5']
+    self.assertIn('router_expected_throughput_mbps', v4['features'])
+    self.assertEqual(len(v4['features']), 12)
+    self.assertEqual(v4['denominador']['speedtest_down_mbps'], {'coluna': 'router_tx_rate_mbps', 'radio': '5ghz'})
+    self.assertIn('era v5-tr069', v4['historico'][0])
+    self.assertEqual(v5['features'], ['client_mode', 'radio', 'router_rx_rate_mbps', 'router_snr',
+                                      'router_signal_dbm', 'router_tx_rate_mbps', 'channel_width',
+                                      'n_clients', 'concorrentes_mesmo_radio'])
+    self.assertEqual(v5['denominador'], v4['denominador'])
+    self.assertEqual(v5['cobertura']['nivel'], 'proxy')
+    self.assertEqual(F.cobertura_tr069(v5['features'], F.carregar_tabela())['nivel'], 'proxy')
+    self.assertIn('atende_ajustado', v5['avaliacao'])
+    self.assertEqual(reg['ativo'], 'v1')
 
 
 class TestDerivadasNovas(unittest.TestCase):
@@ -159,6 +189,13 @@ class TestDenominador(Base):
       with self.assertRaises(ValueError, msg=coluna):
         M.salvar_versao('v2', ['router_snr'], 'x', CONHECIDAS, TABELA,
                         denominador={'speedtest_down_mbps': coluna}, path=self.path)
+
+  def test_denominador_precisa_ser_tr181_padrao(self):
+    tabela = {'prefixos': TABELA['prefixos'], 'colunas': dict(TABELA['colunas'], router_noise={
+      'classe': 'tr069', 'tr181': {'status': 'extensao', 'nota': 'só por fabricante'}})}
+    with self.assertRaisesRegex(ValueError, 'TR-181'):
+      M.salvar_versao('v2', ['router_snr'], 'x', CONHECIDAS, tabela,
+                      denominador={'speedtest_down_mbps': 'router_noise'}, path=self.path)
 
 
 class TestDenominadorPorBanda(Base):

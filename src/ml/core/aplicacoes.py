@@ -4,6 +4,7 @@ Vive em aplicacoes.json, versionado. O Studio lê pelo payload e a régua usa
 download e upload para a métrica "atende em throughput".
 """
 
+import hashlib
 import json
 import os
 
@@ -32,3 +33,12 @@ def carregar(path: str = APLICACOES_PATH) -> dict:
     dados = json.load(handle)
   validar(dados)
   return dados['aplicacoes']
+
+
+def versao(path: str = None) -> str:
+  """Hash curto do arquivo: entra na chave de cache do Studio, como as versões da tabela e do registro."""
+  try:
+    with open(path or APLICACOES_PATH, 'rb') as handle:
+      return hashlib.sha256(handle.read()).hexdigest()[:12]
+  except OSError:
+    return 'ausente'

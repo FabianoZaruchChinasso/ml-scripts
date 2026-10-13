@@ -19,7 +19,8 @@ from ml.core.arquivos import gravar_json_atomico
 
 MODELOS_PATH = os.path.join(os.path.dirname(__file__), 'modelos.json')
 NOME = re.compile(r'^[a-z0-9][a-z0-9-]{1,39}$')
-CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao', 'denominador'}
+CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao', 'denominador',
+          'cobertura', 'historico'}
 # Alvos em que a versão pode prever a eficiência (alvo ÷ coluna) em vez de Mbps absolutos.
 ALVOS_COM_DENOMINADOR = ('speedtest_down_mbps', 'speedtest_up_mbps')
 
@@ -60,6 +61,9 @@ def validar_registro(registro) -> None:
       raise ValueError(f'{nome!r}: features precisa ser uma lista não vazia de nomes')
     if len(set(feats)) != len(feats):
       raise ValueError(f'{nome!r}: features repetidas')
+    if 'historico' in versao and (not isinstance(versao['historico'], list)
+                                   or not all(_texto(h) for h in versao['historico'])):
+      raise ValueError(f'{nome!r}: historico precisa ser uma lista de textos')
     if 'denominador' in versao:
       den = versao['denominador']
       if (not isinstance(den, dict) or not den or not set(den) <= set(ALVOS_COM_DENOMINADOR)
@@ -108,8 +112,8 @@ def classificar_features(features, tabela: dict) -> dict:
 
 
 def fora_do_tr069(features, tabela: dict) -> list:
-  classes = classificar_features(features, tabela)
-  return [f for f in features if classes[f] is None or classes[f].classe != 'tr069']
+  """Features que não são TR-181 padrão nem deriváveis dele (proxy, extensão, ausente, desconhecido)."""
+  return [lacuna['feature'] for lacuna in F.cobertura_tr069(features, tabela)['lacunas']]
 
 
 def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabela: dict,
@@ -136,16 +140,18 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
     if fora:
       raise ValueError(f'denominador com colunas que não existem nos datasets: {fora}')
     classes_den = classificar_features(colunas, tabela)
-    ruins = [c for c in colunas if classes_den[c] is None or classes_den[c].classe != 'tr069'
-             or classes_den[c].vazamento]
+    ruins = [c for c in colunas if classes_den[c] is None or classes_den[c].vazamento
+             or F.status_tr181(classes_den[c]) not in F.TR069_PURO]
     if ruins:
-      raise ValueError(f'o denominador precisa ser coluna TR-069 sem vazamento: {ruins}')
+      raise ValueError(f'o denominador precisa ser coluna TR-181 padrão (ou derivável) sem vazamento: {ruins}')
   with _lock:
     registro = carregar(path)
     if nome in registro['versoes']:
       raise ValueError(f'a versão {nome!r} já existe e é imutável; escolha outro nome')
     versao = {'features': features, 'descricao': descricao.strip(), 'origem': origem,
-              'criado_em': date.today().isoformat()}
+              'criado_em': date.today().isoformat(),
+              # Cobertura com a tabela de hoje; o Studio sempre recalcula e avisa se mudou.
+              'cobertura': F.cobertura_tr069(features, tabela)}
     if avaliacao:
       versao['avaliacao'] = avaliacao
     if selecao:

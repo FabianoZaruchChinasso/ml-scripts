@@ -3,6 +3,8 @@
   'use strict';
   const V = window.VENKO;
   const $ = (s) => document.querySelector(s);
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ESC[c]);
 
   const METRICS = [
     { key: 'dn',  label: 'Download',  unit: 'Mbps', dir: 'min', max: 60,   step: 0.5 },
@@ -82,6 +84,12 @@
         gates.push({ sev: 'warning', title: `${id} está contido em ${d.supersededBy}`,
           msg: 'Todas as suas linhas já existem no outro dataset; mantê-los juntos duplica o peso dessas amostras.',
           causes: [`Desligue ${id} na view Datasets.`] });
+      }
+      const fora = (state.data.locaisDesconhecidos || []).find((x) => x.dataset === id);
+      if (fora) {
+        gates.push({ sev: 'warning', title: `${esc(id)}: ${fora.linhas} linhas com local desconhecido`,
+          msg: `Ficam fora de todas as views e do treino: ${fora.valores.map(esc).join(', ')}.`,
+          causes: ['Acrescente a regra da posição em src/ml/core/sites.py.'] });
       }
     });
     if (!gates.length) {

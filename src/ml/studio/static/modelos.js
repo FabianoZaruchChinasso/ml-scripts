@@ -15,8 +15,27 @@
   const cssv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   const UNIDADE = { speedtest_down_mbps: 'Mbps', speedtest_up_mbps: 'Mbps', latency_ms: 'ms', jitter_ms: 'ms' };
-  const ROTULO = { tr069: 'TR-069', sniffer: 'Sniffer', cliente: 'Cliente', ambiente: 'Ambiente',
+  const ROTULO = { tr069: 'Roteador', sniffer: 'Sniffer', cliente: 'Cliente', ambiente: 'Ambiente',
     geometria: 'Manual', auxiliar: 'Auxiliar' };
+  // Como a produção obtém a coluna pelo TR-181 (core/features.STATUS_TR181).
+  const STATUS_TR181 = { padrao: ['ok', 'TR-181 padrão'], derivavel: ['ok', 'derivável do TR-181'],
+    proxy: ['mid', 'proxy TR-181'], extensao: ['mid', 'extensão de fabricante'],
+    ausente: ['lab', 'sem caminho TR-069'], desconhecido: ['leak', 'TR-181 não classificado'] };
+  const NIVEL = { '100%': ['ok', '100% TR-069'], proxy: ['mid', 'TR-069 com proxy'], parcial: ['lab', 'TR-069 parcial'] };
+  const tagNivel = (cob) => {
+    if (!cob) return '';
+    const [cls, rot] = NIVEL[cob.nivel] || NIVEL.parcial;
+    return `<span class="tag ${cls}">${rot}</span>`;
+  };
+  const tagStatus = (t) => {
+    const [cls, rot] = STATUS_TR181[t.status] || STATUS_TR181.desconhecido;
+    return `<span class="tag ${cls}" title="${esc([t.caminho, t.nota].filter(Boolean).join(' · '))}">${rot}</span>`;
+  };
+  const tagLacuna = (l) => {
+    const [cls, rot] = STATUS_TR181[l.status] || STATUS_TR181.desconhecido;
+    const dica = [rot, l.caminho, l.nota].filter(Boolean).join(' · ');
+    return `<span class="tag ${cls}" title="${esc(dica)}">${esc(l.feature)}</span>`;
+  };
   const FORA_DO_EDITOR = new Set(['identificador', 'alvo']);
   const COBERTURA_MIN = 0.7;
   const NOME_OK = /^[a-z0-9][a-z0-9-]{1,39}$/;
@@ -27,7 +46,7 @@
                base: null, sel: new Set(), filtro: '',
                aval: null, avalKey: null, avalErro: null, avaliando: false,
                salvarErro: null, salvando: false, msg: null, hits: null,
-               des: null, desId: null, desKey: null, desErro: null, desTimer: null, semVolume: true, semVolumeTocado: false,
+               des: null, desId: null, desKey: null, desErro: null, desTimer: null, semVolume: true, semVolumeTocado: false, escopo: 'tudo',
                pend: null, pendKey: null, pendErro: null };
 
   const dsIds = () => st.ctx.enabledIds.slice().sort();
@@ -106,11 +125,13 @@
       .finally(() => { st.avaliando = false; desenhar(); });
   }
 
+  const chaveDesenho = () => chaveDesenho() + '|' + st.escopo;
+
   function desenharModelo() {
     if (st.des && st.des.status === 'rodando') return;
-    const k = chaveConj() + '|' + st.semVolume;
+    const k = chaveDesenho();
     st.desErro = null; st.des = { status: 'rodando', progresso: [] }; st.desKey = k; desenhar();
-    pedir('api/modelos/desenhar?' + query() + '&sem_volume=' + st.semVolume, { method: 'POST' })
+    pedir('api/modelos/desenhar?' + query() + '&sem_volume=' + st.semVolume + '&escopo=' + st.escopo, { method: 'POST' })
       .then((r) => { st.desId = r.id; acompanhar(); })
       .catch((e) => { st.desErro = e.message; st.des = null; desenhar(); });
   }
@@ -136,7 +157,7 @@
   }
 
   // O vínculo com o desenho só vale se o rascunho for exatamente o conjunto escolhido.
-  const desenhoVinculado = () => (st.des && st.des.status === 'pronto' && st.desKey === chaveConj() + '|' + st.semVolume
+  const desenhoVinculado = () => (st.des && st.des.status === 'pronto' && st.desKey === chaveDesenho()
     && JSON.stringify(st.des.resultado.features) === JSON.stringify(selLista()) ? st.desId : null);
 
   function salvar(nome, descricao) {
@@ -186,9 +207,9 @@
     return motivos.join(', ');
   }
 
-  const tagsFora = (v) => (v.fora_do_tr069.length
-    ? v.fora_do_tr069.map((f) => `<span class="tag mid" title="não existe em produção via TR-069">${esc(f)}</span>`).join(' ')
-    : '<span class="tag ok">pronta para produção</span>') +
+  const tagsFora = (v) => tagNivel(v.cobertura) + ' ' + (v.cobertura ? v.cobertura.lacunas.map(tagLacuna).join(' ') : '') +
+    (v.cobertura_salva && v.cobertura && v.cobertura_salva.nivel !== v.cobertura.nivel
+      ? ` <span class="tag lab" title="salva como ${esc(v.cobertura_salva.nivel)}">classificação TR-181 mudou</span>` : '') +
     ((v.vazadas || []).length ? ` <span class="tag leak" title="${esc(v.vazadas.join(', '))}">usa ${v.vazadas.length} coluna(s) com vazamento: avaliada sem elas</span>` : '') +
     ((v.pendentes || []).length ? ` <span class="tag mid" title="${esc(v.pendentes.join(', '))}">depende de confirmação (${v.pendentes.length})</span>` : '');
 
@@ -286,7 +307,7 @@
     return `<div class="card"><h2>Versões salvas</h2>
       <p class="hint">Cada versão é uma lista de features, imutável depois de salva, em <code>src/ml/core/modelos.json</code>.
         Os números são a avaliação guardada quando a versão foi salva; "desatualizada" diz o que mudou desde então. A versão ativa é a base do "ganho" em Features.</p>
-      <div style="overflow-x:auto"><table><thead><tr><th>Versão</th><th class="num">Features</th><th>Fora do TR-069</th>
+      <div style="overflow-x:auto"><table><thead><tr><th>Versão</th><th class="num">Features</th><th>Cobertura TR-069</th>
         <th class="num">${quantil ? 'Cobertura p90' : 'R² pooled'}</th><th class="num">${quantil ? 'Pinball p90' : 'MAE'}</th>
         <th class="num" title="download, upload, latência (p90) e jitter (p90) contra os limiares de cada aplicação">Atende completo</th>
         <th>Avaliação</th><th></th></tr></thead>
@@ -357,8 +378,8 @@
   function cardDesenho() {
     const u = UNIDADE[st.alvo];
     const rodando = st.des && st.des.status === 'rodando';
-    const atual = st.desKey === chaveConj() + '|' + st.semVolume;
-    let corpo = '<p class="hint">Seleção gulosa só entre colunas TR-069 e derivadas TR-069: a cada passo entra a feature que mais sobe o R² pooled (folds por local de coleta); para quando o ganho fica abaixo de 0,005. Leva de 3 a 6 minutos.</p>';
+    const atual = st.desKey === chaveDesenho();
+    let corpo = '<p class="hint">Seleção gulosa: a cada passo entra a feature que mais sobe o R² pooled (folds por local de coleta); para quando o ganho fica abaixo de 0,005. "Tudo" busca o melhor treino com todas as colunas sem vazamento; "Implantável" fica só com TR-181 padrão, derivável ou proxy. Leva de 3 a 6 minutos.</p>';
     if (st.desErro) corpo = gate('critical', 'O desenho falhou', esc(st.desErro));
     else if (rodando) {
       corpo = `<div class="log">${st.des.progresso.slice(-8).map((e) => `<div>${e.fase ? esc(e.fase)
@@ -386,11 +407,15 @@
             <p class="hint" style="margin-top:6px">Uma feature escolhida em todas as colunas é estável; uma que aparece só no final dependeu de ver todos os locais.</p></div>
         </div>
         <div class="controls" style="margin-top:10px"><button class="btn-pri" data-acao="carregar-desenho">Carregar no editor</button>
-          <span class="gate-msg">${r.features.length} features · ${num(r.segundos, 0)} s${atual ? '' : ' · desatualizado: o conjunto ou o alvo mudou'}</span></div></div>`;
+          <span class="gate-msg">${r.features.length} features · ${num(r.segundos, 0)} s${atual ? '' : ' · desatualizado: o conjunto ou o alvo mudou'}</span>
+          ${tagNivel(r.cobertura)} ${r.cobertura ? r.cobertura.lacunas.map(tagLacuna).join(' ') : ''}</div></div>`;
     }
-    return `<div class="card"><div class="card-head"><div><h2>Desenhar melhor modelo TR-069</h2>
-      <p class="hint">Só métricas TR-069 e derivadas delas: o que o ACS consegue ler em produção.</p></div>
+    return `<div class="card"><div class="card-head"><div><h2>Desenhar melhor modelo</h2>
+      <p class="hint">O resultado mostra a cobertura TR-069 e as lacunas: o que falta derivar ou coletar para levar a produção.</p></div>
       <div style="text-align:right"><button class="btn-pri" data-acao="desenhar"${rodando ? ' disabled' : ''}>${rodando ? 'Desenhando…' : 'Desenhar'}</button>
+        <div class="status"><label for="mEscopo">Escopo</label> <select id="mEscopo"${rodando ? ' disabled' : ''}>
+          <option value="tudo"${st.escopo === 'tudo' ? ' selected' : ''}>Tudo</option>
+          <option value="implantavel"${st.escopo === 'implantavel' ? ' selected' : ''}>Implantável</option></select></div>
         <div class="status"><label title="router_tx/rx_duration_us, router_tx_retries, router_tx_failed, router_rx_drop_misc: crescem com o tráfego do próprio teste se forem medidos na janela dele"><input type="checkbox" id="mSemVolume"${st.semVolume ? ' checked' : ''}${rodando ? ' disabled' : ''}> sem contadores brutos de volume</label></div></div></div>${corpo}</div>`;
   }
 
@@ -399,10 +424,11 @@
     const f = st.filtro.trim().toLowerCase();
     const vis = (c) => !f || c.coluna.toLowerCase().includes(f) || st.sel.has(c.coluna);
     const ordem = (a, b) => (st.sel.has(b.coluna) - st.sel.has(a.coluna)) || ((b.rho || 0) - (a.rho || 0));
+    const puro = (c) => c.tr181 && (c.tr181.status === 'padrao' || c.tr181.status === 'derivavel');
     return [
-      ['TR-069 · brutas', cols.filter((c) => c.classe === 'tr069' && !c.derivada)],
-      ['TR-069 · derivadas', cols.filter((c) => c.classe === 'tr069' && c.derivada)],
-      ['Fora do TR-069 · laboratório (não vai para produção)', cols.filter((c) => c.classe !== 'tr069')],
+      ['TR-181 padrão · brutas', cols.filter((c) => puro(c) && !c.derivada)],
+      ['TR-181 padrão · derivadas', cols.filter((c) => puro(c) && c.derivada)],
+      ['Sem caminho TR-181 padrão · proxy, extensão, laboratório (ainda não vai para produção)', cols.filter((c) => !puro(c))],
     ].map(([t, xs]) => [t, xs.filter(vis).sort(ordem), xs.length]);
   }
 
@@ -419,7 +445,7 @@
     const tags = [c.derivada ? '<span class="tag">derivada</span>' : '',
       c.pendente ? '<span class="tag mid" title="vazamento ainda não confirmado: veja Limites e pendências dos dados">não confirmado</span>' : '',
       c.hipotese ? '<span class="tag mid" title="derivada desenhada que não passou no critério de aceite: fica fora do teto e do desenho automático">hipótese</span>' : '',
-      c.classe !== 'tr069' ? `<span class="tag lab">${ROTULO[c.classe] || esc(c.classe)}</span>` : '',
+      c.tr181 ? tagStatus(c.tr181) : '',
       c.cobertura < COBERTURA_MIN ? `<span class="tag mid" title="menos de ${pct(COBERTURA_MIN)} das linhas têm valor">cobertura baixa</span>` : '',
       bloq ? `<span class="tag leak">${esc(bloq)}</span>` : ''].join(' ');
     return `<label class="mrow${bloq && !marcado ? ' dim' : ''}">
@@ -432,7 +458,7 @@
   function cardEditor() {
     if (st.invErro) return gate('critical', 'Não foi possível carregar as colunas', esc(st.invErro));
     if (!st.inv) return '<div class="card"><p class="hint">Carregando colunas…</p></div>';
-    const fora = st.inv.colunas.filter((c) => st.sel.has(c.coluna) && c.classe !== 'tr069').map((c) => c.coluna);
+    const fora = st.inv.colunas.filter((c) => st.sel.has(c.coluna) && !(c.tr181 && ['padrao', 'derivavel'].includes(c.tr181.status))).map((c) => c.coluna);
     const vazadas = st.inv.colunas.filter((c) => st.sel.has(c.coluna) && c.vazamento).map((c) => c.coluna);
     const conhecidas = new Set(st.inv.colunas.map((c) => c.coluna));
     const ausentes = selLista().filter((f) => !conhecidas.has(f));
@@ -441,7 +467,7 @@
     const listas = grupos().map(([titulo, xs, total], i) => `<details class="fold"${i < 2 || st.filtro.trim() || xs.some((c) => st.sel.has(c.coluna)) ? ' open' : ''}><summary>${titulo} <span>· ${total} colunas</span></summary>
       <div class="inner"><div class="mhead"><span></span><span>Coluna</span><span></span><span class="num">Cobertura</span><span class="num">|ρ| com o alvo</span></div>
       ${xs.map(linhaEditor).join('') || '<p class="hint">Nada com esse filtro.</p>'}</div></details>`).join('');
-    const resumo = `<b>${st.sel.size}</b> features · ${fora.length ? `<b>${fora.length}</b> fora do TR-069` : '<span class="tag ok">100% TR-069</span>'}` +
+    const resumo = `<b>${st.sel.size}</b> features · ${fora.length ? `<b>${fora.length}</b> sem TR-181 padrão (cobertura parcial ou com proxy)` : '<span class="tag ok">100% TR-069</span>'}` +
       (desenhoVinculado() ? ' · <span class="tag current" title="ao salvar, a versão guarda a nota aninhada e os passos da seleção">do desenho automático</span>' : '');
     const avisos = [
       vazadas.length ? gate('critical', 'Features com vazamento no rascunho', `Tire antes de avaliar: <code>${esc(vazadas.join(', '))}</code>.`) : '',
@@ -553,6 +579,7 @@
   $('#mBody').addEventListener('change', (ev) => {
     if (ev.target.id === 'mBase') { usarBase(ev.target.value); st.aval = null; desenhar(); return; }
     if (ev.target.id === 'mSemVolume') { st.semVolume = ev.target.checked; st.semVolumeTocado = true; desenhar(); return; }
+    if (ev.target.id === 'mEscopo') { st.escopo = ev.target.value; desenhar(); return; }
     if (ev.target.name === 'mContadores') { definirContadores(ev.target.value); return; }
     const col = ev.target.dataset && ev.target.dataset.col;
     if (col) {

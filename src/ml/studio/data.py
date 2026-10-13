@@ -6,43 +6,34 @@ os limiares mudam, entao os sliders respondem sem ida ao servidor.
 """
 
 from collections import Counter
+from functools import lru_cache
 
 import pandas as pd
 
 from ml.core import aplicacoes as core_aplicacoes
 from ml.core.carga import TARGETS as _TARGETS
 from ml.core.carga import _superseded, descobertos, discover, duplicatas
-from ml.core.sites import CORPORATE, DOMESTIC
+from ml.core.sites import CORPORATE, DOMESTIC, resolve_site_id
 from ml.studio.plans import andar_de, montar_plantas
 
 TARGETS = list(_TARGETS)
 
-# O prefixo `cwpb` deixou de distinguir predio: e o mapa explicito que manda.
-# Os coletores sao donos deste bloco. `ambiente` precisa bater com
-# core/sites.BUILDING_ENVIRONMENT (o teste garante).
+# Rótulo e ambiente de cada prédio do Studio. Qual posição é de qual prédio é
+# decidido só por core/sites.py (PREDIO_DO_CORE): assim o Studio e o treino nunca
+# discordam, e uma posição nova não some do Studio sem aviso.
 BUILDINGS = {
-  'casa': {
-    'label': 'Casa',
-    'ambiente': DOMESTIC,
-    'positions': ['sala', 'quarto', 'suite', '1', '2', '3'],
-  },
-  'cowork-pedra-branca': {
-    'label': 'Cowork Pedra Branca',
-    'ambiente': CORPORATE,
-    'positions': ['cwpb-1', 'cwpb-2', 'cwpb-2m', 'cwpb-10m', 'cwpb-10m-2a', 'cwpb-13m'],
-  },
-  'hotmilk': {
-    'label': 'Hotmilk',
-    'ambiente': CORPORATE,
-    'positions': ['hotmilk-copa', 'hotmilk-aquario', 'hotmilk-aquario-fora', 'quarto-marcelo'],
-  },
-  'casa-marcelo': {
-    'label': 'Casa do Marcelo',
-    'ambiente': DOMESTIC,
-    'positions': ['marcelo-copa', 'marcelo-copa-split', 'marcelo-inf-ext', 'marcelo-inf-quarto',
-                  'marcelo-inf-quarto-split', 'marcelo-inf-sala', 'marcelo-inf-sala-split',
-                  'marcelo-quarto', 'marcelo-quarto-split', 'marcelo-sala-estar'],
-  },
+  'casa': {'label': 'Casa', 'ambiente': DOMESTIC},
+  'cowork-pedra-branca': {'label': 'Cowork Pedra Branca', 'ambiente': CORPORATE},
+  'hotmilk': {'label': 'Hotmilk', 'ambiente': CORPORATE},
+  'casa-marcelo': {'label': 'Casa do Marcelo', 'ambiente': DOMESTIC},
+}
+
+# Prédio de core/sites.py -> chave do Studio (as chaves do Studio já estão em plantas.json).
+PREDIO_DO_CORE = {
+  'residencia': 'casa',
+  'coworking': 'cowork-pedra-branca',
+  'hotmilk': 'hotmilk',
+  'casa-marcelo': 'casa-marcelo',
 }
 
 AMBIENTES = {DOMESTIC: 'Doméstico', CORPORATE: 'Corporativo'}
@@ -65,15 +56,19 @@ def _canonical_local(local_value) -> str:
   return str(int(number)) if number.is_integer() else text
 
 
+@lru_cache(maxsize=None)
+def _building_de_texto(texto: str) -> str:
+  return PREDIO_DO_CORE[resolve_site_id(pd.Series([texto]), level='building').iloc[0]]
+
+
 def _building_of(local_value) -> str:
-  key = _canonical_local(local_value)
-  for building, meta in BUILDINGS.items():
-    if key in meta['positions']:
-      return building
-  raise ValueError(
-    f'local {local_value!r} nao esta em nenhum predio de BUILDINGS. '
-    'Acrescente uma regra explicita; nunca deixe um valor desconhecido virar grupo proprio.'
-  )
+  """Prédio do Studio para um valor de `local`, pela regra de core/sites.py.
+
+  Levanta ValueError para valor vazio ou que o core não conhece: nunca vira grupo próprio.
+  """
+  if pd.isna(local_value):
+    raise ValueError('local vazio')
+  return _building_de_texto(str(local_value))
 
 
 def build_payload() -> dict:
@@ -82,6 +77,7 @@ def build_payload() -> dict:
   duplicate_of = duplicatas(datasets)
   rows = []
   descriptors = []
+  locais_desconhecidos = []
 
   for item in datasets:
     if not item.get('usable'):
@@ -95,11 +91,13 @@ def build_payload() -> dict:
 
     buildings = set()
     positions = set()
+    desconhecidos = Counter()
     for _, row in frame.iterrows():
       local = row['local']
       try:
         building = _building_of(local)
       except ValueError:
+        desconhecidos[str(local)] += 1
         continue
       canonical = _canonical_local(local)
       position = POSITION_LABELS.get(canonical, canonical)
@@ -126,6 +124,9 @@ def build_payload() -> dict:
           record[dst] = None if pd.isna(value) else float(value)
       rows.append(record)
 
+    if desconhecidos:
+      locais_desconhecidos.append({'dataset': item['id'], 'valores': sorted(desconhecidos),
+                                   'linhas': int(sum(desconhecidos.values()))})
     descriptors.append({
       'id': item['id'],
       'rows': item['rows'],
@@ -178,4 +179,5 @@ def build_payload() -> dict:
     'envelopes': envelopes,
     'plantas': plantas,
     'plantasAvisos': plantas_avisos,
+    'locaisDesconhecidos': locais_desconhecidos,
   }

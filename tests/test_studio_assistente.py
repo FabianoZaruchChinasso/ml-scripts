@@ -135,11 +135,14 @@ class TestListaAssistente(Base):
     self.assertFalse(c['liberada'])
     self.assertTrue(c['motivo'].startswith('vazamento'))
 
-  def test_feature_da_base_fora_do_tr069_vem_com_motivo(self):
+  def test_coluna_fora_do_tr069_e_liberada_com_o_status(self):
+    # O Studio busca o melhor treino com tudo; o status TR-181 diz o que falta para produção.
     c = self.lista['AP_channel']
-    self.assertFalse(c['liberada'])
-    self.assertTrue(c['no_modelo'])
-    self.assertIn('fora do TR-069', c['motivo'])
+    self.assertTrue(c['liberada'])
+    self.assertIsNone(c['motivo'])
+    self.assertEqual(c['tr181']['status'], 'ausente')
+    self.assertFalse(c['implantavel'])
+    self.assertTrue(self.lista['router_signal_dbm']['implantavel'])
 
   def test_cobertura_baixa(self):
     self.assertEqual(self.lista['router_power_dbm']['motivo'], 'cobertura baixa')
@@ -266,6 +269,19 @@ class TestRotasAssistente(Base):
   def test_listar_traz_versao_da_regua(self):
     self.assertEqual(api.modelos_listar()['versao_regua'], A.VERSAO_REGUA)
 
+  def test_listar_e_avaliar_trazem_a_cobertura(self):
+    v = api.modelos_listar()['versoes'][0]
+    self.assertIn(v['cobertura']['nivel'], ('100%', 'proxy', 'parcial'))
+    self.assertIn('lacunas', v['cobertura'])
+    r = api.modelos_avaliar(features='router_snr,AP_channel', ds='a.csv')
+    self.assertEqual(r['cobertura']['nivel'], 'parcial')
+    self.assertEqual([l['feature'] for l in r['cobertura']['lacunas']], ['AP_channel'])
+
+  def test_desenho_com_escopo_invalido_e_422(self):
+    with self.assertRaises(api.HTTPException) as erro:
+      api.modelos_desenhar(ds='a.csv', escopo='qualquer')
+    self.assertEqual(erro.exception.status_code, 422)
+
   def test_avaliacao_completa_traz_atende_e_versao(self):
     av = api.avaliacao_completa('a.csv', '', ['router_snr'])
     self.assertEqual(av['speedtest_down_mbps']['versao_regua'], A.VERSAO_REGUA)
@@ -385,6 +401,24 @@ class TestDenominadorNaApi(Base):
     with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar:
       api.modelos_salvar(corpo, pedido)
     self.assertEqual(salvar.call_args.kwargs['denominador'], {'speedtest_down_mbps': 'router_snr'})
+
+
+class TestPostSoLocal(unittest.TestCase):
+  def test_loopback_passa(self):
+    self.assertTrue(api._post_permitido('127.0.0.1:8100', None))
+    self.assertTrue(api._post_permitido('localhost:8100', 'http://localhost:8100'))
+    self.assertTrue(api._post_permitido('[::1]:8100', None))
+
+  def test_dns_rebinding_e_barrado_pelo_host(self):
+    self.assertFalse(api._post_permitido('evil.example:8100', None))
+    self.assertFalse(api._post_permitido('evil.example:8100', 'http://evil.example:8100'))
+
+  def test_pagina_de_outra_origem_e_barrada(self):
+    self.assertFalse(api._post_permitido('127.0.0.1:8100', 'http://evil.example'))
+    self.assertFalse(api._post_permitido('127.0.0.1:8100', 'null'))
+
+  def test_sem_host_e_barrado(self):
+    self.assertFalse(api._post_permitido(None, None))
 
 
 if __name__ == '__main__':

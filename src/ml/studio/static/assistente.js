@@ -18,7 +18,17 @@
     ['latency_ms', 'Latência', 'ms'], ['jitter_ms', 'Jitter', 'ms']];
   const ALVO = Object.fromEntries(ALVOS.map(([k, r, u]) => [k, { rotulo: r, unidade: u }]));
   const PASSOS = ['Preparar', 'Ajustar', 'Testar', 'Publicar'];
-  const CLASSES = [['tr069', 'Roteador (TR-069)'], ['sniffer', 'Sniffer'], ['cliente', 'Cliente'],
+  const STATUS_TR181 = { padrao: ['ok', 'TR-181 padrão'], derivavel: ['ok', 'derivável do TR-181'],
+    proxy: ['mid', 'proxy TR-181'], extensao: ['mid', 'extensão de fabricante'],
+    ausente: ['lab', 'sem caminho TR-069'], desconhecido: ['leak', 'TR-181 não classificado'] };
+  const NIVEL = { '100%': ['ok', '100% TR-069'], proxy: ['mid', 'TR-069 com proxy'], parcial: ['lab', 'TR-069 parcial'] };
+  const tagTr181 = (t) => {
+    if (!t) return '';
+    const [cls, rot] = STATUS_TR181[t.status] || STATUS_TR181.desconhecido;
+    return `<span class="tag ${cls}" title="${esc([t.caminho, t.nota].filter(Boolean).join(' · '))}">${rot}</span>`;
+  };
+  const tagNivel = (cob) => (cob ? `<span class="tag ${(NIVEL[cob.nivel] || NIVEL.parcial)[0]}">${(NIVEL[cob.nivel] || NIVEL.parcial)[1]}</span>` : '');
+  const CLASSES = [['tr069', 'Roteador'], ['sniffer', 'Sniffer'], ['cliente', 'Cliente'],
     ['ambiente', 'Ambiente'], ['geometria', 'Geometria'], ['identificador', 'Identificador'], ['alvo', 'Alvo']];
   const VEREDITO = { melhor: ['Melhor', 'i-check'], empate: ['Empate', 'i-equal'], pior: ['Pior', 'i-alert'] };
   const RESPOSTAS = { sim: 'Sim', nao: 'Não', nao_sei: 'Não sei' };
@@ -224,6 +234,7 @@
       const marcado = st.sel.has(nome);
       const g = ganho[nome];
       const tags = !c ? '<span class="tag leak">ausente neste conjunto</span>' : [
+        tagTr181(c.tr181),
         c.derivada ? '<span class="tag">derivada</span>' : '',
         c.hipotese ? '<span class="tag mid" title="não passou no teste de aceite">hipótese</span>' : '',
         c.pendente ? '<span class="tag mid" title="vazamento ainda não confirmado">não confirmado</span>' : '',
@@ -238,7 +249,7 @@
     };
     const opcoes = st.reg.versoes.map((v) => `<option value="${esc(v.nome)}"${v.nome === st.base ? ' selected' : ''}>${esc(v.nome)}${v.ativo ? ' (ativa)' : ''}</option>`).join('');
     return `<div class="card"><h2>Ajustar o rascunho</h2>
-      <p class="hint">Só colunas do roteador (TR-069), que existem em produção. Marque e desmarque à vontade. "Sugerida" é a coluna que mais melhorou o modelo quando somada à versão de partida, em todos os locais de coleta.</p>
+      <p class="hint">Todas as colunas sem vazamento, com o status TR-181 de cada uma: o objetivo é o melhor treino, e a etiqueta diz o que falta para levar a produção. Marque e desmarque à vontade. "Sugerida" é a coluna que mais melhorou o modelo quando somada à versão de partida, em todos os locais de coleta.</p>
       <div class="controls"><label for="aBase">Partir de</label><select id="aBase">${opcoes}</select>
         <label for="aFiltro">Filtrar</label><input id="aFiltro" class="minput" type="search" placeholder="nome da coluna" value="${esc(st.filtro)}">
         <span class="chip">${st.sel.size} features</span><span class="gate-msg">${statusSugestoes(sug, sugerida)}</span></div>
@@ -252,7 +263,9 @@
     if (!st.recAberto) return '<div style="margin-top:14px"><button class="btn" data-aacao="abrir-receita">+ Criar métrica</button></div>';
     const r = st.rec;
     const def = (st.receitas || []).find((x) => x.id === r.id);
-    const brutas = (st.cols || []).filter((c) => !c.derivada && c.classe === 'tr069' && c.tipo === 'numerica' && !c.vazamento)
+    // Receita é para derivar do TR-181: só insumos padrão ou deriváveis.
+    const brutas = (st.cols || []).filter((c) => !c.derivada && c.tr181 && ['padrao', 'derivavel'].includes(c.tr181.status)
+      && c.tipo === 'numerica' && !c.vazamento)
       .map((c) => c.coluna);
     const letras = ['A', 'B', 'C'].slice(0, def ? def.colunas : 2);
     const seletores = letras.map((l, i) => `<label for="aCol${i}">${l}</label><select id="aCol${i}" data-rcol="${i}">
@@ -328,12 +341,16 @@
       .finally(() => { if (st.avalPedido === k) { st.avaliando = false; desenhar(); } });
   }
 
+  // A ativação e o resumo seguem a régua de promoção (intervalos de 90%), não o veredito de R².
+  // Sem `promocao` (avaliação sem base), cai no veredito antigo.
+  const promocaoDe = (a) => (a.promocao ? a.promocao.veredito : a.veredito);
+
   function testarOutros() {
     const k = chaveVeredito();
     st.outrosPedido = k;
     st.outrosCarregando = true; desenhar();
     Promise.all(ALVOS.filter(([a]) => a !== st.alvo).map(([a]) => pedir(urlAvaliar(a))
-      .then((r) => ({ alvo: a, resultado: r.veredito.resultado }))
+      .then((r) => ({ alvo: a, resultado: promocaoDe(r).resultado }))
       .catch(() => ({ alvo: a, erro: true }))))
       .then((xs) => { if (st.outrosPedido === k) { st.outros = xs; st.outrosKey = k; } })
       .finally(() => { if (st.outrosPedido === k) { st.outrosCarregando = false; desenhar(); } });
@@ -343,7 +360,7 @@
     if (!st.outros || st.outrosKey !== chaveVeredito()) {
       return `<button class="btn" data-aacao="outros"${st.outrosCarregando ? ' disabled' : ''}>${st.outrosCarregando ? 'Calculando…' : 'Ver nos outros alvos'}</button>`;
     }
-    return `<p class="gate-msg">Outros alvos, só informativo: ${st.outros.map((o) =>
+    return `<p class="gate-msg">Outros alvos pela régua de promoção, só informativo: ${st.outros.map((o) =>
       `${ALVO[o.alvo].rotulo}: ${o.erro ? 'erro' : VEREDITO[o.resultado][0]}`).join(' · ')}</p>`;
   }
 
@@ -365,7 +382,8 @@
         <svg class="icon"><use href="#${VEREDITO[p.veredito.resultado][1]}"/></svg>
         <div><b>Régua de promoção: ${VEREDITO[p.veredito.resultado][0]}</b>
           <div class="gate-msg">${esc(p.veredito.motivo)}</div>
-          <div class="gate-msg">${detalhePromocao}</div></div></div>` : '';
+          <div class="gate-msg">${detalhePromocao}</div>
+          ${(p.veredito.predios_contra || []).length ? `<div class="gate-msg">Piora em: ${esc(p.veredito.predios_contra.join(', '))}</div>` : ''}</div></div>` : '';
     return `<div class="${atual ? '' : 'stale'}">
       <div class="veredito ${v.resultado}"><svg class="icon"><use href="#${icone}"/></svg>
         <div><b>${rotulo}</b>${v.provisorio ? ` <span class="tag mid" title="${esc(v.motivos_provisorio.join('; '))}">provisório</span>` : ''}
@@ -411,7 +429,7 @@
     const menos = [...antes].filter((f) => !st.sel.has(f)).sort().map((f) => '−' + f);
     let txt = mais.concat(menos).join(' ') || 'sem mudança de features';
     if (st.aval && st.avalKey === chaveVeredito()) {
-      txt += ` · ${ALVO[st.alvo].rotulo.toLowerCase()}: ${VEREDITO[st.aval.veredito.resultado][0].toLowerCase()}` +
+      txt += ` · ${ALVO[st.alvo].rotulo.toLowerCase()}: ${VEREDITO[promocaoDe(st.aval).resultado][0].toLowerCase()}` +
         ` (R² ${num(st.aval.resumo_base.pooled, 2)}→${num(st.aval.resumo.pooled, 2)})`;
     }
     return txt.slice(0, 500);
@@ -452,11 +470,18 @@
     if (!st.nomeTocada) st.nome = sugerirNome(st.reg.ativo, st.reg.versoes.map((v) => v.nome));
     if (!st.descTocada) st.desc = descricaoSugerida();
     const atual = st.aval && st.avalKey === chaveVeredito();
-    const melhor = atual && st.aval.veredito.resultado === 'melhor';
+    const contra = atual ? (promocaoDe(st.aval).predios_contra || []) : [];
+    const cob = atual ? st.aval.cobertura : null;
+    const implantavel = !!cob && (cob.nivel === '100%' || cob.nivel === 'proxy');
+    const melhor = atual && promocaoDe(st.aval).resultado === 'melhor' && !contra.length && implantavel;
     const trava = !atual ? 'Teste o rascunho atual no passo 3 para liberar a ativação.'
-      : melhor ? '' : 'Para ativar uma versão que não é melhor que a ativa, use o modo Avançado.';
+      : melhor ? ''
+      : !implantavel ? `O rascunho é "TR-069 parcial" (${(cob ? cob.lacunas : []).map((l) => esc(l.feature)).join(', ')}): salve para estudar; ativar pelo Assistente exige 100% TR-069 ou proxy.`
+      : contra.length ? `A régua diz "melhor", mas piora em ${contra.join(', ')}: para ativar mesmo assim, use o modo Avançado.`
+      : 'A régua de promoção não diz "melhor": para ativar mesmo assim, use o modo Avançado.';
     return `<div class="card"><h2>Publicar</h2>
       <p class="hint">A versão salva é imutável e vai para <code>src/ml/core/modelos.json</code>. Complete a descrição com o porquê da mudança.</p>
+      ${cob ? `<p class="gate-msg">Cobertura do rascunho: ${tagNivel(cob)} ${cob.lacunas.map((l) => tagTr181(l) + ' <code>' + esc(l.feature) + '</code>').join(' ')}</p>` : ''}
       <div class="pform"><label for="aNome">Nome</label><input id="aNome" class="minput" maxlength="40" value="${esc(st.nome)}">
         <label for="aDesc">Descrição</label><input id="aDesc" class="minput" maxlength="500" value="${esc(st.desc)}"></div>
       <div class="controls" style="margin-top:12px">

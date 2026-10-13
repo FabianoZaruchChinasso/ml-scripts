@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ml.core.avaliacao import (_acuracia_balanceada, _atende_em, _intervalo, _juntar, _media_sem_nan,
-                               _resumo_atende, prever_fora_do_fold, reamostras)
+                               _por_predio, _resumo_atende, prever_fora_do_fold, reamostras)
 
 # Grade geométrica de 0,5 a 16, passo 2^(1/8): no protótipo, 8 ainda batia na borda.
 FATORES = tuple(float(round(2 ** e, 4)) for e in np.arange(-1, 4.0001, 0.125))
@@ -124,7 +124,7 @@ def delta_decisoes(nova: dict, base: dict, amostras=None):
 
   amostras = reamostras(j['_pos'], j['_site']) if amostras is None else amostras
   return {'valor': round(diferenca(np.arange(len(j))), 4), 'intervalo': _intervalo([diferenca(i) for i in amostras]),
-          'n': int(len(j)), 'ajustado': True}
+          'n': int(len(j)), 'ajustado': True, 'por_predio': _por_predio(j['_site'], diferenca)}
 
 
 def fatores_producao(conj_dn, conj_up, features, aplicacoes: dict, den_dn=None, den_up=None) -> dict:

@@ -148,8 +148,11 @@ def build_models(seed: int):
   }
 
 
-def evaluate_target(conj, features, models, shap_config=None):
-  """Avalia cada modelo pela régua (LOGO por prédio, teto de WAN, intervalos)."""
+def evaluate_target(conj, features, models, shap_config=None, denominador=None):
+  """Avalia cada modelo pela régua (LOGO por prédio, teto de WAN, intervalos).
+
+  `denominador` é o da versão para este alvo (ver core/avaliacao.prever_fora_do_fold).
+  """
   target = conj.alvo
   vazadas = [c for c, k in conj.classes.items() if k is not None and k.vazamento]
   removidas = [f for f in features if f in vazadas]
@@ -184,7 +187,7 @@ def evaluate_target(conj, features, models, shap_config=None):
         print(f'WARNING: shap falhou em {name}/{target}/{fold.test_site}: {error}')
 
     prev = core_avaliacao.prever_fora_do_fold(conj.df, features, target, vazadas, estimador=model,
-                                              ao_ajustar=explicar)
+                                              ao_ajustar=explicar, denominador=denominador)
     for site, grupo in prev.groupby('_site'):
       rows.append({'model': name, 'test_site': site,
                    **regression_metrics(grupo['y'].to_numpy(dtype=float), grupo['yhat'].to_numpy(dtype=float))})
@@ -232,6 +235,9 @@ def parse_args():
     default="",
     help="Features separadas por vírgula (padrão: as da versão ativa em core/modelos.json)",
   )
+  parser.add_argument('--modelo', default='',
+                      help='Versão de core/modelos.json (padrão: a ativa). Sem --features nem --use-stats, '
+                           'usa as features e o denominador dela.')
   parser.add_argument("--seed", type=int, default=42, help="Random seed")
   parser.add_argument("--use-stats", action='store_true', default=False, help="Use stats feat")
   parser.add_argument('--shap', action='store_true', default=False,
@@ -285,12 +291,19 @@ def main():
 
   np.random.seed(args.seed)
 
+  registro = core_modelos.carregar()
+  nome = args.modelo or registro['ativo']
+  if nome not in registro['versoes']:
+    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  denominadores = {}
   if args.use_stats == True:
     features = DEFAULT_FEATURES_STATS
   elif args.features:
     features = parse_csv_list(args.features)
   else:
-    features = core_modelos.ativo(core_modelos.carregar())
+    features = list(registro['versoes'][nome]['features'])
+    denominadores = registro['versoes'][nome].get('denominador') or {}
+    print(f'Versão {nome}' + (f'; denominador {denominadores}' if denominadores else ''))
   targets = parse_csv_list(args.targets)
   ids = parse_csv_list(args.datasets) or None
   tabela = core_features.carregar_tabela()
@@ -315,6 +328,11 @@ def main():
   elif args.shap_models is not None or args.shap_per_fold:
     print('WARNING: as flags --shap-* são ignoradas sem --shap.')
 
+  if shap_config is not None and any(isinstance(d, dict) for d in denominadores.values()):
+    # Com denominador por banda, cada fold ajusta dois modelos (eficiência e absoluto) em escalas
+    # diferentes; o beeswarm juntaria as duas.
+    raise SystemExit('--shap não funciona com denominador por banda: use --features para explicar a versão')
+
   print(f'Features ({len(features)}): {features}')
 
   for target in targets:
@@ -324,7 +342,7 @@ def main():
     for aviso in conj.avisos:
       print(f'aviso: {aviso}')
     print(f'Linhas: {len(conj.df)}  Prédios: {sorted(conj.df["_site"].unique())}  Datasets: {conj.datasets}')
-    results, shap_ranking = evaluate_target(conj, features, models, shap_config)
+    results, shap_ranking = evaluate_target(conj, features, models, shap_config, denominadores.get(target))
     print(format_per_site_table(results, 'r2'))
     print(format_per_site_table(results, 'rmse'))
     if shap_ranking is not None:

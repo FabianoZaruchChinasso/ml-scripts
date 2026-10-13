@@ -109,18 +109,33 @@ def _superseded(datasets: list) -> dict:
   return verdict
 
 
-def duplicatas(datasets: list) -> dict:
-  """Fingerprint igual = os mesmos alvos ate a 6a casa: o segundo e duplicata do primeiro.
+# Marcas no nome de uma versão corrigida do mesmo arquivo (20260917-metrics-fix,
+# 20260921-metrics-distcalc). Entre datasets com os mesmos alvos, a corrigida fica.
+MARCAS_CORRECAO = ('fix', 'distcalc')
 
+
+def _preferencia(item) -> tuple:
+  """Ordem entre datasets com os mesmos alvos: corrigido, depois mais colunas, depois o nome."""
+  corrigido = any(m in item['id'].lower() for m in MARCAS_CORRECAO)
+  return (not corrigido, -int(item.get('columns') or 0), item['id'])
+
+
+def duplicatas(datasets: list) -> dict:
+  """Fingerprint igual = os mesmos alvos até a 6a casa: só um do grupo fica.
+
+  Fica a versão corrigida (MARCAS_CORRECAO no nome); empate vai para a de mais colunas,
+  depois para o nome. A ordem alfabética sozinha escolhia certo por acaso ('-' vem antes de '.').
   Manter os dois ligados duplica o peso de cada amostra sem avisar.
   """
-  vistos, duplicata_de = {}, {}
+  grupos = {}
   for item in datasets:
-    if not item.get('usable'):
-      continue
-    primeiro = vistos.setdefault(item['fingerprint'], item['id'])
-    if primeiro != item['id']:
-      duplicata_de[item['id']] = primeiro
+    if item.get('usable'):
+      grupos.setdefault(item['fingerprint'], []).append(item)
+  duplicata_de = {}
+  for itens in grupos.values():
+    primeiro, *resto = sorted(itens, key=_preferencia)
+    for item in resto:
+      duplicata_de[item['id']] = primeiro['id']
   return duplicata_de
 
 

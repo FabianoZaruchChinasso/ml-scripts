@@ -14,7 +14,12 @@
       "classe": "identificador"
     },
     "channel_width": {
-      "classe": "tr069"
+      "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.Radio.{i}.CurrentOperatingChannelBandwidth",
+        "nota": "no coletor vem do celular (a confirmar com o ACS)",
+        "status": "padrao"
+      }
     },
     "client_ID": {
       "classe": "identificador"
@@ -24,7 +29,12 @@
     },
     "client_mode": {
       "classe": "tr069",
-      "parametro": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.OperatingStandard"
+      "parametro": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.OperatingStandard",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.OperatingStandard",
+        "nota": "valores n/ac/ax; o treino viu \"WiFi 5 (11ac)\": precisa de tabela de valores (a confirmar com o ACS)",
+        "status": "padrao"
+      }
     },
     "client_name": {
       "classe": "identificador"
@@ -36,8 +46,13 @@
       "classe": "identificador"
     },
     "concorrentes_mesmo_radio": {
-      "classe": "tr069",
-      "parametro": "clientes em teste simultâneo no mesmo bssid; em produção depende do coletor"
+      "classe": "ambiente",
+      "parametro": "clientes em teste simultâneo no mesmo bssid; em produção depende do coletor",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries",
+        "nota": "AP da estação (mesmo bssid); no teste todos os clientes saturavam o enlace ao mesmo tempo; em produção muitos associados ficam ociosos (a confirmar com o ACS)",
+        "status": "proxy"
+      }
     },
     "dist_calc": {
       "classe": "geometria"
@@ -76,8 +91,13 @@
       "classe": "identificador"
     },
     "n_clients": {
-      "classe": "tr069",
-      "parametro": "substituto de estações ativas no rádio; em produção depende do coletor"
+      "classe": "ambiente",
+      "parametro": "substituto de estações ativas no rádio; em produção depende do coletor",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries",
+        "nota": "somado nos APs; no teste todos os clientes saturavam o enlace ao mesmo tempo; em produção muitos associados ficam ociosos (a confirmar com o ACS)",
+        "status": "proxy"
+      }
     },
     "obstacles": {
       "classe": "geometria"
@@ -90,53 +110,202 @@
     },
     "radio": {
       "classe": "tr069",
-      "parametro": "Device.WiFi.Radio.{i}.OperatingFrequencyBand"
+      "parametro": "Device.WiFi.Radio.{i}.OperatingFrequencyBand",
+      "tr181": {
+        "caminho": "Device.WiFi.Radio.{i}.OperatingFrequencyBand",
+        "nota": "valores 2.4GHz/5GHz; o treino viu 2.4ghz/5ghz (a confirmar com o ACS)",
+        "status": "padrao"
+      }
     },
     "related_distance": {
       "classe": "geometria"
     },
+    "router_NSS_RX_Station": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "NSS por estação (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_NSS_TX_Station": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "NSS por estação (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_bandwith_RX_station": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "largura de canal por estação (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_bandwith_TX_station": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "largura de canal por estação (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_connected_time_sec": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "tempo de associação: ver se o CPE expõe (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_expected_throughput_mbps": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "estimativa do rate control (mac80211) (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
     "router_model": {
       "classe": "identificador"
     },
+    "router_noise": {
+      "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.Radio.{i}.Stats.Noise",
+        "nota": "no coletor é por estação (iwinfo); no TR-181 é do rádio (a confirmar com o ACS)",
+        "status": "padrao"
+      }
+    },
+    "router_opportunity_medium_use": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "contagem de NeighboringWiFiDiagnostic.Result.{i} no canal do rádio (a confirmar com o ACS)",
+        "status": "derivavel"
+      }
+    },
+    "router_power_dbm": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "Radio.{i}.TransmitPower é percentual, não dBm (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
     "router_rx_bytes": {
       "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.BytesReceived",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
     },
     "router_rx_drop_misc": {
       "classe": "tr069",
       "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
+      "tr181": {
+        "nota": "descarte de recepção por estação não é padrão (a confirmar com o ACS)",
+        "status": "extensao"
+      },
       "vazamento": true
     },
     "router_rx_duration_us": {
       "classe": "tr069",
       "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
+      "tr181": {
+        "nota": "airtime por estação não é padrão (a confirmar com o ACS)",
+        "status": "extensao"
+      },
       "vazamento": true
     },
     "router_rx_packets": {
       "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.PacketsReceived",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
+    },
+    "router_rx_rate_mbps": {
+      "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.LastDataUplinkRate",
+        "nota": "kbps no TR-181; o coletor grava Mbps (a confirmar com o ACS)",
+        "status": "padrao"
+      }
+    },
+    "router_signal_avg_dbm": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "o TR-181 não tem média; o ACS pode amostrar SignalStrength (a confirmar com o ACS)",
+        "status": "extensao"
+      }
+    },
+    "router_signal_dbm": {
+      "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.SignalStrength",
+        "nota": "dBm (a confirmar com o ACS)",
+        "status": "padrao"
+      }
+    },
+    "router_snr": {
+      "classe": "tr069",
+      "tr181": {
+        "nota": "SignalStrength menos Radio.{i}.Stats.Noise (a confirmar com o ACS)",
+        "status": "derivavel"
+      }
     },
     "router_tx_bytes": {
       "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.BytesSent",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
     },
     "router_tx_duration_us": {
       "classe": "tr069",
       "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
+      "tr181": {
+        "nota": "airtime por estação não é padrão (a confirmar com o ACS)",
+        "status": "extensao"
+      },
       "vazamento": true
     },
     "router_tx_failed": {
       "classe": "tr069",
       "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.FailedRetransCount",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
     },
     "router_tx_packets": {
       "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.PacketsSent",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
+    },
+    "router_tx_rate_mbps": {
+      "classe": "tr069",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.LastDataDownlinkRate",
+        "nota": "kbps no TR-181; o coletor grava Mbps (a confirmar com o ACS)",
+        "status": "padrao"
+      }
     },
     "router_tx_retries": {
       "classe": "tr069",
       "parametro": "delta da janela do speedtest (~11 s): tx_bytes·8/down ≈ 11 s em todos os prédios",
+      "tr181": {
+        "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.RetransCount",
+        "nota": "contador; no coletor é delta da janela do teste (a confirmar com o ACS)",
+        "status": "padrao"
+      },
       "vazamento": true
     },
     "router_x": {
@@ -361,7 +530,11 @@
       "vazamento": true
     },
     "router_": {
-      "classe": "tr069"
+      "classe": "tr069",
+      "tr181": {
+        "nota": "coluna nova do roteador: classifique o TR-181 na view Features",
+        "status": "desconhecido"
+      }
     },
     "site_survey_": {
       "classe": "cliente"

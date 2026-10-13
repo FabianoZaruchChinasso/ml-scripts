@@ -13,7 +13,7 @@ from ml.core import carga as C
 from ml.studio import features as SF
 
 ALVOS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
-TABELA = {'prefixos': {'router_': {'classe': 'tr069'}},
+TABELA = {'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}},
           'colunas': {**{a: {'classe': 'alvo'} for a in ALVOS},
                       'router_tx_bytes': {'classe': 'tr069', 'vazamento': True}}}
 LOCAIS = ['sala', 'quarto', 'cwpb-1', 'cwpb-2', 'hotmilk-copa', 'hotmilk-aquario']
@@ -241,6 +241,31 @@ class TestPromocao(Base):
   def test_latencia_decide_so_pelo_mae(self):
     v = A.veredito_promocao(delta(-5.0, -8.0, -2.0, 40.0), None)
     self.assertEqual(v['resultado'], 'melhor')
+
+  def test_atende_sem_intervalo_decide_pelo_mae(self):
+    v = A.veredito_promocao(delta(-5.0, -8.0, -2.0, 40.0), {'valor': 0.0, 'intervalo': None})
+    self.assertEqual(v['resultado'], 'melhor')
+
+  def test_mae_sem_intervalo_e_empate(self):
+    v = A.veredito_promocao({'valor': -5.0, 'intervalo': None, 'mae_base': 40.0}, None)
+    self.assertEqual(v['resultado'], 'empate')
+
+  def test_delta_mae_traz_a_diferenca_por_predio(self):
+    self.assertEqual(A.delta_mae(self.nova, self.base)['por_predio'], {'s1': -10.0, 's2': -10.0})
+
+  def test_veredito_lista_predio_em_que_o_mae_piora(self):
+    d_mae = dict(delta(-5.0, -8.0, -2.0, 40.0), por_predio={'a': -9.0, 'b': 1.0})
+    v = A.veredito_promocao(d_mae, None)
+    self.assertEqual((v['resultado'], v['predios_contra']), ('melhor', ['b']))
+
+  def test_piora_dentro_do_ruido_nao_conta(self):
+    d_mae = dict(delta(-5.0, -8.0, -2.0, 40.0), por_predio={'a': -9.0, 'b': 0.5})
+    self.assertEqual(A.veredito_promocao(d_mae, None)['predios_contra'], [])
+
+  def test_veredito_lista_predio_em_que_o_atende_cai(self):
+    d_mae = dict(delta(-5.0, -8.0, -2.0, 40.0), por_predio={'a': -9.0, 'b': -1.0})
+    d_atende = dict(delta(0.0, -0.01, 0.01), por_predio={'a': 0.05, 'b': -0.03})
+    self.assertEqual(A.veredito_promocao(d_mae, d_atende)['predios_contra'], ['b'])
 
 
 class TestDenominador(Base):

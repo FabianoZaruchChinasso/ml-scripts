@@ -13,7 +13,7 @@ from ml.core import carga as C
 from ml.core import classificacao as K
 
 ALVOS = ['speedtest_down_mbps', 'speedtest_up_mbps', 'latency_ms', 'jitter_ms']
-TABELA = {'prefixos': {'router_': {'classe': 'tr069'}},
+TABELA = {'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}},
           'colunas': {**{a: {'classe': 'alvo'} for a in ALVOS},
                       'router_tx_bytes': {'classe': 'tr069', 'vazamento': True}}}
 LOCAIS = ['sala', 'quarto', 'cwpb-1', 'cwpb-2', 'hotmilk-copa', 'hotmilk-aquario']

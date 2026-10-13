@@ -1,4 +1,7 @@
-"""Desenho automático de um modelo só com TR-069: seleção gulosa com folds por local.
+"""Desenho automático de um modelo: seleção gulosa com folds por local.
+
+O escopo 'tudo' busca o melhor treino com todas as colunas elegíveis; 'implantavel' fica
+só com status TR-181 padrão, derivável ou proxy. O resultado traz a cobertura TR-069.
 
 Dois números saem daqui, e a diferença entre eles é o ponto:
 
@@ -21,6 +24,7 @@ from sklearn.pipeline import Pipeline
 
 from ml.core import avaliacao as A
 from ml.core import features as F
+from ml.core.sites import teto_wan
 from ml.core.splits import assert_sites_disjoint
 from ml.studio import features as SF
 
@@ -91,10 +95,19 @@ def aninhada(df: pd.DataFrame, candidatas: list, alvo: str, progresso=None) -> d
       progresso({'fase': f'aninhada: selecionando sem {local}'})
     feats, _ = gulosa(treino, candidatas, alvo)
     escolhas[local] = feats
+    # Mesmas regras da régua (prever_fora_do_fold): linha no teto de WAN fora do treino
+    # e previsão cortada no teto do prédio de teste. Sem isso, a diferença entre a nota
+    # da seleção e a aninhada mistura otimismo de seleção com diferença de protocolo.
+    com_teto = alvo in A.ALVOS_COM_TETO
+    if com_teto and '_limitado_wan' in treino.columns:
+      treino = treino[~treino['_limitado_wan'].astype(bool)]
     X_tr, X_te = SF.matriz(treino, feats), SF.matriz(teste, feats)
     X_te = X_te.reindex(columns=X_tr.columns, fill_value=0.0)
     y_te = teste[alvo].astype(float)
     p = A.modelo_regua().fit(X_tr, treino[alvo].astype(float)).predict(X_te)
+    teto = teto_wan(local, alvo) if com_teto else None
+    if teto is not None:
+      p = np.minimum(p, teto)
     por_local[local] = round(float(r2_score(y_te, p)), 4)
     mae_local[local] = round(float(mean_absolute_error(y_te, p)), 4)
     reais.extend(y_te.tolist())
@@ -105,12 +118,19 @@ def aninhada(df: pd.DataFrame, candidatas: list, alvo: str, progresso=None) -> d
           'por_local': por_local, 'mae_por_local': mae_local, 'escolhas_por_local': escolhas}
 
 
-def candidatas_tr069(inv: dict) -> list:
+ESCOPOS = ('tudo', 'implantavel')
+
+
+def candidatas(inv: dict, escopo: str = 'tudo') -> list:
+  """Elegíveis para o desenho; 'implantavel' fica só com status TR-181 padrão, derivável ou proxy."""
+  if escopo not in ESCOPOS:
+    raise ValueError(f'escopo {escopo!r} inválido; esperado um de {list(ESCOPOS)}')
   por_nome = {c['coluna']: c for c in inv['colunas']}
-  return [c for c in SF.elegiveis(inv) if por_nome[c]['classe'] == 'tr069']
+  return [c for c in SF.elegiveis(inv) if escopo == 'tudo' or por_nome[c]['implantavel']]
 
 
-def desenhar(conj: SF.Conjunto, inv: dict, progresso=None, sem_volume: bool = False) -> dict:
+def desenhar(conj: SF.Conjunto, inv: dict, progresso=None, sem_volume: bool = False,
+             escopo: str = 'tudo') -> dict:
   inicio = time.time()
   SF._checar_locais(conj.df)
   df = conj.df[conj.df[conj.alvo].notna()].reset_index(drop=True)
@@ -118,20 +138,22 @@ def desenhar(conj: SF.Conjunto, inv: dict, progresso=None, sem_volume: bool = Fa
   # confirmado (as derivadas deles herdam o 'pendente', ex.: fracao_airtime_tx).
   pendentes = {c['coluna'] for c in inv['colunas'] if c.get('pendente')}
   excluidas = sorted(set(CONTADORES_VOLUME) | pendentes) if sem_volume else []
-  candidatas = [c for c in candidatas_tr069(inv) if c not in excluidas]
-  if not candidatas:
-    raise ValueError('nenhuma coluna TR-069 elegível neste conjunto')
+  escolhiveis = [c for c in candidatas(inv, escopo) if c not in excluidas]
+  if not escolhiveis:
+    raise ValueError(f'nenhuma coluna elegível neste conjunto (escopo {escopo!r})')
   if progresso:
-    progresso({'fase': f'seleção com os {df["_site"].nunique()} locais ({len(candidatas)} candidatas)'})
-  features, passos = gulosa(df, candidatas, conj.alvo, progresso)
+    progresso({'fase': f'seleção com os {df["_site"].nunique()} locais ({len(escolhiveis)} candidatas)'})
+  features, passos = gulosa(df, escolhiveis, conj.alvo, progresso)
   vazadas = SF.vazadas_do_conjunto(conj)
   nota_selecao = SF.avaliar(conj, features, vazadas)
-  nota_aninhada = aninhada(df, candidatas, conj.alvo, progresso)
-  return {'alvo': conj.alvo, 'datasets': conj.datasets, 'candidatas': candidatas,
+  nota_aninhada = aninhada(df, escolhiveis, conj.alvo, progresso)
+  return {'alvo': conj.alvo, 'datasets': conj.datasets, 'candidatas': escolhiveis,
           'features': features, 'passos': passos,
           'nota_selecao': nota_selecao, 'nota_aninhada': nota_aninhada,
           'parametros': {'arvores_busca': ARVORES_BUSCA, 'max_features': MAX_FEATURES,
                          'tolerancia': TOLERANCIA, 'criterio': 'R² pooled, folds por local de coleta',
                          'sem_volume': sem_volume,
+                         'escopo': escopo,
                          'excluidas': excluidas},
+          'cobertura': F.cobertura_tr069(features, conj.tabela, conj.catalogo),
           'segundos': round(time.time() - inicio, 1)}

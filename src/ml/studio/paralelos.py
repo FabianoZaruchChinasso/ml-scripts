@@ -26,7 +26,8 @@ RHO_ASSINATURA = 0.3
 ARVORES_PARALELOS = 100
 MAX_PARALELOS = 40
 TOP_ASSINATURA = 5
-CLASSES_LABORATORIO = {'sniffer', 'cliente', 'ambiente', 'geometria', F.CLASSE_AUXILIAR}
+# Classes que nunca entram como coluna a reconstruir.
+CLASSES_FORA = {'identificador', 'alvo'}
 
 
 def _br(valor: float) -> str:
@@ -81,8 +82,9 @@ def veredito(importa: bool, reconstroi: bool) -> str:
 
 
 def _tr069(inv: dict):
+  """Elegíveis com status TR-181 padrão ou derivável: o que o ACS lê sem suposição."""
   por_nome = {c['coluna']: c for c in inv['colunas']}
-  todas = [c for c in SF.elegiveis(inv) if por_nome[c]['classe'] == 'tr069']
+  todas = [c for c in SF.elegiveis(inv) if por_nome[c]['tr181']['status'] in F.TR069_PURO]
   return todas, [c for c in todas if por_nome[c]['tipo'] == 'numerica']
 
 
@@ -91,7 +93,9 @@ def _resumo(conj, features, vazadas):
 
 
 def colunas_de_laboratorio(inv: dict) -> list:
-  cols = [c for c in inv['colunas'] if c['classe'] in CLASSES_LABORATORIO and c['tipo'] == 'numerica'
+  """Colunas numéricas sem caminho TR-181 padrão (proxy, extensão, ausente, desconhecido)."""
+  cols = [c for c in inv['colunas'] if c['tr181']['status'] not in F.TR069_PURO
+          and c['classe'] not in CLASSES_FORA and c['tipo'] == 'numerica'
           and not c['vazamento'] and not c['constante'] and c['cobertura'] >= SF.COBERTURA_MIN]
   cols.sort(key=lambda c: -(c['rho'] or 0))
   return cols
@@ -172,6 +176,7 @@ def previa(conj: SF.Conjunto, nome: str, formula: str, inspirada_em=None) -> dic
   saida = {'nome': nome, 'formula': formula, 'insumos': list(derivada.insumos),
            'classe': None if classe is None else classe.classe,
            'vazamento': None if classe is None else classe.vazamento,
+           'tr181': None if classe is None else F.status_tr181(classe),
            'sem_classificacao': [c for c in derivada.insumos if F.classificar(c, conj.tabela) is None
                                  and c not in {d.nome for d in conj.catalogo}],
            'cobertura': round(float(serie.notna().mean()), 3),
@@ -201,7 +206,8 @@ def testar(conj: SF.Conjunto, nome: str, formula: str, base: list, inspirada_em=
   sem = SF._resumo(SF._logo(df, base, conj.alvo, vazadas), len(base))
   ganho = SF.delta_por_local(com, sem)
   criterios = [
-    {'criterio': 'todos os insumos são TR-069', 'ok': pre['classe'] == 'tr069'},
+    {'criterio': 'derivável do TR-181 padrão (todos os insumos padrão ou deriváveis)',
+     'ok': pre['tr181'] == 'derivavel'},
     {'criterio': 'nenhum insumo com vazamento', 'ok': pre['vazamento'] is False},
     {'criterio': f'ganho médio de R² ≥ {_br(GANHO_MIN)} e melhora em todos os locais',
      'ok': ganho['media'] is not None and ganho['media'] >= GANHO_MIN and ganho['melhora'] == ganho['locais'] > 0},

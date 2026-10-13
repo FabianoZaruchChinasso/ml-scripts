@@ -14,7 +14,10 @@
   const pct = (v) => Math.round(v * 100) + '%';
 
   const ROTULO = { sniffer: 'Sniffer', cliente: 'Cliente', ambiente: 'Ambiente', geometria: 'Manual',
-    auxiliar: 'Auxiliar', tr069: 'TR-069' };
+    auxiliar: 'Auxiliar', tr069: 'Roteador' };
+  const STATUS_TXT = { padrao: 'TR-181 padrão', derivavel: 'derivável do TR-181', proxy: 'proxy TR-181',
+    extensao: 'extensão de fabricante', ausente: 'sem caminho TR-069', desconhecido: 'TR-181 não classificado' };
+  const PURO = ['padrao', 'derivavel'];
   const VEREDITO = {
     candidata: ['ok', 'candidata a receita', 'Importa para o alvo e o TR-069 reconstrói: vale escrever uma fórmula.'],
     so_laboratorio: ['mid', 'só laboratório', 'Importa para o alvo, mas o TR-069 não reconstrói em prédio novo.'],
@@ -195,14 +198,15 @@
   }
 
   function cardDesenhista() {
-    const lab = st.colunas.filter((c) => c.classe !== 'tr069' && c.tipo === 'numerica' && !['identificador', 'alvo'].includes(c.classe));
+    const lab = st.colunas.filter((c) => !(c.tr181 && PURO.includes(c.tr181.status)) && c.tipo === 'numerica'
+      && !['identificador', 'alvo'].includes(c.classe));
     const opcoes = ['<option value="">— nenhuma —</option>'].concat(lab.map((c) => `<option value="${esc(c.coluna)}"${c.coluna === st.form.inspirada ? ' selected' : ''}>${esc(c.coluna)}</option>`)).join('');
     const brutas = st.colunas.filter((c) => !c.derivada && c.tipo === 'numerica' && !['identificador', 'alvo'].includes(c.classe));
     const funcoes = st.derivadas ? st.derivadas.funcoes.join(', ') : '';
     const oc = st.ocupado;
     return `<div class="card"><h2>Desenhista de derivadas</h2>
       <p class="hint">Escreva uma fórmula com colunas brutas: números, <code>+ − * / **</code>, parênteses e ${esc(funcoes)}. <b>Prévia</b> é instantânea;
-        <b>Testar</b> roda o critério de aceite (insumos TR-069, sem vazamento, ganho no alvo em todos os locais e, se houver inspiração, reconstrução com R² ≥ 0,3 em todos).
+        <b>Testar</b> roda o critério de aceite (derivável do TR-181 padrão, sem vazamento, ganho no alvo em todos os locais e, se houver inspiração, reconstrução com R² ≥ 0,3 em todos).
         <b>Salvar</b> refaz o teste no servidor: a derivada entra como <i>aprovada</i> ou <i>hipótese</i>, e hipóteses ficam fora do teto e do desenho automático.</p>
       <datalist id="pf-colunas">${brutas.map((c) => `<option value="${esc(c.coluna)}">`).join('')}</datalist>
       <div class="pform">
@@ -225,8 +229,9 @@
     const p = st.previa;
     if (!p) return '';
     const locais = Object.keys(p.distribuicao);
-    const classe = p.classe === 'tr069' ? '<span class="tag ok">TR-069</span>'
-      : p.classe ? `<span class="tag mid">${ROTULO[p.classe] || esc(p.classe)}: não vai para produção</span>` : '<span class="tag leak">insumo sem classificação</span>';
+    const classe = p.tr181 === 'derivavel' ? '<span class="tag ok">derivável do TR-181</span>'
+      : p.tr181 ? `<span class="tag mid">${esc(STATUS_TXT[p.tr181] || p.tr181)}: ainda não vai para produção</span>`
+      : '<span class="tag leak">insumo sem classificação</span>';
     return `<div style="margin-top:14px"><h2 style="font-size:13px">Prévia de <code>${esc(p.nome)}</code></h2>
       <p class="gate-msg">${classe} ${p.vazamento ? '<span class="tag leak">vazamento herdado</span>' : ''} · cobertura ${pct(p.cobertura)} · |ρ| com o alvo ${num(p.rho_alvo, 2)} · insumos: ${p.insumos.map((c) => `<code>${esc(c)}</code>`).join(', ')}</p>
       <div style="overflow-x:auto"><table><thead><tr><th>Local</th><th class="num">mín.</th><th class="num">mediana</th><th class="num">máx.</th>${p.inspirada_em ? `<th class="num">ρ com ${esc(p.inspirada_em)}</th>` : ''}</tr></thead><tbody>

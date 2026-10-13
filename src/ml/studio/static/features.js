@@ -14,9 +14,17 @@
   const pct = (v) => Math.round(v * 100) + '%';
   const cssv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-  const CLASSES = [['tr069', 'TR-069'], ['sniffer', 'Sniffer'], ['cliente', 'Cliente'],
+  const CLASSES = [['tr069', 'Roteador'], ['sniffer', 'Sniffer'], ['cliente', 'Cliente'],
     ['ambiente', 'Ambiente'], ['geometria', 'Geometria'], ['identificador', 'Identificador'], ['alvo', 'Alvo']];
   const ROTULO = Object.fromEntries(CLASSES.concat([['auxiliar', 'Auxiliar']]));
+  const STATUS_TR181 = [['padrao', 'TR-181 padrão', 'ok'], ['derivavel', 'derivável do TR-181', 'ok'],
+    ['proxy', 'proxy TR-181', 'mid'], ['extensao', 'extensão de fabricante', 'mid'],
+    ['ausente', 'sem caminho TR-069', 'lab'], ['desconhecido', 'TR-181 não classificado', 'leak']];
+  const STATUS_POR = Object.fromEntries(STATUS_TR181.map(([k, r, c]) => [k, { rotulo: r, cls: c }]));
+  const tagTr181 = (t) => {
+    const s = STATUS_POR[(t || {}).status] || STATUS_POR.desconhecido;
+    return `<span class="tag ${s.cls}" title="${esc([(t || {}).caminho, (t || {}).nota].filter(Boolean).join(' · '))}">${s.rotulo}</span>`;
+  };
   const LEITURA = { alcancavel: ['ok', 'alcançável'], parcial: ['mid', 'parcial'], laboratorio: ['lab', 'só laboratório'] };
   const VAZAMENTO = 'Medida durante o teste: carrega o próprio alvo e não existe em produção.';
 
@@ -60,10 +68,10 @@
       .finally(() => { clearInterval(st.relogio); st.rodando = false; desenhar(); });
   }
 
-  function classificar(coluna, classe, vazamento, parametro) {
+  function classificar(coluna, classe, vazamento, parametro, tr181 = null) {
     st.salvarErro = null;
     pedir('api/columns', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ coluna, classe, vazamento, parametro: parametro || null }) })
+      body: JSON.stringify({ coluna, classe, vazamento, parametro: parametro || null, tr181 }) })
       .then(() => { st.invKey = null; st.ajKey = null; carregarInventario(); })
       .catch((e) => { st.salvarErro = `${coluna}: ${e.message}`; desenhar(); });
   }
@@ -110,8 +118,8 @@
         `<div style="margin-top:8px"><button class="btn" data-acao="vazar" data-col="${esc(c.coluna)}">Marcar vazamento</button></div>`);
     });
     inv.modelo_fora_do_tr069.forEach((c) => {
-      html += gate('warning', `<code>${esc(c)}</code> está no modelo, mas não é TR-069`,
-        `Classe: ${ROTULO[porNome[c].classe]}. O ACS não lê esta coluna em produção.`);
+      html += gate('warning', `<code>${esc(c)}</code> está no modelo, mas não é TR-181 padrão`,
+        `${tagTr181(porNome[c].tr181)} Classe: ${ROTULO[porNome[c].classe]}. Falta derivar ou coletar pelo ACS antes de ir para produção.`);
     });
     inv.avisos.forEach((a) => { html += gate('warning', 'Aviso', esc(a)); });
     return html;
@@ -175,7 +183,8 @@
   function cardCandidatas(inv) {
     const atual = st.aj && st.ajKey === chave();
     const ganho = atual ? Object.fromEntries(st.aj.ganho.map((g) => [g.coluna, g])) : {};
-    const lista = inv.colunas.filter((c) => c.classe === 'tr069' && !c.no_modelo && !c.constante && c.cobertura >= 0.7);
+    const lista = inv.colunas.filter((c) => c.tr181 && ['padrao', 'derivavel'].includes(c.tr181.status)
+      && !c.no_modelo && !c.constante && c.cobertura >= 0.7);
     const limpas = lista.filter((c) => !c.vazamento).sort((a, b) =>
       atual ? ((ganho[b.coluna] || { delta: -9 }).delta - (ganho[a.coluna] || { delta: -9 }).delta)
         : ((b.rho || 0) - (a.rho || 0)));
@@ -213,6 +222,20 @@
       <p class="hint">R² por local de coleta de "auxiliar ≈ f(todas as TR-069)". Alcançável ≥ 0,7 · parcial 0,3 a 0,7 · só laboratório &lt; 0,3. Um sinal alcançável ainda precisa de uma receita TR-069 que o reproduza, então vira ideia de derivada.</p>${corpo}</div>`;
   }
 
+  function cardTr181(inv) {
+    const opcoes = inv.colunas.slice().sort((a, b) => a.coluna.localeCompare(b.coluna))
+      .map((c) => `<option value="${esc(c.coluna)}">${esc(c.coluna)}</option>`).join('');
+    return `<div class="card"><h2>Proveniência TR-181</h2>
+      <p class="hint">Como a produção obtém cada coluna pelo ACS. Grava em <code>src/ml/core/column_provenance.json</code>; a classe da coluna não muda. Padrão e proxy precisam de caminho.</p>
+      <div class="pform">
+        <label for="fTrCol">Coluna</label><select id="fTrCol">${opcoes}</select>
+        <label for="fTrStatus">Status</label><select id="fTrStatus">${STATUS_TR181.map(([k, r]) => `<option value="${k}">${r}</option>`).join('')}</select>
+        <label for="fTrCaminho">Caminho</label><input id="fTrCaminho" class="minput" maxlength="200" placeholder="Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}....">
+        <label for="fTrNota">Nota</label><input id="fTrNota" class="minput" maxlength="200">
+      </div>
+      <div class="controls" style="margin-top:10px"><button class="btn-pri" data-acao="salvar-tr181">Salvar</button></div></div>`;
+  }
+
   function blocos(inv) {
     const vazadas = inv.colunas.filter((c) => c.vazamento);
     const constantes = inv.colunas.filter((c) => c.constante);
@@ -225,9 +248,10 @@
         <div class="inner"><p><b>Constantes:</b> ${codes(constantes.map((c) => c.coluna)) || '—'}</p>
         <p><b>Idênticas:</b></p><ul>${inv.grupos_identicos.map((g) => `<li>${codes(g)}</li>`).join('') || '<li>—</li>'}</ul></div></details>
       <details class="fold"><summary>Inventário completo <span>· ${inv.colunas.length} colunas · ${contagem}</span></summary>
-        <div class="inner"><table><thead><tr><th>Coluna</th><th>Classe</th><th>Origem</th><th>Tipo</th><th class="num">Cobertura</th><th class="num">|ρ|</th><th>Vazamento</th></tr></thead><tbody>` +
+        <div class="inner"><table><thead><tr><th>Coluna</th><th>Classe</th><th>TR-181</th><th>Caminho</th><th>Origem</th><th>Tipo</th><th class="num">Cobertura</th><th class="num">|ρ|</th><th>Vazamento</th></tr></thead><tbody>` +
       inv.colunas.slice().sort((a, b) => a.coluna.localeCompare(b.coluna)).map((c) => `<tr><td><code>${esc(c.coluna)}</code></td>
-        <td>${ROTULO[c.classe]}</td><td>${esc(c.origem)}</td><td>${esc(c.tipo)}</td><td class="num">${pct(c.cobertura)}</td>
+        <td>${ROTULO[c.classe]}</td><td>${tagTr181(c.tr181)}</td><td>${c.tr181 && c.tr181.caminho ? `<code>${esc(c.tr181.caminho)}</code>` : ''}</td>
+        <td>${esc(c.origem)}</td><td>${esc(c.tipo)}</td><td class="num">${pct(c.cobertura)}</td>
         <td class="num">${c.rho == null ? '–' : num(c.rho, 2)}</td><td>${c.vazamento ? 'sim' : ''}</td></tr>`).join('') +
       '</tbody></table></div></details>';
   }
@@ -246,7 +270,7 @@
     const porNome = Object.fromEntries(inv.colunas.map((c) => [c.coluna, c]));
     const amb = st.ctx.ambiente === 'todos' ? '' : ` · só ${st.ctx.ambientes[st.ctx.ambiente].toLowerCase()}`;
     $('#fChip').textContent = `${inv.datasets.join(', ')} · ${inv.n_linhas.toLocaleString('pt-BR')} amostras · ${inv.locais.length} locais de coleta · ${inv.posicoes.length} posições${amb}`;
-    host.innerHTML = gates(inv, porNome) + cardTeto() + cardCandidatas(inv) + cardProxy(inv) + blocos(inv);
+    host.innerHTML = gates(inv, porNome) + cardTeto() + cardCandidatas(inv) + cardProxy(inv) + cardTr181(inv) + blocos(inv);
     host.querySelectorAll('details.fold').forEach((d, i) => { d.open = !!st.abertos[i]; });
     desenharTeto();
   }
@@ -269,6 +293,23 @@
       const c = porNome[alvo.dataset.col];
       classificar(c.coluna, c.classe, true, c.parametro);
     }
+    if (acao === 'salvar-tr181') {
+      const c = porNome[$('#fTrCol').value];
+      const tr181 = { status: $('#fTrStatus').value };
+      const caminho = $('#fTrCaminho').value.trim();
+      const nota = $('#fTrNota').value.trim();
+      if (caminho) tr181.caminho = caminho;
+      if (nota) tr181.nota = nota;
+      classificar(c.coluna, c.classe, c.vazamento, c.parametro, tr181);
+    }
+  });
+  $('#fBody').addEventListener('change', (ev) => {
+    if (ev.target.id !== 'fTrCol' || !st.inv) return;
+    const c = st.inv.colunas.find((x) => x.coluna === ev.target.value);
+    const t = (c && c.tr181) || {};
+    $('#fTrStatus').value = t.status || 'desconhecido';
+    $('#fTrCaminho').value = t.caminho || '';
+    $('#fTrNota').value = t.nota || '';
   });
   $('#fAlvo').addEventListener('change', (ev) => { st.alvo = ev.target.value; carregarInventario(); desenhar(); });
 

@@ -349,6 +349,16 @@ def atende(prev_down: pd.DataFrame, prev_up: pd.DataFrame, aplicacoes: dict, amo
   return _resumo_atende(j, classes, amostras)
 
 
+def _por_predio(sites, diferenca) -> dict:
+  """`diferenca(idx)` só com as linhas de cada prédio (índices posicionais); NaN vira None."""
+  sites = np.asarray(sites).astype(str)
+  saida = {}
+  for site in sorted(set(sites)):
+    valor = float(diferenca(np.flatnonzero(sites == site)))
+    saida[site] = None if np.isnan(valor) else round(valor, 4)
+  return saida
+
+
 def delta_mae(nova: pd.DataFrame, base: pd.DataFrame, amostras=None) -> dict:
   """MAE da nova versão menos o da base, nas mesmas linhas e nas mesmas reamostragens."""
   j = _juntar(nova=nova, base=base)
@@ -359,7 +369,8 @@ def delta_mae(nova: pd.DataFrame, base: pd.DataFrame, amostras=None) -> dict:
   amostras = reamostras(j['_pos'], j['_site']) if amostras is None else amostras
   return {'valor': round(float(erro_nova.mean() - erro_base.mean()), 4),
           'intervalo': _intervalo([erro_nova[i].mean() - erro_base[i].mean() for i in amostras]),
-          'mae_base': round(float(erro_base.mean()), 4), 'n': int(len(j))}
+          'mae_base': round(float(erro_base.mean()), 4), 'n': int(len(j)),
+          'por_predio': _por_predio(j['_site'], lambda i: erro_nova[i].mean() - erro_base[i].mean())}
 
 
 def delta_atende(nova_dn, nova_up, base_dn, base_up, aplicacoes: dict, amostras=None):
@@ -391,13 +402,20 @@ def _br(valor: float, casas: int) -> str:
   return f'{valor:.{casas}f}'.replace('.', ',')
 
 
-def veredito_promocao(delta_mae: dict, delta_atende: dict = None) -> dict:
+def _veredito_promocao(delta_mae: dict, delta_atende: dict = None) -> dict:
   """Melhor / empate / pior pela régua de promoção (nova − base, intervalo de 90%).
 
   Pior: o intervalo exclui 0 contra a nova em MAE ou em "atende". Melhor: exclui 0
   a favor numa delas e a outra não piora mais que o ruído. Empate: o resto.
-  `delta_atende` é None em latência e jitter, que decidem só pelo MAE.
+  `delta_atende` é None em latência e jitter, que decidem só pelo MAE. Um intervalo
+  None (todas as reamostragens deram NaN) não decide: sem o do MAE, é empate; sem o
+  do "atende", decide só o MAE.
   """
+  if delta_mae.get('intervalo') is None:
+    return {'resultado': 'empate', 'motivo': 'Sem intervalo para a diferença de MAE: não dá para '
+                                             'separar as duas versões.'}
+  if delta_atende is not None and delta_atende.get('intervalo') is None:
+    delta_atende = None
   lo_m, hi_m = delta_mae['intervalo']
   faixa_m = f'{_br(lo_m, 1)} a {_br(hi_m, 1)}'
   if lo_m > 0:
@@ -417,3 +435,25 @@ def veredito_promocao(delta_mae: dict, delta_atende: dict = None) -> dict:
                                              f'(90%: {_br(lo_a, 3)} a {_br(hi_a, 3)}) sem piorar o MAE.'}
   return {'resultado': 'empate', 'motivo': 'Os intervalos das diferenças incluem 0: com estes locais, '
                                            'não dá para separar as duas versões.'}
+
+
+def _predios_contra(delta_mae: dict, delta_atende: dict = None) -> list:
+  """Prédios em que a nova versão piora além do ruído: MAE acima de RUIDO_MAE_REL do MAE da
+  base, ou acurácia de "atende" abaixo de -RUIDO_ATENDE."""
+  limite = RUIDO_MAE_REL * delta_mae.get('mae_base', 0.0)
+  contra = {s for s, v in (delta_mae.get('por_predio') or {}).items() if v is not None and v > limite}
+  if delta_atende is not None:
+    contra |= {s for s, v in (delta_atende.get('por_predio') or {}).items() if v is not None and v < -RUIDO_ATENDE}
+  return sorted(contra)
+
+
+def veredito_promocao(delta_mae: dict, delta_atende: dict = None) -> dict:
+  """Melhor / empate / pior pela régua de promoção (nova − base, intervalo de 90%), mais
+  `predios_contra`.
+
+  O intervalo reamostra posições com os prédios fixos: não mede a variação entre prédios.
+  `predios_contra` mostra onde a nova versão piora, mesmo quando o resultado é "melhor".
+  """
+  saida = _veredito_promocao(delta_mae, delta_atende)
+  saida['predios_contra'] = _predios_contra(delta_mae, delta_atende)
+  return saida

@@ -57,6 +57,15 @@ class TestDescoberta(unittest.TestCase):
     self.assertEqual(C._superseded(datasets), {'parte.csv': 'b.csv'})
     self.assertEqual(C.ids_padrao(datasets), ['a-fix.csv', 'b.csv'])
 
+  def test_duplicata_prefere_a_versao_corrigida_e_depois_mais_colunas(self):
+    datasets = [
+      {'id': 'b.csv', 'usable': True, 'generation': 'current', 'fingerprint': 'f1', 'columns': 10},
+      {'id': 'b_fix.csv', 'usable': True, 'generation': 'current', 'fingerprint': 'f1', 'columns': 10},
+      {'id': 'c.csv', 'usable': True, 'generation': 'current', 'fingerprint': 'f2', 'columns': 10},
+      {'id': 'c-extra.csv', 'usable': True, 'generation': 'current', 'fingerprint': 'f2', 'columns': 12},
+    ]
+    self.assertEqual(C.duplicatas(datasets), {'b.csv': 'b_fix.csv', 'c.csv': 'c-extra.csv'})
+
   def test_discover_le_zip_e_csv_da_pasta(self):
     with tempfile.TemporaryDirectory() as pasta:
       alvos(2).to_csv(os.path.join(pasta, 'x.csv'), index=False)
@@ -140,7 +149,7 @@ class TestLimitadoWan(unittest.TestCase):
     self.assertFalse(C.marcar_limitado_wan(df, 'speedtest_down_mbps').any())
 
 
-TABELA = {'prefixos': {'router_': {'classe': 'tr069'}},
+TABELA = {'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}},
           'colunas': {a: {'classe': 'alvo'} for a in ALVOS}}
 
 
@@ -232,7 +241,7 @@ class TestClassificacao(unittest.TestCase):
     tabela = F.carregar_tabela()
     for coluna in ('n_clients', 'concorrentes_mesmo_radio'):
       c = F.classificar(coluna, tabela)
-      self.assertEqual((c.classe, c.vazamento), ('tr069', False), coluna)
+      self.assertEqual((c.classe, c.vazamento), ('ambiente', False), coluna)
       self.assertIn('depende do coletor', c.parametro)
 
 

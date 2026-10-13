@@ -29,7 +29,6 @@ ARVORES_PROXY = 100
 RUIDO_R2 = 0.02
 UNIDADES = {'speedtest_down_mbps': 'Mbps', 'speedtest_up_mbps': 'Mbps', 'latency_ms': 'ms', 'jitter_ms': 'ms'}
 CLASSES_FORA_DOS_AJUSTES = {'identificador', 'geometria', 'alvo'}
-CLASSES_AUXILIARES = {'sniffer', 'cliente', 'ambiente'}
 
 
 def _tipo(serie: pd.Series) -> str:
@@ -82,8 +81,12 @@ def inventario(conj: Conjunto, modelo=F.MODELO_ATUAL) -> dict:
         rho = round(abs(float(par.iloc[:, 0].corr(par.iloc[:, 1], method='spearman'))), 3)
     if tipo == 'numerica' and not constante:
       numericas.append(coluna)
+    status = F.status_tr181(c)
     colunas.append({
       'coluna': coluna, 'classe': c.classe, 'origem': c.origem, 'vazamento': c.vazamento,
+      # Como a produção obtém a coluna; 'implantavel' inclui o proxy declarado.
+      'tr181': {'status': status, 'caminho': (c.tr181 or {}).get('caminho'), 'nota': (c.tr181 or {}).get('nota')},
+      'implantavel': status in F.IMPLANTAVEIS,
       'parametro': c.parametro, 'derivada': coluna in derivadas,
       # Derivada desenhada no Studio que não passou no critério de aceite:
       # pode ser escolhida à mão, mas fica fora do teto, do ganho e do desenho automático.
@@ -96,9 +99,9 @@ def inventario(conj: Conjunto, modelo=F.MODELO_ATUAL) -> dict:
       'no_modelo': coluna in modelo,
       'suspeita': rho is not None and rho >= RHO_SUSPEITA and not c.vazamento,
     })
-  classe_de = {c['coluna']: c['classe'] for c in colunas}
+  status_de = {c['coluna']: c['tr181']['status'] for c in colunas}
   candidatas = [c['coluna'] for c in colunas
-                if c['classe'] == 'tr069' and not c['no_modelo'] and not c['vazamento']
+                if c['tr181']['status'] in F.TR069_PURO and not c['no_modelo'] and not c['vazamento']
                 and not c['constante'] and c['cobertura'] >= COBERTURA_MIN]
   contagem = {}
   for c in colunas:
@@ -119,7 +122,7 @@ def inventario(conj: Conjunto, modelo=F.MODELO_ATUAL) -> dict:
     'sem_classificacao': sem_classificacao,
     'grupos_identicos': _grupos_identicos(df, numericas),
     'modelo': modelo,
-    'modelo_fora_do_tr069': [m for m in modelo if classe_de.get(m) not in (None, 'tr069')],
+    'modelo_fora_do_tr069': [m for m in modelo if m in status_de and status_de[m] not in F.TR069_PURO],
     'contagem_por_classe': contagem,
     'avisos': avisos,
   }
@@ -144,8 +147,6 @@ _FORA_DO_ASSISTENTE = {'identificador', 'alvo'}
 def _motivo_bloqueio(c: dict, repetidas: set):
   if c['vazamento']:
     return 'vazamento: medida durante o teste'
-  if c['classe'] != 'tr069':
-    return f'fora do TR-069 ({c["classe"]})'
   if c.get('hipotese'):
     return 'hipótese: não passou no teste de aceite'
   if c['constante']:
@@ -179,6 +180,7 @@ def lista_assistente(inv: dict, catalogo) -> list:
                   'classe': c['classe'], 'tipo': c['tipo'], 'vazamento': c['vazamento'],
                   'derivada': c['derivada'], 'hipotese': bool(c.get('hipotese')),
                   'pendente': c['pendente'], 'no_modelo': c['no_modelo'],
+                  'tr181': c['tr181'], 'implantavel': c['implantavel'],
                   'descricao': d.descricao if d else c['parametro'],
                   'cobertura': c['cobertura'], 'rho': c['rho']})
   return sorted(saida, key=lambda c: c['coluna'])
@@ -292,7 +294,7 @@ def comparar(conj: Conjunto, inv: dict, versoes: dict, ativo: str, denominadores
   ok = elegiveis(inv)
   por_nome = {c['coluna']: c for c in inv['colunas']}
   vazadas = _vazadas(inv)
-  tr069 = [c for c in ok if por_nome[c]['classe'] == 'tr069']
+  tr069 = [c for c in ok if por_nome[c]['tr181']['status'] in F.TR069_PURO]
   with warnings.catch_warnings(record=True) as capturados:
     warnings.simplefilter('always')
     resultado = [dict(avaliar_versao(conj, feats, vazadas,
@@ -349,15 +351,18 @@ def ganho_mais_um(conj: Conjunto, base, candidatas, vazadas, progresso=None) -> 
   return ganho
 
 
-def ajuste(conj: Conjunto, inv: dict, versoes: dict = None) -> dict:
-  """Teto, ganho +1 e proxies. `versoes` (nome -> features) entram no teto ao lado do ativo."""
+def ajuste(conj: Conjunto, inv: dict, versoes: dict = None, denominadores: dict = None) -> dict:
+  """Teto, ganho +1 e proxies. `versoes` (nome -> features) entram no teto ao lado do ativo.
+
+  `denominadores` ({nome: {alvo: coluna}}) avalia cada versão com o seu, como em `comparar`.
+  """
   inicio = time.time()
   df, alvo = conj.df, conj.alvo
   _checar_locais(df)
   ok = elegiveis(inv)
   por_nome = {c['coluna']: c for c in inv['colunas']}
   vazadas = _vazadas(inv)
-  tr069 = [c for c in ok if por_nome[c]['classe'] == 'tr069']
+  tr069 = [c for c in ok if por_nome[c]['tr181']['status'] in F.TR069_PURO]
   # O modelo ativo entra como está (inv['modelo']); só o que falta no conjunto sai.
   atual = [c for c in inv['modelo'] if c in df.columns and c not in vazadas]
   avisos = []
@@ -370,13 +375,16 @@ def ajuste(conj: Conjunto, inv: dict, versoes: dict = None) -> dict:
               for nome, cols in (('atual', atual), ('tr069', tr069), ('tudo', ok))}
     teto = {nome: _resumo(brutos[nome], n) for nome, n in
             (('atual', len(atual)), ('tr069', len(tr069)), ('tudo', len(ok)))}
-    outras = [dict(avaliar_versao(conj, feats, vazadas), nome=nome)
+    outras = [dict(avaliar_versao(conj, feats, vazadas,
+                                  denominador=((denominadores or {}).get(nome) or {}).get(conj.alvo)),
+                   nome=nome)
               for nome, feats in (versoes or {}).items() if list(feats) != inv['modelo']]
 
     ganho = ganho_mais_um(conj, atual, [c for c in inv['candidatas'] if c in ok], vazadas)
 
     proxy = []
-    auxiliares = [por_nome[c] for c in ok if por_nome[c]['classe'] in CLASSES_AUXILIARES
+    # Tudo o que não é TR-181 padrão: o TR-069 consegue reconstruir em prédio novo?
+    auxiliares = [por_nome[c] for c in ok if por_nome[c]['tr181']['status'] not in F.TR069_PURO
                   and por_nome[c]['tipo'] == 'numerica' and por_nome[c]['rho'] is not None]
     auxiliares.sort(key=lambda c: -c['rho'])
     if auxiliares and not tr069:

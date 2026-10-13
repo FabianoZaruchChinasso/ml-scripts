@@ -10,13 +10,14 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
+from ml.core import carga as C
 from ml.core import features as F
 
 
 def tabela_exemplo():
   return {
     'prefixos': {
-      'router_': {'classe': 'tr069'},
+      'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}},
       'router_tx_': {'classe': 'tr069', 'vazamento': True},
       'stats_80211_': {'classe': 'sniffer'},
     },
@@ -111,6 +112,20 @@ class TestGravar(unittest.TestCase):
       F.gravar_classificacao('temperature_c', 'clima', False, None, {'temperature_c'}, path=self.path)
     self.assertEqual(self._ler(), antes)
 
+  def test_tr181_e_gravado_e_preservado_ao_reclassificar(self):
+    tr181 = {'status': 'padrao', 'caminho': 'Device.WiFi.Radio.{i}.Channel'}
+    F.gravar_classificacao('AP_channel', 'tr069', False, None, {'AP_channel'}, path=self.path, tr181=tr181)
+    F.gravar_classificacao('AP_channel', 'cliente', False, 'canal visto pelo celular', {'AP_channel'}, path=self.path)
+    regra = F.carregar_tabela(self.path)['colunas']['AP_channel']
+    self.assertEqual(regra, {'classe': 'cliente', 'parametro': 'canal visto pelo celular', 'tr181': tr181})
+
+  def test_tr181_invalido_nao_grava(self):
+    antes = self._ler()
+    with self.assertRaises(ValueError):
+      F.gravar_classificacao('AP_channel', 'tr069', False, None, {'AP_channel'}, path=self.path,
+                             tr181={'status': 'padrao'})
+    self.assertEqual(self._ler(), antes)
+
   def test_coluna_inexistente_levanta(self):
     with self.assertRaises(ValueError):
       F.gravar_classificacao('nao_existe', 'ambiente', False, None, {'temperature_c'}, path=self.path)
@@ -169,6 +184,17 @@ class TestContadoresJanela(unittest.TestCase):
       c = F.classificar('router_tx_duration_us', t)
       self.assertEqual((c.classe, c.vazamento, c.pendente), ('tr069', vaz, pend), estado)
 
+  def test_estado_dos_contadores_preserva_tr181(self):
+    t = F.carregar_tabela(self.path)
+    t['colunas']['router_tx_retries'] = {'classe': 'tr069', 'tr181': {
+      'status': 'padrao', 'caminho': 'Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.Stats.RetransCount'}}
+    with open(self.path, 'w', encoding='utf-8') as h:
+      json.dump(t, h)
+    F.gravar_estado_contadores('sim', self.path)
+    regra = F.carregar_tabela(self.path)['colunas']['router_tx_retries']
+    self.assertTrue(regra['vazamento'])
+    self.assertEqual(regra['tr181']['status'], 'padrao')
+
   def test_estado_invalido(self):
     with self.assertRaises(ValueError):
       F.gravar_estado_contadores('talvez', self.path)
@@ -195,6 +221,70 @@ class TestContadoresJanela(unittest.TestCase):
     self.assertFalse(c.pendente)
 
 
+def tabela_tr181():
+  return {
+    'prefixos': {'router_': {'classe': 'tr069'}},
+    'colunas': {
+      'router_signal_dbm': {'classe': 'tr069', 'tr181': {
+        'status': 'padrao', 'caminho': 'Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}.SignalStrength'}},
+      'router_snr': {'classe': 'tr069', 'tr181': {'status': 'derivavel', 'nota': 'sinal menos ruído'}},
+      'router_expected_throughput_mbps': {'classe': 'tr069', 'tr181': {'status': 'extensao', 'nota': 'rate control'}},
+      'n_clients': {'classe': 'ambiente', 'tr181': {
+        'status': 'proxy', 'caminho': 'Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries'}},
+      'RSSI': {'classe': 'cliente'},
+    },
+  }
+
+
+class TestTr181(unittest.TestCase):
+  def test_regra_com_tr181_valida(self):
+    F.validar_regra('x', {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.X', 'nota': 'n'}})
+    F.validar_regra('x', {'classe': 'tr069', 'tr181': {'status': 'desconhecido'}})
+
+  def test_regra_com_tr181_invalido_levanta(self):
+    for tr181 in ({'status': 'talvez'}, {'status': 'padrao'}, {'status': 'proxy', 'nota': 'sem caminho'},
+                  {'status': 'extensao', 'extra': 1}, {'status': 'extensao', 'nota': 'x' * 201}, 'padrao'):
+      with self.assertRaises(ValueError, msg=str(tr181)):
+        F.validar_regra('x', {'classe': 'tr069', 'tr181': tr181})
+
+  def test_status_da_coluna(self):
+    t = tabela_tr181()
+    self.assertEqual(F.status_tr181(F.classificar('router_signal_dbm', t)), 'padrao')
+    self.assertEqual(F.status_tr181(F.classificar('n_clients', t)), 'proxy')
+    # Roteador sem tr181: ninguém classificou. Outras classes não vêm do roteador.
+    self.assertEqual(F.status_tr181(F.classificar('router_novo', t)), 'desconhecido')
+    self.assertEqual(F.status_tr181(F.classificar('RSSI', t)), 'ausente')
+    self.assertEqual(F.status_tr181(None), 'desconhecido')
+
+  def test_derivada_herda_o_pior_status(self):
+    t = tabela_tr181()
+    casos = {('router_signal_dbm', 'router_snr'): 'derivavel',
+             ('router_signal_dbm', 'n_clients'): 'proxy',
+             ('router_signal_dbm', 'router_expected_throughput_mbps'): 'extensao',
+             ('router_expected_throughput_mbps', 'RSSI'): 'ausente'}
+    for insumos, esperado in casos.items():
+      d = F.Derivada('d', insumos, lambda df: df[insumos[0]], '')
+      self.assertEqual(F.status_tr181(F.classificar_derivada(d, t)), esperado, insumos)
+
+  def test_cobertura_100_proxy_e_parcial(self):
+    t = tabela_tr181()
+    self.assertEqual(F.cobertura_tr069(['router_signal_dbm', 'router_snr'], t, catalogo=())['nivel'], '100%')
+    proxy = F.cobertura_tr069(['router_signal_dbm', 'n_clients'], t, catalogo=())
+    self.assertEqual(proxy['nivel'], 'proxy')
+    self.assertEqual(proxy['lacunas'], [{'feature': 'n_clients', 'status': 'proxy',
+                                         'caminho': 'Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries',
+                                         'nota': None}])
+    parcial = F.cobertura_tr069(['n_clients', 'router_expected_throughput_mbps', 'nao_existe'], t, catalogo=())
+    self.assertEqual(parcial['nivel'], 'parcial')
+    self.assertEqual(parcial['por_feature'], {'n_clients': 'proxy', 'router_expected_throughput_mbps': 'extensao',
+                                              'nao_existe': 'desconhecido'})
+
+  def test_cobertura_olha_derivadas_do_catalogo(self):
+    t = tabela_tr181()
+    d = F.Derivada('mistura', ('router_signal_dbm', 'router_expected_throughput_mbps'), lambda df: df.router_snr, '')
+    self.assertEqual(F.cobertura_tr069(['mistura'], t, catalogo=(d,))['por_feature'], {'mistura': 'extensao'})
+
+
 class TestSemente(unittest.TestCase):
   def test_semente_do_repositorio_e_valida(self):
     tabela = F.carregar_tabela()
@@ -211,6 +301,33 @@ class TestSemente(unittest.TestCase):
     derivadas = {d.nome: d for d in F.CATALOGO}
     for nome in ('retry_por_pacote', 'falha_por_pacote', 'descarte_por_pacote_rx', 'fracao_airtime_tx'):
       self.assertTrue(F.classificar_derivada(derivadas[nome], tabela).vazamento, nome)
+
+  def test_tabela_tr181_do_repositorio(self):
+    tabela = F.carregar_tabela()
+    datasets = C.descobertos()
+    padrao = set(C.ids_padrao(datasets))
+    colunas = set()
+    for d in datasets:
+      if d['id'] in padrao:
+        colunas.update(d['_frame'].columns)
+    roteador = sorted(c for c in colunas if c.startswith('router_') and F.classificar(c, tabela).classe == 'tr069')
+    self.assertEqual([c for c in roteador if 'tr181' not in tabela['colunas'].get(c, {})], [])
+    status = lambda c: F.status_tr181(F.classificar(c, tabela))
+    self.assertEqual({c: status(c) for c in ('router_tx_rate_mbps', 'router_rx_rate_mbps', 'router_signal_dbm',
+                                             'radio', 'channel_width', 'client_mode')},
+                     dict.fromkeys(('router_tx_rate_mbps', 'router_rx_rate_mbps', 'router_signal_dbm',
+                                    'radio', 'channel_width', 'client_mode'), 'padrao'))
+    self.assertEqual(status('router_snr'), 'derivavel')
+    self.assertEqual(status('router_expected_throughput_mbps'), 'extensao')
+    for coluna in ('n_clients', 'concorrentes_mesmo_radio'):
+      c = F.classificar(coluna, tabela)
+      self.assertEqual((c.classe, F.status_tr181(c)), ('ambiente', 'proxy'), coluna)
+    derivadas = {d.nome: d for d in F.CATALOGO}
+    for nome, esperado in (('eficiencia_espectral_tx', 'extensao'), ('perda_percurso_db', 'extensao'),
+                           ('assimetria_phy', 'derivavel')):
+      self.assertEqual(F.status_tr181(F.classificar_derivada(derivadas[nome], tabela)), esperado, nome)
+    # Contadores continuam vazamento, agora com o caminho TR-181.
+    self.assertEqual(F.estado_contadores(tabela), 'sim')
 
 
 if __name__ == '__main__':

@@ -1,9 +1,11 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
@@ -12,7 +14,7 @@ from ml.studio import features as SF
 from ml.studio import selecao as S
 
 TABELA = {
-  'prefixos': {'router_': {'classe': 'tr069'}, 'stats_80211_': {'classe': 'sniffer'}},
+  'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}, 'stats_80211_': {'classe': 'sniffer'}},
   'colunas': {'speedtest_down_mbps': {'classe': 'alvo'}, 'speedtest_up_mbps': {'classe': 'alvo'},
               'latency_ms': {'classe': 'alvo'}, 'jitter_ms': {'classe': 'alvo'},
               'local': {'classe': 'identificador'},
@@ -50,11 +52,16 @@ class Base(unittest.TestCase):
 
 
 class TestSelecao(Base):
-  def test_candidatas_sao_so_tr069_sem_vazamento(self):
-    c = S.candidatas_tr069(self.inv)
-    self.assertIn('router_snr', c)
-    self.assertNotIn('router_tx_bytes', c)
-    self.assertNotIn('stats_80211_x', c)
+  def test_candidatas_por_escopo(self):
+    tudo = S.candidatas(self.inv)
+    self.assertIn('router_snr', tudo)
+    self.assertIn('stats_80211_x', tudo)
+    self.assertNotIn('router_tx_bytes', tudo)
+    implantavel = S.candidatas(self.inv, 'implantavel')
+    self.assertIn('router_snr', implantavel)
+    self.assertNotIn('stats_80211_x', implantavel)
+    with self.assertRaises(ValueError):
+      S.candidatas(self.inv, 'qualquer')
 
   def test_gulosa_escolhe_primeiro_a_feature_informativa_e_para(self):
     feats, passos = S.gulosa(self.conj.df, ['router_ruido_a', 'router_snr', 'router_ruido_b'],
@@ -80,8 +87,36 @@ class TestSelecao(Base):
     for local, visto in zip(locais, vistos):
       self.assertNotIn(local, visto)
 
+  def test_aninhada_segue_as_regras_de_teto_de_wan_da_regua(self):
+    tamanhos = []
+
+    class Grava(BaseEstimator, RegressorMixin):
+      def fit(self, X, y):
+        tamanhos.append(len(X))
+        return self
+
+      def predict(self, X):
+        return np.full(len(X), 1000.0)
+
+    f = frame()
+    f['router_expected_throughput_mbps'] = 500.0
+    residencia = f.index[f['local'].isin(['sala', 'quarto'])]
+    # 150 >= 0,85 x 154 (teto de download da residência) e o Wi-Fi esperado (500) passa do teto.
+    f.loc[residencia[:10], 'speedtest_down_mbps'] = 150.0
+    conj = SF.preparar({'a.csv': f}, 'speedtest_down_mbps', TABELA)
+    self.assertEqual(int(conj.df['_limitado_wan'].sum()), 10)
+    with mock.patch.object(A, 'modelo_regua', lambda arvores=None: Grava()):
+      r = S.aninhada(conj.df, ['router_snr'], 'speedtest_down_mbps')
+    # Folds em ordem: coworking, hotmilk, residencia (60 linhas cada; 10 da residência no teto).
+    self.assertEqual(tamanhos, [110, 110, 120])
+    y = conj.df.loc[conj.df['_site'] == 'residencia', 'speedtest_down_mbps']
+    self.assertAlmostEqual(r['mae_por_local']['residencia'], round(float((y - 154.0).abs().mean()), 4))
+
   def test_desenhar_traz_as_duas_notas(self):
-    r = S.desenhar(self.conj, self.inv)
+    # stats_80211_x é quase igual a router_snr; o escopo implantável tira a ambiguidade.
+    r = S.desenhar(self.conj, self.inv, escopo='implantavel')
+    self.assertEqual(r['cobertura']['nivel'], '100%')
+    self.assertEqual(r['parametros']['escopo'], 'implantavel')
     self.assertEqual(r['features'][0], 'router_snr')
     for chave in ('pooled', 'mae', 'por_local'):
       self.assertIn(chave, r['nota_selecao'])

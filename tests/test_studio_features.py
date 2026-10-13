@@ -17,7 +17,7 @@ from ml.studio import features as SF
 from ml.studio import plans as SP
 
 TABELA = {
-  'prefixos': {'router_': {'classe': 'tr069'}, 'stats_80211_': {'classe': 'sniffer'}},
+  'prefixos': {'router_': {'classe': 'tr069', 'tr181': {'status': 'padrao', 'caminho': 'Device.WiFi.teste'}}, 'stats_80211_': {'classe': 'sniffer'}},
   'colunas': {
     'speedtest_down_mbps': {'classe': 'alvo'},
     'speedtest_up_mbps': {'classe': 'alvo'},
@@ -281,6 +281,30 @@ class TestModelos(Base):
     aj = SF.ajuste(self.conj, self.inv, {'v1': ['router_snr'], 'v2': ['router_snr', 'radio']})
     self.assertEqual([v['nome'] for v in aj['versoes']], ['v2'])
 
+  def test_ajuste_avalia_versao_com_o_denominador_dela(self):
+    aj = SF.ajuste(self.conj, self.inv, {'v1': ['router_snr'], 'v2': ['router_snr', 'radio']},
+                   {'v2': {'speedtest_down_mbps': 'router_snr'}})
+    self.assertEqual(aj['versoes'][0]['denominador'], 'router_snr')
+
+  def test_inventario_traz_status_tr181_e_implantavel(self):
+    t = json.loads(json.dumps(TABELA))
+    t['colunas']['router_nss'] = {'classe': 'tr069', 'tr181': {'status': 'extensao', 'nota': 'NSS por estação'}}
+    conj = SF.preparar({'a.csv': frame()}, 'speedtest_down_mbps', t)
+    inv = SF.inventario(conj, ['router_snr'])
+    por_nome = {c['coluna']: c for c in inv['colunas']}
+    self.assertEqual(por_nome['router_signal_dbm']['tr181']['status'], 'padrao')
+    self.assertTrue(por_nome['router_signal_dbm']['implantavel'])
+    self.assertEqual(por_nome['router_nss']['tr181'], {'status': 'extensao', 'caminho': None, 'nota': 'NSS por estação'})
+    self.assertFalse(por_nome['router_nss']['implantavel'])
+    self.assertEqual(por_nome['AP_channel']['tr181']['status'], 'ausente')
+    # Candidatas e a referência "TR-069" do teto só com TR-181 padrão ou derivável.
+    self.assertIn('router_signal_dbm', inv['candidatas'])
+    self.assertNotIn('router_nss', inv['candidatas'])
+    self.assertNotIn('AP_channel', inv['candidatas'])
+    aj = SF.ajuste(conj, inv)
+    puras = [c for c in SF.elegiveis(inv) if por_nome[c]['tr181']['status'] in ('padrao', 'derivavel')]
+    self.assertEqual(aj['teto']['tr069']['n'], len(puras))
+
   def test_correlacoes_apontam_redundantes_e_separam_categoricas(self):
     c = SF.correlacoes(self.conj.df, ['stats_80211_a', 'stats_80211_b', 'router_snr', 'radio'])
     self.assertEqual(c['fora'], ['radio'])
@@ -290,10 +314,33 @@ class TestModelos(Base):
 
 class TestDados(unittest.TestCase):
   def test_ambiente_do_studio_bate_com_o_core(self):
-    for predio, meta in SD.BUILDINGS.items():
-      for posicao in meta['positions']:
-        core = resolve_site_id(pd.Series([posicao]), level='building').iloc[0]
-        self.assertEqual(BUILDING_ENVIRONMENT[core], meta['ambiente'], f'{predio}/{posicao}')
+    self.assertEqual(set(SD.PREDIO_DO_CORE), set(BUILDING_ENVIRONMENT))
+    for core, studio in SD.PREDIO_DO_CORE.items():
+      self.assertEqual(SD.BUILDINGS[studio]['ambiente'], BUILDING_ENVIRONMENT[core], core)
+
+  def test_posicao_nova_segue_a_regra_do_core(self):
+    self.assertEqual(SD._building_of('marcelo-garagem'), 'casa-marcelo')
+    self.assertEqual(SD._building_of('hotmilk-recepcao'), 'hotmilk')
+    self.assertEqual(SD._building_of(2.0), 'casa')
+    with self.assertRaises(ValueError):
+      SD._building_of('garagem-x')
+
+  def test_local_desconhecido_vira_aviso_no_payload(self):
+    linhas = pd.DataFrame({
+      'local': ['marcelo-copa', 'garagem-x', 'garagem-x'],
+      'speedtest_down_mbps': [50.0, 20.0, 10.0], 'speedtest_up_mbps': [10.0, 5.0, 5.0],
+      'latency_ms': [10.0, 12.0, 12.0], 'jitter_ms': [1.0, 2.0, 2.0],
+    })
+    with tempfile.TemporaryDirectory() as dados, tempfile.TemporaryDirectory() as planta:
+      linhas.to_csv(os.path.join(dados, 'm.csv'), index=False)
+      antes = (C.DATA_DIR, SP.PLANTA_DIR)
+      C.DATA_DIR, SP.PLANTA_DIR, C._descobertos = dados, planta, None
+      try:
+        payload = SD.build_payload()
+      finally:
+        (C.DATA_DIR, SP.PLANTA_DIR), C._descobertos = antes, None
+    self.assertEqual(payload['locaisDesconhecidos'], [{'dataset': 'm.csv', 'valores': ['garagem-x'], 'linhas': 2}])
+    self.assertEqual(len(payload['rows']), 1)
 
   def test_rotulo_antigo_do_hotmilk_vira_a_posicao_corrigida(self):
     self.assertEqual(SD.POSITION_LABELS['quarto-marcelo'], 'hotmilk-aquario')

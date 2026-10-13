@@ -10,6 +10,7 @@ import threading
 import uuid
 from datetime import date
 from typing import Optional
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -38,6 +39,23 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), 'static')
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
 
 app = FastAPI(title='QoE Studio', docs_url=None, redoc_url=None)
+
+
+def _post_permitido(host: Optional[str], origin: Optional[str]) -> bool:
+  """POST só com Host de loopback (contra DNS rebinding) e Origin ausente ou de loopback (contra
+  uma página de outro site aberta no navegador desta máquina)."""
+  if not host or urlsplit('//' + host).hostname not in LOOPBACK:
+    return False
+  return origin is None or urlsplit(origin).hostname in LOOPBACK
+
+
+@app.middleware('http')
+async def _so_post_local(request: Request, call_next):
+  if request.method == 'POST' and not _post_permitido(request.headers.get('host'),
+                                                      request.headers.get('origin')):
+    return JSONResponse({'detail': 'POST só a partir da própria máquina (Host e Origin de loopback)'},
+                        status_code=403)
+  return await call_next(request)
 
 _cache = {}
 _ajustes = {}
@@ -96,7 +114,7 @@ def _denominadores(registro) -> dict:
 
 def _chave_versoes():
   return (core_features.versao_tabela(), core_features.CATALOGO_VERSAO,
-          core_features.versao_derivadas(), core_modelos.versao_registro())
+          core_features.versao_derivadas(), core_modelos.versao_registro(), core_aplicacoes.versao())
 
 
 def _conjunto(ds: str, alvo: str, ambiente: str = ''):
@@ -136,7 +154,7 @@ def features_ajuste(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: s
   if chave not in _ajustes:
     try:
       inv = studio_features.inventario(conj, core_modelos.ativo(registro))
-      _ajustes[chave] = studio_features.ajuste(conj, inv, _versoes_por_nome(registro))
+      _ajustes[chave] = studio_features.ajuste(conj, inv, _versoes_por_nome(registro), _denominadores(registro))
     except ValueError as erro:
       raise HTTPException(422, str(erro))
   return _ajustes[chave]
@@ -161,6 +179,9 @@ def modelos_listar():
     classes = core_modelos.classificar_features(v['features'], tabela)
     versoes.append(dict(v, nome=nome, ativo=nome == registro['ativo'],
                         fora_do_tr069=core_modelos.fora_do_tr069(v['features'], tabela),
+                        # Recalculada com a tabela de hoje; 'cobertura_salva' é a gravada na versão.
+                        cobertura=core_features.cobertura_tr069(v['features'], tabela),
+                        cobertura_salva=v.get('cobertura'),
                         pendentes=[f for f, c in classes.items() if c is not None and c.pendente],
                         vazadas=[f for f, c in classes.items() if c is not None and c.vazamento]))
   return {'ativo': registro['ativo'], 'versoes': versoes, 'erro': erro,
@@ -258,7 +279,8 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
       resumo = studio_features.avaliar(conj, feats, vazadas, denominador=den_nova.get(alvo))
       saida = {'alvo': alvo, 'features': feats, 'resumo': resumo,
                'correlacoes': studio_features.correlacoes(conj.df, feats),
-               'fora_do_tr069': core_modelos.fora_do_tr069(feats, conj.tabela)}
+               'fora_do_tr069': core_modelos.fora_do_tr069(feats, conj.tabela),
+               'cobertura': core_features.cobertura_tr069(feats, conj.tabela, conj.catalogo)}
       if base:
         saida['base'] = base
         saida['resumo_base'] = studio_features.avaliar_versao(conj, registro['versoes'][base]['features'], vazadas,
@@ -353,15 +375,18 @@ def _job(job_id: str) -> dict:
 
 @app.post('/api/modelos/desenhar')
 def modelos_desenhar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = '',
-                     sem_volume: bool = False):
+                     sem_volume: bool = False, escopo: str = 'tudo'):
+  if escopo not in studio_selecao.ESCOPOS:
+    raise HTTPException(422, f'escopo {escopo!r} inválido; esperado um de {list(studio_selecao.ESCOPOS)}')
+
   def tarefa(progresso):
     conj, _ = _conjunto(ds, alvo, ambiente)
     registro, _ = _registro()
     inv = studio_features.inventario(conj, core_modelos.ativo(registro))
-    resultado = studio_selecao.desenhar(conj, inv, progresso, sem_volume)
+    resultado = studio_selecao.desenhar(conj, inv, progresso, sem_volume, escopo)
     resultado['ambiente'] = _ambiente(ambiente) or 'todos'
     return resultado
-  return _iniciar_job(('desenho', tuple(sorted(_lista(ds))), alvo, _ambiente(ambiente), sem_volume)
+  return _iniciar_job(('desenho', tuple(sorted(_lista(ds))), alvo, _ambiente(ambiente), sem_volume, escopo)
                       + _chave_versoes(), tarefa)
 
 
@@ -643,6 +668,8 @@ class NovaClassificacao(BaseModel):
   classe: str
   vazamento: bool = False
   parametro: Optional[str] = None
+  # None preserva o tr181 que a regra já tinha.
+  tr181: Optional[dict] = None
 
 
 @app.post('/api/columns')
@@ -654,7 +681,7 @@ def classificar_coluna(corpo: NovaClassificacao, request: Request):
       conhecidas.update(d['_frame'].columns)
   try:
     core_features.gravar_classificacao(corpo.coluna, corpo.classe, corpo.vazamento,
-                                       corpo.parametro, conhecidas)
+                                       corpo.parametro, conhecidas, tr181=corpo.tr181)
   except ValueError as erro:
     raise HTTPException(422, str(erro))
   _ajustes.clear()
