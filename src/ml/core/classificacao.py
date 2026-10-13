@@ -9,6 +9,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
+from sklearn.metrics import confusion_matrix
 
 from ml.core.avaliacao import (_acuracia_balanceada, _atende_em, _intervalo, _juntar, assert_sem_vazamento,
                                reamostras)
@@ -83,3 +84,42 @@ def resumir_classe(prev: pd.DataFrame, amostras=None) -> dict:
     intervalo = _intervalo([_acuracia_balanceada(real[i], previsto[i]) for i in amostras])
   return {'pooled': _arredondar(_acuracia_balanceada(real, previsto)), 'por_local': por_local,
           'intervalo': intervalo, 'n': int(len(prev))}
+
+
+# Ordem fixa dos rótulos do "atende": índice 0 = não atende, índice 1 = atende.
+ROTULOS_ATENDE = (False, True)
+
+
+_EIXO_NORMALIZE = {'true': 1, 'pred': 0}  # eixo somado para dividir: linha (true) ou coluna (pred)
+
+
+def _matriz_normalizada(y, yhat, normalize):
+  """Contagem bruta (rótulos ROTULOS_ATENDE) dividida conforme `normalize`.
+
+  Ao contrário de `sklearn.metrics.confusion_matrix(..., normalize=...)` — que zera uma
+  linha/coluna sem suporte (divisão 0/0 virando 0, não NaN) —, aqui essa linha/coluna fica
+  NaN: 0% de acerto é diferente de "não há como medir porque a classe não apareceu".
+  """
+  contagem = confusion_matrix(y, yhat, labels=ROTULOS_ATENDE).astype(float)
+  if normalize is None:
+    return contagem
+  with np.errstate(invalid='ignore', divide='ignore'):
+    if normalize == 'all':
+      return contagem / contagem.sum()
+    return contagem / contagem.sum(axis=_EIXO_NORMALIZE[normalize], keepdims=True)
+
+
+def matriz_confusao(prev: pd.DataFrame, normalize: str = 'true'):
+  """Matriz de confusão do "atende" (rótulos ROTULOS_ATENDE), geral e por prédio.
+
+  Com `normalize='true'` (padrão) cada linha soma 1. Um prédio cujo teste saiu de
+  uma classe só (`y` constante) vira linha NaN nessa classe — de propósito: é melhor
+  deixar em branco do que inventar um número (0% de acerto numa classe ausente).
+  Devolve (geral, por_local), onde `por_local` é {site: matriz}; (None, {}) se `prev` vier vazio.
+  """
+  if prev.empty:
+    return None, {}
+  geral = _matriz_normalizada(prev['y'].to_numpy(dtype=bool), prev['yhat'].to_numpy(dtype=bool), normalize)
+  por_local = {site: _matriz_normalizada(g['y'].to_numpy(dtype=bool), g['yhat'].to_numpy(dtype=bool), normalize)
+              for site, g in prev.groupby('_site')}
+  return geral, por_local

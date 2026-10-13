@@ -8,15 +8,20 @@ comparar com o limiar.
 """
 
 import argparse
+import math
 import os
+import re
 import sys
 import warnings
 
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -35,7 +40,9 @@ from ml.core.splits import inner_logo_splits
 ALVO_DN, ALVO_UP = 'speedtest_down_mbps', 'speedtest_up_mbps'
 REMOVIDAS = ('--qoe-column', '--class-mode', '--fixed-thresholds', '--group-level', '--features',
              '--test-size', '--cv-folds', '--cv-gap', '--target-column', '--time-column', '--tune-top-k')
-REMOVIDAS_FLAG = ('--no-tune', '--plot-confusion')
+REMOVIDAS_FLAG = ('--no-tune',)
+# Nomes de exibição para ml.core.classificacao.ROTULOS_ATENDE = (False, True).
+CLASS_NAMES = ['não atende', 'atende']
 
 
 def build_models(seed: int):
@@ -144,6 +151,11 @@ def parse_args():
                       help='Busca de hiperparâmetros por LOGO interno (lenta com poucos prédios)')
   parser.add_argument('--tune-iter', type=int, default=20, help='Iterações da busca por modelo')
   parser.add_argument('--seed', type=int, default=42, help='Semente')
+  parser.add_argument('--plot-confusion', action='store_true', default=False,
+                      help='Plota a matriz de confusão do "atende" por aplicação e modelo '
+                           '(geral, média dos prédios, e por prédio)')
+  parser.add_argument('--plot-dir', default='plots',
+                      help='Diretório onde salvar os gráficos de matriz de confusão (com --plot-confusion)')
   parser.add_argument('--csv', default=None, help='REMOVIDO; use --datasets')
   for flag in REMOVIDAS:
     parser.add_argument(flag, default=None, help='REMOVIDO')
@@ -173,6 +185,73 @@ def imprimir(app: str, limiares: dict, df, linhas) -> None:
     locais = ' '.join(f"{r['por_local'][s]:13.3f}" if s in r['por_local'] else f"{'-':>13s}" for s in sites)
     print(f'  {nome:24s} {pooled:>8s} {faixa:>17s} {locais}')
 
+def _slug(texto: str) -> str:
+  """Nome de arquivo seguro a partir de um nome de aplicação/modelo (acentos, espaços, parênteses)."""
+  return re.sub(r'[^0-9a-zA-Z_-]+', '_', texto).strip('_')
+
+
+def linhas_confusao(app: str, nome: str, prev: pd.DataFrame) -> list:
+  """Uma linha {app, model, test_site, cm} por prédio de teste em `prev`, para os gráficos."""
+  _, por_local = core_classificacao.matriz_confusao(prev)
+  return [{'app': app, 'model': nome, 'test_site': site, 'cm': cm} for site, cm in por_local.items()]
+
+
+def plot_confusion_matrices(results: pd.DataFrame, output_dir: str = 'plots'):
+  """Uma matriz de confusão por (aplicação, modelo), normalizada por linha, média entre os prédios.
+
+  `results['cm']` traz uma matriz por (app, model, test_site) já normalizada por classe real
+  (ver `linhas_confusao`/`core_classificacao.matriz_confusao`); a média entre prédios dá peso
+  igual a cada um, independente de quantas linhas ele tem. Prédios com classe única viram NaN
+  numa linha da matriz (ver `matriz_confusao`); `nanmean` ignora essas entradas.
+  """
+  if results.empty:
+    return
+  for (app, name), group in results.groupby(['app', 'model']):
+    with warnings.catch_warnings():
+      warnings.simplefilter('ignore', category=RuntimeWarning)
+      mean_cm = np.nanmean(np.stack(group['cm'].to_numpy()), axis=0)
+    disp = ConfusionMatrixDisplay(confusion_matrix=mean_cm, display_labels=CLASS_NAMES)
+    fig, ax = plt.subplots(figsize=(5, 4.5))
+    disp.plot(ax=ax, cmap='Blues', values_format='.2f', colorbar=False)
+    ax.set_title(f'{app} / {name} — matriz de confusão\n(média de {len(group)} prédios, normalizada por linha)')
+    fig.tight_layout()
+    app_dir = os.path.join(output_dir, _slug(app))
+    os.makedirs(app_dir, exist_ok=True)
+    path = os.path.join(app_dir, f'confusion_matrix_{_slug(name)}.png')
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f'Matriz de confusão salva: {path}')
+
+
+def plot_confusion_matrices_by_fold(results: pd.DataFrame, output_dir: str = 'plots'):
+  """Uma grade de matrizes de confusão por (aplicação, modelo), uma célula por prédio de teste.
+
+  Complementa `plot_confusion_matrices`: a média mostra o quadro geral, esta mostra se é
+  consistente entre prédios ou puxada por um ou dois.
+  """
+  if results.empty:
+    return
+  for (app, name), group in results.groupby(['app', 'model']):
+    group = group.sort_values('test_site')
+    n_folds = len(group)
+    ncols = min(4, n_folds)
+    nrows = math.ceil(n_folds / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), squeeze=False)
+    axes_list = list(axes.flat)
+    for ax, (_, row) in zip(axes_list, group.iterrows()):
+      disp = ConfusionMatrixDisplay(confusion_matrix=row['cm'], display_labels=CLASS_NAMES)
+      disp.plot(ax=ax, cmap='Blues', values_format='.2f', colorbar=False)
+      ax.set_title(f"prédio={row['test_site']}")
+    for ax in axes_list[n_folds:]:
+      ax.axis('off')
+    fig.suptitle(f'{app} / {name} — matriz de confusão por prédio (normalizada por linha)')
+    fig.tight_layout()
+    app_dir = os.path.join(output_dir, _slug(app))
+    os.makedirs(app_dir, exist_ok=True)
+    path = os.path.join(app_dir, f'confusion_matrix_{_slug(name)}_by_fold.png')
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f'Matriz de confusão por prédio salva: {path}')
 
 def main():
   args = parse_args()
@@ -217,6 +296,7 @@ def main():
                                          core_modelos.denominador_de(registro, nome, ALVO_DN),
                                          core_modelos.denominador_de(registro, nome, ALVO_UP))
   modelos = build_models(args.seed)
+  confusao = []
   for app in pedidas_apps:
     limiares = aplicacoes[app]
     df = core_classificacao.alvo_atende(conj_dn, conj_up, limiares)
@@ -224,9 +304,12 @@ def main():
       print(f'\n{app}: só uma classe no "atende" real; fora da tabela')
       continue
     ajustada = decisoes[app].rename(columns={'real': 'y', 'previsto': 'yhat'})[['_linha', 'y', 'yhat', '_site', '_pos']]
-    linhas = [('régua (regressão)', core_classificacao.resumir_classe(
-                core_classificacao.referencia_regua(prev_dn, prev_up, limiares))),
+    regua_regressao = core_classificacao.referencia_regua(prev_dn, prev_up, limiares)
+    linhas = [('régua (regressão)', core_classificacao.resumir_classe(regua_regressao)),
               ('régua (limiar ajustado)', core_classificacao.resumir_classe(ajustada))]
+    if args.plot_confusion:
+      confusao.extend(linhas_confusao(app, 'régua (regressão)', regua_regressao))
+      confusao.extend(linhas_confusao(app, 'régua (limiar ajustado)', ajustada))
     for nome_modelo, estimador in modelos.items():
       ajustar = ajuste_com_busca(nome_modelo, args.tune_iter, args.seed) if args.tune else None
       with warnings.catch_warnings(record=True) as avisos:
@@ -236,8 +319,14 @@ def main():
         if 'pulado' in str(aviso.message):
           print(f'  aviso ({nome_modelo}): {aviso.message}')
       linhas.append((nome_modelo, core_classificacao.resumir_classe(prev)))
+      if args.plot_confusion:
+        confusao.extend(linhas_confusao(app, nome_modelo, prev))
     imprimir(app, limiares, df, linhas)
 
+  if args.plot_confusion:
+    resultados_confusao = pd.DataFrame(confusao)
+    plot_confusion_matrices(resultados_confusao, output_dir=args.plot_dir)
+    plot_confusion_matrices_by_fold(resultados_confusao, output_dir=args.plot_dir)
 
 if __name__ == '__main__':
   main()

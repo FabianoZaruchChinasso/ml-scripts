@@ -99,6 +99,19 @@ class TestFnMetrics(unittest.TestCase):
     self.assertEqual(df_result.iloc[0]["client_name"], 1)
     self.assertEqual(df_result.iloc[1]["client_name"], 0)
 
+  def test_subst_same_numeric_match_zero(self):
+    df = pd.DataFrame({
+      "latency_ms": [0, 0.0, 1.5, 2],
+    })
+
+    line = "ss_num_1; latency_ms; subst-same; 0, 1"
+    df_result = self.parser.parse(line, df)
+
+    self.assertEqual(df_result.iloc[0]["latency_ms"], 1)
+    self.assertEqual(df_result.iloc[1]["latency_ms"], 1)
+    self.assertEqual(df_result.iloc[2]["latency_ms"], 1.5)
+    self.assertEqual(df_result.iloc[3]["latency_ms"], 2)
+
   def test_subst_contains(self):
     line = "sc1; client_mode; subst-contains; WiFi 6, 1, 0"
     df_result = self.parser.parse(line, self.df.copy())
