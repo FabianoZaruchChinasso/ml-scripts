@@ -24,6 +24,83 @@
     },
     "v2-tr069": {
       "avaliacao": {
+        "atende_ajustado": {
+          "avisos": [],
+          "fatores": {
+            "Chamada de vídeo": {
+              "casa-marcelo": 1.6818,
+              "coworking": 4.362,
+              "hotmilk": 2.5937,
+              "residencia": 4.7568
+            },
+            "Jogo em nuvem": {
+              "casa-marcelo": 1.6818,
+              "coworking": 3.0844,
+              "hotmilk": 2.8284,
+              "residencia": 2.0
+            },
+            "Navegação": {
+              "casa-marcelo": 4.7568,
+              "coworking": 7.336,
+              "hotmilk": 6.7272,
+              "residencia": 8.7241
+            },
+            "Streaming 4K": {
+              "casa-marcelo": 1.2968,
+              "coworking": 1.834,
+              "hotmilk": 1.6818,
+              "residencia": 1.1892
+            }
+          },
+          "fatores_producao": {
+            "Chamada de vídeo": 3.3636,
+            "Jogo em nuvem": 3.0844,
+            "Navegação": 6.1688,
+            "Streaming 4K": 2.181
+          },
+          "intervalo": [
+            0.7476,
+            0.8088
+          ],
+          "media": 0.7816,
+          "n": 1300,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.7884,
+            "Jogo em nuvem": 0.7718,
+            "Navegação": 0.7781,
+            "Streaming 4K": 0.7883
+          }
+        },
+        "atende_completo": {
+          "avisos": [],
+          "intervalo": [
+            0.6496,
+            0.7004
+          ],
+          "media": 0.6699,
+          "n": 1298,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.6906,
+            "Jogo em nuvem": 0.5965,
+            "Navegação": 0.6266,
+            "Streaming 4K": 0.7658
+          }
+        },
+        "atende_throughput": {
+          "avisos": [],
+          "intervalo": [
+            0.6254,
+            0.6647
+          ],
+          "media": 0.6446,
+          "n": 1300,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.5455,
+            "Jogo em nuvem": 0.7501,
+            "Navegação": 0.5067,
+            "Streaming 4K": 0.7761
+          }
+        },
         "jitter_ms": {
           "ambiente": "todos",
           "ausentes": [],
@@ -34,24 +111,129 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
-          "mae": 19.6985,
-          "mae_por_local": {
-            "casa-marcelo": 25.1921,
-            "coworking": 8.6538,
-            "hotmilk": 14.1262,
-            "residencia": 21.4298
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              16.6971,
+              30.799
+            ],
+            "mae_log": [
+              0.9574,
+              1.094
+            ],
+            "pooled": [
+              -1.8958,
+              -0.0795
+            ]
           },
-          "media": -2.1618,
+          "mae": 23.2775,
+          "mae_log": 1.0221,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.4764,
+            "coworking": 0.6604,
+            "hotmilk": 0.9591,
+            "residencia": 0.8762
+          },
+          "mae_por_local": {
+            "casa-marcelo": 39.649,
+            "coworking": 8.168,
+            "hotmilk": 16.96,
+            "residencia": 21.8504
+          },
+          "media": -2.6144,
           "n": 10,
-          "pooled": -0.4897,
+          "pooled": -0.5373,
           "por_local": {
-            "casa-marcelo": -8.1211,
-            "coworking": -0.4886,
-            "hotmilk": -0.0665,
-            "residencia": 0.0288
+            "casa-marcelo": -10.2349,
+            "coworking": -0.1963,
+            "hotmilk": -0.0231,
+            "residencia": -0.0031
+          },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4481,
+              "q90": 0.9168
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.7805,
+              "coworking": 1.1595,
+              "hotmilk": 0.8203,
+              "residencia": 1.0802
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.38,
+                0.5265
+              ],
+              "cobertura_q90": [
+                0.8928,
+                0.9413
+              ],
+              "pinball_q50": [
+                5.3612,
+                10.9814
+              ],
+              "pinball_q90": [
+                6.1602,
+                13.2376
+              ]
+            },
+            "mediana_mae": 16.4065,
+            "n": 10,
+            "pinball": {
+              "q50": 8.2032,
+              "q90": 9.5548
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.6572,
+                  "q90": 0.9277
+                },
+                "pinball": {
+                  "q50": 6.1355,
+                  "q90": 8.2418
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3077,
+                  "q90": 0.986
+                },
+                "pinball": {
+                  "q50": 3.7593,
+                  "q90": 4.5853
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3333,
+                  "q90": 0.8827
+                },
+                "pinball": {
+                  "q50": 7.5034,
+                  "q90": 10.4227
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.4409,
+                  "q90": 0.9156
+                },
+                "pinball": {
+                  "q50": 11.4848,
+                  "q90": 11.2482
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-08.1"
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_tabela": "3f15e1fe0a59"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "latency_ms": {
           "ambiente": "todos",
@@ -63,24 +245,129 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
-          "mae": 28.0886,
-          "mae_por_local": {
-            "casa-marcelo": 36.2842,
-            "coworking": 9.2319,
-            "hotmilk": 27.3709,
-            "residencia": 24.7197
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              20.7945,
+              43.497
+            ],
+            "mae_log": [
+              0.688,
+              0.8442
+            ],
+            "pooled": [
+              -1.4032,
+              -0.0505
+            ]
           },
-          "media": -3.8284,
+          "mae": 31.7348,
+          "mae_log": 0.7647,
+          "mae_log_por_local": {
+            "casa-marcelo": 1.3004,
+            "coworking": 0.3957,
+            "hotmilk": 0.6383,
+            "residencia": 0.6169
+          },
+          "mae_por_local": {
+            "casa-marcelo": 53.252,
+            "coworking": 8.7293,
+            "hotmilk": 30.4463,
+            "residencia": 25.2617
+          },
+          "media": -3.441,
           "n": 10,
-          "pooled": -0.1961,
+          "pooled": -0.1648,
           "por_local": {
-            "casa-marcelo": -14.3801,
-            "coworking": -0.9312,
-            "hotmilk": -0.0168,
-            "residencia": 0.0144
+            "casa-marcelo": -13.1954,
+            "coworking": -0.5542,
+            "hotmilk": -0.0202,
+            "residencia": 0.0057
+          },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4241,
+              "q90": 0.9329
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.6056,
+              "coworking": 1.012,
+              "hotmilk": 0.5967,
+              "residencia": 0.9876
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.3647,
+                0.4844
+              ],
+              "cobertura_q90": [
+                0.9184,
+                0.9471
+              ],
+              "pinball_q50": [
+                6.9963,
+                16.5353
+              ],
+              "pinball_q90": [
+                7.2659,
+                22.3774
+              ]
+            },
+            "mediana_mae": 23.1698,
+            "n": 10,
+            "pinball": {
+              "q50": 11.5849,
+              "q90": 14.5452
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.717,
+                  "q90": 0.9497
+                },
+                "pinball": {
+                  "q50": 7.4956,
+                  "q90": 8.1909
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3357,
+                  "q90": 0.993
+                },
+                "pinball": {
+                  "q50": 4.4697,
+                  "q90": 5.4928
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3059,
+                  "q90": 0.8883
+                },
+                "pinball": {
+                  "q50": 14.9962,
+                  "q90": 23.5579
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.3481,
+                  "q90": 0.9388
+                },
+                "pinball": {
+                  "q50": 13.7688,
+                  "q90": 14.3898
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-08.1"
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_tabela": "3f15e1fe0a59"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "speedtest_down_mbps": {
           "ambiente": "todos",
@@ -92,24 +379,48 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
-          "mae": 45.0214,
-          "mae_por_local": {
-            "casa-marcelo": 43.4383,
-            "coworking": 30.888,
-            "hotmilk": 80.2699,
-            "residencia": 20.3397
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              31.6121,
+              52.0501
+            ],
+            "mae_log": [
+              0.6107,
+              0.8658
+            ],
+            "pooled": [
+              0.3482,
+              0.5211
+            ]
           },
-          "media": 0.5005,
+          "mae": 41.991,
+          "mae_log": 0.7359,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.5974,
+            "coworking": 0.582,
+            "hotmilk": 0.7818,
+            "residencia": 0.8404
+          },
+          "mae_por_local": {
+            "casa-marcelo": 26.089,
+            "coworking": 31.7342,
+            "hotmilk": 88.4717,
+            "residencia": 19.3785
+          },
+          "media": 0.4575,
           "n": 10,
-          "pooled": 0.5925,
+          "pooled": 0.4137,
           "por_local": {
-            "casa-marcelo": 0.5049,
-            "coworking": 0.5144,
-            "hotmilk": 0.5442,
-            "residencia": 0.4383
+            "casa-marcelo": 0.6008,
+            "coworking": 0.4728,
+            "hotmilk": 0.2627,
+            "residencia": 0.4937
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_tabela": "3f15e1fe0a59"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "speedtest_up_mbps": {
           "ambiente": "todos",
@@ -121,24 +432,48 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
-          "mae": 51.7864,
-          "mae_por_local": {
-            "casa-marcelo": 51.4626,
-            "coworking": 39.3353,
-            "hotmilk": 85.3873,
-            "residencia": 26.209
+          "den_imputados": 0,
+          "denominador": null,
+          "intervalos": {
+            "mae": [
+              33.7595,
+              54.9079
+            ],
+            "mae_log": [
+              0.7443,
+              0.9762
+            ],
+            "pooled": [
+              0.4715,
+              0.6146
+            ]
           },
-          "media": -0.4452,
+          "mae": 44.5046,
+          "mae_log": 0.8615,
+          "mae_log_por_local": {
+            "casa-marcelo": 0.8662,
+            "coworking": 0.718,
+            "hotmilk": 0.7755,
+            "residencia": 0.9703
+          },
+          "mae_por_local": {
+            "casa-marcelo": 38.0479,
+            "coworking": 38.2321,
+            "hotmilk": 87.9347,
+            "residencia": 16.1582
+          },
+          "media": 0.2435,
           "n": 10,
-          "pooled": 0.4823,
+          "pooled": 0.5355,
           "por_local": {
-            "casa-marcelo": 0.4016,
-            "coworking": -0.2081,
-            "hotmilk": 0.4251,
-            "residencia": -2.3995
+            "casa-marcelo": 0.5905,
+            "coworking": -0.1537,
+            "hotmilk": 0.4022,
+            "residencia": 0.1351
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_tabela": "3f15e1fe0a59"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         }
       },
       "criado_em": "2026-10-02",
@@ -159,6 +494,68 @@
     },
     "v3-tr069": {
       "avaliacao": {
+        "atende_ajustado": {
+          "avisos": [],
+          "fatores": {
+            "Chamada de vídeo": {
+              "casa-marcelo": 2.181,
+              "coworking": 4.7568,
+              "hotmilk": 3.0844,
+              "residencia": 4.362
+            },
+            "Jogo em nuvem": {
+              "casa-marcelo": 2.0,
+              "coworking": 3.0844,
+              "hotmilk": 2.8284,
+              "residencia": 1.6818
+            },
+            "Navegação": {
+              "casa-marcelo": 8.0,
+              "coworking": 6.7272,
+              "hotmilk": 6.7272,
+              "residencia": 8.7241
+            },
+            "Streaming 4K": {
+              "casa-marcelo": 1.1892,
+              "coworking": 1.834,
+              "hotmilk": 1.6818,
+              "residencia": 1.0905
+            }
+          },
+          "fatores_producao": {
+            "Chamada de vídeo": 3.3636,
+            "Jogo em nuvem": 3.0844,
+            "Navegação": 6.1688,
+            "Streaming 4K": 2.181
+          },
+          "intervalo": [
+            0.7539,
+            0.8128
+          ],
+          "media": 0.7856,
+          "n": 1300,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.7811,
+            "Jogo em nuvem": 0.7735,
+            "Navegação": 0.7985,
+            "Streaming 4K": 0.7892
+          }
+        },
+        "atende_completo": {
+          "avisos": [],
+          "intervalo": [
+            0.6418,
+            0.6904
+          ],
+          "media": 0.6611,
+          "n": 1298,
+          "por_aplicacao": {
+            "Chamada de vídeo": 0.6956,
+            "Jogo em nuvem": 0.5933,
+            "Navegação": 0.5893,
+            "Streaming 4K": 0.7662
+          }
+        },
         "atende_throughput": {
           "avisos": [],
           "intervalo": [
@@ -184,6 +581,8 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
+          "den_imputados": 0,
+          "denominador": null,
           "intervalos": {
             "mae": [
               16.3425,
@@ -221,9 +620,90 @@
             "hotmilk": -0.03,
             "residencia": -0.003
           },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4588,
+              "q90": 0.9008
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.7572,
+              "coworking": 1.1929,
+              "hotmilk": 0.847,
+              "residencia": 1.025
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.3917,
+                0.5434
+              ],
+              "cobertura_q90": [
+                0.874,
+                0.9294
+              ],
+              "pinball_q50": [
+                5.2792,
+                10.9015
+              ],
+              "pinball_q90": [
+                5.8705,
+                12.8412
+              ]
+            },
+            "mediana_mae": 16.2629,
+            "n": 12,
+            "pinball": {
+              "q50": 8.1315,
+              "q90": 9.217
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.6667,
+                  "q90": 0.9119
+                },
+                "pinball": {
+                  "q50": 6.0028,
+                  "q90": 6.9837
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3427,
+                  "q90": 0.986
+                },
+                "pinball": {
+                  "q50": 3.5444,
+                  "q90": 4.3645
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3333,
+                  "q90": 0.872
+                },
+                "pinball": {
+                  "q50": 7.5715,
+                  "q90": 10.4877
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.4536,
+                  "q90": 0.8903
+                },
+                "pinball": {
+                  "q50": 11.3865,
+                  "q90": 11.1739
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-08.1"
+          },
           "versao_catalogo": "2026-10-02.1",
-          "versao_regua": "2026-10-05.1",
-          "versao_tabela": "730e9c46f15f"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "latency_ms": {
           "ambiente": "todos",
@@ -235,6 +715,8 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
+          "den_imputados": 0,
+          "denominador": null,
           "intervalos": {
             "mae": [
               20.4707,
@@ -272,9 +754,90 @@
             "hotmilk": -0.0204,
             "residencia": 0.0051
           },
+          "quantis": {
+            "cobertura": {
+              "q50": 0.4249,
+              "q90": 0.923
+            },
+            "correcao_por_local": {
+              "casa-marcelo": 0.6428,
+              "coworking": 0.9248,
+              "hotmilk": 0.5993,
+              "residencia": 0.858
+            },
+            "cruzados": 0,
+            "intervalos": {
+              "cobertura_q50": [
+                0.3662,
+                0.485
+              ],
+              "cobertura_q90": [
+                0.9058,
+                0.9413
+              ],
+              "pinball_q50": [
+                6.7745,
+                16.391
+              ],
+              "pinball_q90": [
+                6.9101,
+                22.1237
+              ]
+            },
+            "mediana_mae": 22.7264,
+            "n": 12,
+            "pinball": {
+              "q50": 11.3632,
+              "q90": 14.227
+            },
+            "por_local": {
+              "casa-marcelo": {
+                "cobertura": {
+                  "q50": 0.7138,
+                  "q90": 0.9371
+                },
+                "pinball": {
+                  "q50": 6.9174,
+                  "q90": 7.925
+                }
+              },
+              "coworking": {
+                "cobertura": {
+                  "q50": 0.3706,
+                  "q90": 1.0
+                },
+                "pinball": {
+                  "q50": 3.9926,
+                  "q90": 4.8132
+                }
+              },
+              "hotmilk": {
+                "cobertura": {
+                  "q50": 0.3032,
+                  "q90": 0.8856
+                },
+                "pinball": {
+                  "q50": 15.0113,
+                  "q90": 23.4677
+                }
+              },
+              "residencia": {
+                "cobertura": {
+                  "q50": 0.3439,
+                  "q90": 0.9198
+                },
+                "pinball": {
+                  "q50": 13.6756,
+                  "q90": 13.9647
+                }
+              }
+            },
+            "sem_correcao": 0,
+            "versao_regua": "2026-10-08.1"
+          },
           "versao_catalogo": "2026-10-02.1",
-          "versao_regua": "2026-10-05.1",
-          "versao_tabela": "730e9c46f15f"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "speedtest_down_mbps": {
           "ambiente": "todos",
@@ -286,6 +849,8 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
+          "den_imputados": 0,
+          "denominador": null,
           "intervalos": {
             "mae": [
               29.8683,
@@ -324,8 +889,8 @@
             "residencia": 0.6766
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_regua": "2026-10-05.1",
-          "versao_tabela": "730e9c46f15f"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         },
         "speedtest_up_mbps": {
           "ambiente": "todos",
@@ -337,6 +902,8 @@
             "20260925-metrics.zip",
             "20260928-metrics.zip"
           ],
+          "den_imputados": 0,
+          "denominador": null,
           "intervalos": {
             "mae": [
               30.7914,
@@ -375,8 +942,8 @@
             "residencia": 0.2531
           },
           "versao_catalogo": "2026-10-02.1",
-          "versao_regua": "2026-10-05.1",
-          "versao_tabela": "730e9c46f15f"
+          "versao_regua": "2026-10-08.1",
+          "versao_tabela": "f52a9c6f0b02"
         }
       },
       "criado_em": "2026-10-05",
