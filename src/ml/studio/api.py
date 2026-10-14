@@ -259,20 +259,24 @@ def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, 
 
 @app.get('/api/modelos/avaliar')
 def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbps',
-                    ambiente: str = '', base: str = ''):
+                    ambiente: str = '', base: str = '', contra: str = ''):
   feats = _lista(features)
   if not feats:
     raise HTTPException(422, 'escolha pelo menos uma feature')
   conj, _ = _conjunto(ds, alvo, ambiente)
   registro, _ = _registro()
-  if base and base not in registro['versoes']:
-    raise HTTPException(404, f'versão {base!r} não existe')
-  chave = ('avaliar', tuple(conj.datasets), alvo, _ambiente(ambiente), tuple(feats), base) + _chave_versoes()
+  for nome in (base, contra):
+    if nome and nome not in registro['versoes']:
+      raise HTTPException(404, f'versão {nome!r} não existe')
+  # `base` diz de onde o rascunho partiu, e por isso de quem herda o denominador; `contra`
+  # diz com quem comparar. Sem `contra`, compara com a própria base, como antes.
+  ref = contra or base
+  chave = ('avaliar', tuple(conj.datasets), alvo, _ambiente(ambiente), tuple(feats), base, ref) + _chave_versoes()
   if chave not in _modelos_cache:
     vazadas = studio_features.vazadas_do_conjunto(conj)
     # O rascunho herda o denominador da versão de onde partiu (ou da ativa, sem base).
     den_nova = registro['versoes'][base or registro['ativo']].get('denominador') or {}
-    den_base = (registro['versoes'][base].get('denominador') or {}) if base else {}
+    den_ref = (registro['versoes'][ref].get('denominador') or {}) if ref else {}
     try:
       studio_features.assert_sem_vazamento(feats, vazadas)
       studio_features._checar_locais(conj.df)
@@ -281,16 +285,18 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
                'correlacoes': studio_features.correlacoes(conj.df, feats),
                'fora_do_tr069': core_modelos.fora_do_tr069(feats, conj.tabela),
                'cobertura': core_features.cobertura_tr069(feats, conj.tabela, conj.catalogo)}
-      if base:
-        saida['base'] = base
-        saida['resumo_base'] = studio_features.avaliar_versao(conj, registro['versoes'][base]['features'], vazadas,
-                                                              denominador=den_base.get(alvo))
+      if ref:
+        feats_ref = registro['versoes'][ref]['features']
+        saida['base'] = base or ref
+        if contra:
+          saida['contra'] = contra
+        saida['resumo_base'] = studio_features.avaliar_versao(conj, feats_ref, vazadas,
+                                                              denominador=den_ref.get(alvo))
         saida['delta'] = studio_features.delta_por_local(resumo, saida['resumo_base'])
         pendentes = [f for f in feats if conj.classes.get(f) is not None and conj.classes[f].pendente]
         saida['veredito'] = studio_features.veredito(saida['delta'], int(conj.df['_site'].nunique()),
                                                      pendentes, studio_features.UNIDADES[alvo])
-        saida['promocao'] = _promocao(ds, ambiente, alvo, feats, registro['versoes'][base]['features'], conj,
-                                      den_nova, den_base)
+        saida['promocao'] = _promocao(ds, ambiente, alvo, feats, feats_ref, conj, den_nova, den_ref)
     except (ValueError, AssertionError) as erro:
       raise HTTPException(422, str(erro))
     _modelos_cache[chave] = saida

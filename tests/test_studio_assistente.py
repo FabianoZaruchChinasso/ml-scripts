@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -401,6 +402,37 @@ class TestDenominadorNaApi(Base):
     with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar:
       api.modelos_salvar(corpo, pedido)
     self.assertEqual(salvar.call_args.kwargs['denominador'], {'speedtest_down_mbps': 'router_snr'})
+
+  def test_contra_compara_com_outra_versao_e_mantem_o_denominador_da_base(self):
+    usados = self.denominadores_usados(lambda: api.modelos_avaliar(
+      features='router_snr,router_signal_dbm', ds='a.csv', base='v1', contra='v2'))
+    self.assertIn('router_snr', usados)   # o rascunho herda o denominador da base v1
+    self.assertIn(None, usados)           # a referência v2 é absoluta
+
+  def test_contra_v1_com_base_v2_inverte_os_papeis(self):
+    usados = self.denominadores_usados(lambda: api.modelos_avaliar(
+      features='router_snr,router_signal_dbm', ds='a.csv', base='v2', contra='v1'))
+    self.assertIn('router_snr', usados)
+    self.assertIn(None, usados)
+
+  def test_sem_contra_a_resposta_e_a_de_antes(self):
+    sem = api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
+    api._modelos_cache.clear()
+    com = dict(api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1', contra='v1'))
+    self.assertNotIn('contra', sem)
+    self.assertEqual(com.pop('contra'), 'v1')
+    # json.dumps compara NaN com NaN; assertEqual em dicionários com NaN falharia.
+    self.assertEqual(json.dumps(sem, sort_keys=True, default=str), json.dumps(com, sort_keys=True, default=str))
+
+  def test_contra_entra_na_chave_do_cache(self):
+    api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1')
+    api.modelos_avaliar(features='router_snr,router_signal_dbm', ds='a.csv', base='v1', contra='v2')
+    self.assertEqual(len([k for k in api._modelos_cache if k[0] == 'avaliar']), 2)
+
+  def test_contra_inexistente_e_404(self):
+    with self.assertRaises(api.HTTPException) as erro:
+      api.modelos_avaliar(features='router_snr', ds='a.csv', base='v1', contra='v9')
+    self.assertEqual(erro.exception.status_code, 404)
 
 
 class TestPostSoLocal(unittest.TestCase):

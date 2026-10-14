@@ -1,5 +1,5 @@
-/* paralelos.js — na view Modelos: paralelos laboratório × TR-069 e o desenhista
-   de derivadas. studio.js chama render(ctx) junto com o de modelos.js. */
+/* paralelos.js — no Laboratório: paralelos laboratório × TR-069 e o desenhista de
+   derivadas. laboratorio.js chama render(ctx). */
 (function () {
   'use strict';
   const V = window.VENKO;
@@ -31,7 +31,7 @@
                form: { nome: '', formula: '', inspirada: '', descricao: '' },
                previa: null, teste: null, formErro: null, ocupado: null, msg: null };
 
-  const alvo = () => $('#mAlvo').value;
+  const alvo = () => $('#labAlvo').value;
   const chaveConj = () => st.ctx.enabledIds.slice().sort().join(',') + '|' + alvo() + '|' + st.ctx.ambiente;
   const query = () => 'ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
     '&alvo=' + encodeURIComponent(alvo()) + '&ambiente=' + encodeURIComponent(st.ctx.ambiente);
@@ -106,7 +106,8 @@
           st.teste = r.teste; st.previa = r.teste; st.derivadas = r.lista;
           st.msg = `Derivada ${corpo.nome} salva como ${r.status === 'aprovada' ? 'aprovada' : 'hipótese'} em src/ml/core/derivadas.json. Revise no git diff antes do commit.`;
           st.colKey = null; carregarColunas();
-          if (V.views.modelos.recarregar) V.views.modelos.recarregar();
+          // A derivada nova aparece no campo "Adicionar" da área Modelo.
+          if (V.areas && V.areas.modelo) V.areas.modelo.recarregar();
         }
       })
       .catch((e) => { st.formErro = e.message; })
@@ -282,7 +283,7 @@
     if (a === 'receita') desenharReceita(st.job.resultado.colunas.find((c) => c.coluna === b.dataset.col));
     if (a === 'previa' || a === 'testar' || a === 'salvar') acao(a);
   });
-  $('#mAlvo').addEventListener('change', () => { carregarColunas(); desenhar(); });
+  $('#labAlvo').addEventListener('change', () => { carregarColunas(); desenhar(); });
   $('#pBody').addEventListener('change', (ev) => {
     if (ev.target.id === 'pBase') { st.base = ev.target.value; desenhar(); }
   });

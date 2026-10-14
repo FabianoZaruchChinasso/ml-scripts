@@ -1,5 +1,6 @@
-/* planta.js — view Planta: vetor + foto, so foto, so vetor ou retangulo; giro e
-   calibracao. studio.js calcula os pontos (os limiares sao dele) e chama render(ctx). */
+/* planta.js — planta baixa da área Dados: vetor + foto, só foto, só vetor ou retângulo;
+   giro e calibração. dados.js calcula os pontos (os limiares são dele), chama render(ctx)
+   e recebe o clique num ponto por ctx.aoSelecionar(chave da posição). */
 (function () {
   'use strict';
   const V = window.VENKO;
@@ -93,6 +94,16 @@
       const canvas = wrap.querySelector('canvas');
       st.hits[p.k] = V.drawFloorPlan(canvas, especificacao(p, pl));
       V.attachTooltip(canvas, wrap.querySelector('.tooltip'), () => st.hits[p.k], tooltip);
+      // A área Dados abre o detalhe da posição clicada; o cursor só vira mão sobre um ponto.
+      if (ctx.aoSelecionar) {
+        canvas.addEventListener('mousemove', (ev) => {
+          canvas.style.cursor = V.hitAt(canvas, st.hits[p.k], ev) ? 'pointer' : '';
+        });
+        canvas.addEventListener('click', (ev) => {
+          const h = V.hitAt(canvas, st.hits[p.k], ev);
+          if (h && h.key) ctx.aoSelecionar(h.key);
+        });
+      }
     });
     renderCalibracao();
   }

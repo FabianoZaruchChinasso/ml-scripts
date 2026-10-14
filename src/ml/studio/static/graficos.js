@@ -61,19 +61,43 @@ window.VENKO = window.VENKO || {};
 
   /* ---------- linhas: contencao (dispositivos no X) ---------- */
   VENKO.drawLines = function (canvas, spec) {
-    const { ctx, width, height } = prepare(canvas, spec.height || 300);
-    const box = { l: 62, t: 14, w: width - 62 - 104, h: (spec.height || 300) - 14 - 30 };
+    const H = spec.height || 300;
+    const { ctx, width } = prepare(canvas, H);
+    // `compacto`: margens pequenas e sem rótulo no fim da linha, para os mini-gráficos.
+    const ml = spec.compacto ? 36 : 62;
+    const mr = spec.compacto ? 10 : 104;
+    const mb = spec.compacto ? 24 : 30;
+    const box = { l: ml, t: 14, w: width - ml - mr, h: H - 14 - mb };
     box.y = (v) => box.t + box.h - ((v - lo) / (hi - lo)) * box.h;
-    const all = spec.series.flatMap((s) => s.points.map((p) => p.v)).filter((v) => v != null);
+    // O limiar entra na escala: a linha tracejada não pode ficar fora do gráfico.
+    const all = spec.series.flatMap((s) => s.points.map((p) => p.v)).filter((v) => v != null)
+      .concat(spec.ref ? [spec.ref.valor] : []);
     let lo = 0;
     let hi = Math.max(...all) * 1.12 || 1;
-    const ticks = niceTicks(lo, hi, 4);
+    const ticks = niceTicks(lo, hi, spec.compacto ? 3 : 4);
     hi = Math.max(hi, ticks[ticks.length - 1]);
 
     const xs = spec.x.map((_, i) =>
       box.l + (spec.x.length === 1 ? box.w / 2 : (i / (spec.x.length - 1)) * box.w));
     axes(ctx, box, ticks, spec.yFmt || String,
       spec.x.map((t, i) => ({ text: t, x: xs[i] })));
+
+    if (spec.ref) {
+      const Y = Math.round(box.y(spec.ref.valor)) + 0.5;
+      ctx.save();
+      ctx.strokeStyle = css('--ink-2');
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(box.l, Y); ctx.lineTo(box.l + box.w, Y); ctx.stroke();
+      ctx.restore();
+      if (spec.ref.rotulo) {
+        ctx.fillStyle = css('--ink-muted');
+        ctx.font = '10.5px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(spec.ref.rotulo, box.l + box.w, Y - 3);
+      }
+    }
 
     const hits = [];
     const endLabels = [];
@@ -106,7 +130,7 @@ window.VENKO = window.VENKO || {};
       // pra distinguir as series. Desenhados depois, juntos, para poderem
       // ser afastados entre si.
       const last = [...s.points].map((p, i) => ({ p, i })).reverse().find((e) => e.p.v != null);
-      if (last) endLabels.push({ text: s.label, x: xs[last.i] + 10, y: box.y(last.p.v), color: s.color });
+      if (last && !spec.compacto) endLabels.push({ text: s.label, x: xs[last.i] + 10, y: box.y(last.p.v), color: s.color });
     });
 
     // Duas linhas que terminam quase juntas sobrescreveriam os rotulos uma da
@@ -303,7 +327,7 @@ window.VENKO = window.VENKO || {};
       ctx.fillStyle = p.value > 55 ? '#ffffff' : '#0b0b0b';
       ctx.font = '10px system-ui, -apple-system, sans-serif';
       ctx.fillText(Math.round(p.value) + '%', X, Y);
-      hits.push({ x: X, y: Y, r: r + 6, label: p.label, value: p.value, at: `${p.n} amostras`, color: p.color });
+      hits.push({ x: X, y: Y, r: r + 6, label: p.label, value: p.value, at: `${p.n} amostras`, color: p.color, key: p.key });
     });
     return hits;
   };
@@ -416,18 +440,24 @@ window.VENKO = window.VENKO || {};
     return hits;
   };
 
-  /* ---------- hover partilhado ---------- */
+  /* ---------- hover e clique partilhados ---------- */
+  // Marca mais próxima sob o ponteiro, dentro do raio dela; null fora de qualquer marca.
+  VENKO.hitAt = function (canvas, hits, ev) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left;
+    const my = ev.clientY - rect.top;
+    let best = null;
+    let bestD = Infinity;
+    (hits || []).forEach((h) => {
+      const d = Math.hypot(h.x - mx, h.y - my);
+      if (d < h.r && d < bestD) { best = h; bestD = d; }
+    });
+    return best;
+  };
+
   VENKO.attachTooltip = function (canvas, tip, getHits, fmt) {
     function move(ev) {
-      const rect = canvas.getBoundingClientRect();
-      const mx = ev.clientX - rect.left;
-      const my = ev.clientY - rect.top;
-      let best = null;
-      let bestD = Infinity;
-      (getHits() || []).forEach((h) => {
-        const d = Math.hypot(h.x - mx, h.y - my);
-        if (d < h.r && d < bestD) { best = h; bestD = d; }
-      });
+      const best = VENKO.hitAt(canvas, getHits(), ev);
       if (!best) { tip.style.opacity = 0; return; }
       tip.innerHTML = fmt(best);
       tip.style.opacity = 1;

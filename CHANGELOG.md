@@ -1,3 +1,39 @@
+# Changelog — QoE Studio: interface simplificada
+
+**Data:** 2026-10-13
+
+## Mudanças
+
+- A barra lateral de nove telas virou uma barra no topo com duas áreas, **Dados** e **Modelo**, um link para o
+  **Laboratório** e um chip do conjunto ativo. Hashes antigos (`#matrix`, `#modelos`, `#assistente`, `#datasets`...)
+  redirecionam para a área nova.
+- **Painel Conjunto** (`static/conjunto.js`): avisos (os antigos gates), pendências (classificar colunas, suspeita de
+  vazamento, contadores do roteador), ambiente e datasets com o grupo legacy. O banner fixo de gates saiu; avisos
+  críticos aparecem também na tela que eles invalidam.
+- **Área Dados** (`static/dados.js`): limiares da aplicação como chips editáveis; matriz de capacidade agrupada por
+  prédio ou planta; detalhe da posição com gargalo, contenção com a linha do limiar e reprovação por métrica;
+  "ver todas as posições" com os gráficos de contenção e restrição. As telas Capacidade, Contenção, Restrição, Planta
+  e Limiares saíram.
+- **Área Modelo** (`static/modelo.js`): versões em cartões, comparação por prédio sob demanda, rascunho com chips e
+  campo "Adicionar" com sugestões, avaliação que roda sozinha (voo único, 0,8 s depois da última mudança) contra a
+  versão ativa, veredito pela régua de promoção e barra fixa para salvar. O assistente de quatro passos e o editor
+  "Montar modelo" saíram.
+- `GET api/modelos/avaliar` aceita `contra=`: `base` continua dizendo de quem o rascunho herda o denominador, e
+  `contra`, com quem ele é comparado. Sem `contra`, a resposta é a de antes.
+- **Laboratório** (`static/laboratorio.js`, `static/desenho.js`): Features, Desenhar melhor modelo e Paralelos com um
+  seletor de alvo único. "Abrir no Modelo" leva o resultado do desenho para o rascunho.
+- Corrigido: `chaveDesenho` em `modelos.js` chamava a si mesma (`RangeError` ao abrir a view Modelos).
+- Regras puras em `static/logica.js` (testadas com `node --test tests/js/logica.test.js`); helpers de página em
+  `static/util.js`; `tests/studio_screenshots.sh` tira screenshots das áreas e falha com erro no console.
+
+## Verificação
+
+- `venv/bin/python -m unittest discover -s tests` — 466 testes, OK.
+- `node --test tests/js/logica.test.js` — 20 testes, 0 falhas.
+- `tests/studio_screenshots.sh` — oito telas (quatro áreas × claro/escuro), sem erro no console.
+
+---
+
 # Changelog — Matriz de confusão no `classification_benchmark.py`
 
 **Data:** 2026-10-12

@@ -1,4 +1,4 @@
-/* features.js — view Features. Estado proprio; studio.js chama render(ctx)
+/* features.js — Features, no Laboratório. Estado proprio; studio.js chama render(ctx)
    sempre que a view esta visivel e algo muda (datasets, tema, resize). */
 (function () {
   'use strict';
@@ -87,12 +87,12 @@
     if (inv.tabela_erro) html += gate('critical', 'Tabela de classificação ilegível', esc(inv.tabela_erro));
     if (inv.locais.length < 4) {
       html += gate('warning', `Coleta em andamento: ${inv.locais.length} local(is) de coleta`,
-        `Com menos de 4 locais (${esc(inv.locais.join(', '))}), a leitura por local não é interpretável e os números mudam quando novos prédios entrarem. Detalhes em Modelos → Limites e pendências dos dados.`);
+        `Com menos de 4 locais (${esc(inv.locais.join(', '))}), a leitura por local não é interpretável e os números mudam quando novos prédios entrarem. Detalhes no painel Conjunto.`);
     }
     const pendentes = inv.colunas.filter((c) => c.pendente).map((c) => c.coluna);
     if (pendentes.length) {
       html += gate('warning', `Vazamento não confirmado em ${pendentes.length} coluna(s)`,
-        `<code>${esc(pendentes.join(', '))}</code> podem ser medidas na janela do teste. Continuam nos ajustes até alguém responder em Modelos → Limites e pendências dos dados.`);
+        `<code>${esc(pendentes.join(', '))}</code> podem ser medidas na janela do teste. Continuam nos ajustes até alguém responder no painel Conjunto.`);
     }
     if (inv.sem_classificacao.length) {
       const linhas = inv.sem_classificacao.map((c) => `<div class="frow" data-col="${esc(c.coluna)}">
@@ -311,7 +311,7 @@
     $('#fTrCaminho').value = t.caminho || '';
     $('#fTrNota').value = t.nota || '';
   });
-  $('#fAlvo').addEventListener('change', (ev) => { st.alvo = ev.target.value; carregarInventario(); desenhar(); });
+  $('#labAlvo').addEventListener('change', (ev) => { st.alvo = ev.target.value; carregarInventario(); desenhar(); });
 
   V.views.features = {
     render(ctx) {
