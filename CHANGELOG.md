@@ -1,3 +1,113 @@
+# Changelog — Fine-tuning com pré-treino no RTR-Netztest
+
+**Data:** 2026-10-16
+
+Segundo experimento da frente C2. Plano e critério (fixados antes de rodar):
+`docs/superpowers/plans/2026-10-16-finetune-rtr.md`. Uma rede (2 camadas de 64) é pré-treinada nos 81.494 testes do
+RTR com sinal e banda, e ajustada em cada fold nas nossas linhas com as 9 features da `v5` (camadas pré-treinadas com
+lr 0,1×). Controle: a mesma rede treinada do zero. `ap` usa `router_signal_dbm` (implantável); `rssi` usa o `RSSI` do
+celular (diagnóstico). Régua `2026-10-08.1`; a base reproduz a `v5` (MAE de download 38,25; hotmilk 0,698).
+
+## Resultado
+
+Download:
+
+| Variante | MAE | MAE log | MAE log hotmilk | MAE > 267 Mbps | Máx. previsto no hotmilk |
+|---|---|---|---|---|---|
+| base (`v5`, random forest) | 38,25 | 0,705 | 0,698 | 199,2 | 705 |
+| `zero_ap` | 36,60 | 0,749 | 0,678 | 279,4 | 320 |
+| `ft_ap` | 35,15 | 0,757 | 0,630 | 197,7 | 756 |
+| `zero_rssi` | 37,24 | 0,745 | 0,696 | 309,0 | 320 |
+| `ft_rssi` | 33,26 | 0,729 | 0,634 | 223,8 | 756 |
+
+Upload:
+
+| Variante | MAE | MAE log | MAE log hotmilk | MAE > 267 Mbps |
+|---|---|---|---|---|
+| base (`v5`) | 37,17 | 0,820 | 0,701 | 132,1 |
+| `zero_ap` | 47,33 | 1,052 | 0,865 | 226,5 |
+| `ft_ap` | 46,73 | 1,115 | 0,874 | 183,7 |
+
+Comparações (Δ MAE, intervalo de 90%):
+
+| Comparação | Download | Upload |
+|---|---|---|
+| `ft_ap` contra a `v5` | −3,10 (−4,19 a −2,00): melhor, contra o coworking | +9,56 (6,66 a 12,20): pior, em 3 prédios |
+| `ft_ap` contra `zero_ap` | −1,45 (−3,51 a 0,51): empate, contra a casa-marcelo | −0,60 (−1,90 a 0,74): empate |
+| `ft_rssi` contra `zero_rssi` | −3,98 (−6,91 a −1,13): melhor | −0,88 (−2,32 a 0,47): empate |
+
+## Conclusão
+
+1. **Não funciona pelo critério fixado, no download por pouco.** (a) `ft_ap` contra a `v5`: o hotmilk melhora 0,068 no
+   MAE log (acima dos 0,05 exigidos) e o veredito é "melhor", mas o coworking piora além do ruído, então
+   `predios_contra` não está vazio. (b) `ft_ap` contra `zero_ap`: o hotmilk melhora 0,048 (abaixo de 0,05) e o veredito
+   é "empate". (c) O máximo previsto no hotmilk é 756 Mbps, abaixo do limite de 1.000: a rede não alucinou.
+2. **O pré-treino ajuda a extrapolar, mas a `v5` já fazia isso.** Do zero, a rede nunca passa de 320 Mbps e erra 279
+   Mbps acima de 267; com o pré-treino chega a 756 e erra 198, igual aos 199 da `v5`. O RTR resolve o problema da
+   rede neural, não o da `v5`.
+3. **O MAE log geral piora** (0,757 contra 0,705 da `v5` em `ft_ap`): a rede erra mais, em termos relativos, nos
+   prédios lentos. O ganho de MAE absoluto vem do hotmilk.
+4. **Upload: a rede é pior que a `v5` em tudo**, com ou sem pré-treino (MAE +9,6). O RTR não ajuda a rede a passar
+   a `v5`, que usa a eficiência ÷ taxa PHY de 5 GHz.
+5. Variantes `_rssi` ganham mais no download (−4,99), mas usam o sinal do celular, que a produção não tem pelo TR-181.
+
+Não foi testada a outra leitura da proposta do Lucas (misturar linhas do RTR no ajuste com peso decrescente). Hiperparâmetros
+não foram ajustados, por decisão do plano.
+
+---
+
+# Changelog — Prior externo do RTR-Netztest
+
+**Data:** 2026-10-16
+
+Experimento da frente C2 (dados externos), reaberta na reunião de 2026-10-14. Plano:
+`docs/superpowers/plans/2026-10-16-prior-rtr-netztest.md`. Um modelo de quantil (q50 e q90) do throughput por RSSI e
+banda, treinado em 81.494 testes Wi-Fi de Android do RTR (jun/2025), entra como coluna nova na `v5`. Régua `2026-10-08.1`.
+A base do experimento reproduz a `v5` salva (MAE de download 38,25; MAE log do hotmilk 0,698).
+
+## Resultado
+
+Download:
+
+| Variante | MAE | MAE log | MAE log hotmilk | MAE > 267 Mbps | Veredito |
+|---|---|---|---|---|---|
+| base (`v5`) | 38,25 | 0,705 | 0,698 | 199,2 | — |
+| `ctrl_rssi` (`v5` + `RSSI` cru) | 38,76 | 0,711 | 0,700 | 202,9 | pior (coworking, hotmilk) |
+| `prior_q50_rssi` | 37,67 | 0,695 | 0,701 | 193,8 | empate |
+| `prior_q90_rssi` | 37,64 | 0,703 | 0,702 | 191,6 | melhor |
+| `prior_q50_ap` | 37,31 | 0,698 | 0,696 | 196,8 | melhor |
+| `prior_q90_ap` | 37,22 | 0,697 | 0,691 | 197,1 | melhor |
+
+Upload:
+
+| Variante | MAE | MAE log | MAE log hotmilk | Veredito |
+|---|---|---|---|---|
+| base (`v5`) | 37,17 | 0,820 | 0,701 | — |
+| `ctrl_rssi` | 37,37 | 0,848 | 0,719 | pior (residência) |
+| `prior_q50_rssi` | 37,87 | 0,844 | 0,708 | empate (contra casa-marcelo) |
+| `prior_q90_rssi` | 38,20 | 0,853 | 0,720 | pior (3 prédios) |
+| `prior_q50_ap` | 36,80 | 0,815 | 0,712 | melhor |
+| `prior_q90_ap` | 37,44 | 0,816 | 0,711 | pior (hotmilk) |
+
+Razão mediana download real ÷ prior q50, por `n_clients`: com RSSI 1,52 / 0,71 / 0,34; com `router_signal_dbm`
+1,37 / 0,63 / 0,28 (1, 2 e 3 clientes).
+
+## Conclusão
+
+1. **Não funciona pelo critério fixado antes de rodar.** As variantes por `router_signal_dbm` (as implantáveis)
+   ganham "melhor" no download, mas o MAE log do hotmilk cai só 0,002 a 0,007 (`prior_q50_ap` e `prior_q90_ap`),
+   longe dos 0,05 exigidos. O MAE acima de 267 Mbps quase não se move (199 para 197). O prior não ensina a faixa alta.
+2. **O ganho de MAE (cerca de 1 Mbps) é do tamanho do ruído**, e no upload o resultado é misto: só `prior_q50_ap`
+   melhora, e o hotmilk piora nas duas versões `_ap`. O controle `ctrl_rssi` piora o download, então o `RSSI` cru
+   não é a fonte do pouco que se ganha.
+3. **A hipótese do Ronaldo se confirma em direção, não em valor.** A razão real ÷ prior cai com o número de
+   clientes, até cerca de 1/3 com 3 clientes: o RTR parece medir enlaces com pouca contenção. Com 1 cliente a razão é 1,4
+   a 1,5 (e 3 no upload), não 1, porque os nossos APs entregam mais que o típico do RTR.
+
+Fica de fora, por decisão da reunião, a rede neural pré-treinada e ajustada: só depois das coletas AX do Rodrigo.
+
+---
+
 # Changelog — QoE Studio: interface simplificada
 
 **Data:** 2026-10-13
