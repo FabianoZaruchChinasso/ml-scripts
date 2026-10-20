@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -243,6 +244,27 @@ class TestClassificacao(unittest.TestCase):
       c = F.classificar(coluna, tabela)
       self.assertEqual((c.classe, c.vazamento), ('ambiente', False), coluna)
       self.assertIn('depende do coletor', c.parametro)
+
+
+class TestFingerprintPublico(unittest.TestCase):
+  def frame(self, deslocamento=0.0):
+    return pd.DataFrame({a: [1.0 + deslocamento, 2.0, 3.0] for a in ALVOS})
+
+  def test_fingerprint_ignora_ruido_abaixo_da_sexta_casa(self):
+    self.assertEqual(C.fingerprint(self.frame()), C.fingerprint(self.frame(1e-12)))
+    self.assertNotEqual(C.fingerprint(self.frame()), C.fingerprint(self.frame(0.5)))
+
+  def test_chaves_alvos_e_um_conjunto_de_linhas(self):
+    self.assertEqual(len(C.chaves_alvos(self.frame())), 3)
+
+  def test_esquecer_descobertos_refaz_a_varredura(self):
+    with mock.patch.object(C, 'discover', side_effect=[['a'], ['b']]):
+      C.esquecer_descobertos()
+      self.assertEqual(C.descobertos(), ['a'])
+      self.assertEqual(C.descobertos(), ['a'])
+      C.esquecer_descobertos()
+      self.assertEqual(C.descobertos(), ['b'])
+    C.esquecer_descobertos()
 
 
 if __name__ == '__main__':

@@ -137,7 +137,7 @@
       if (fora) {
         avisos.push({ sev: 'warning', titulo: `${d.id}: ${fora.linhas} linhas com local desconhecido`,
           msg: `Ficam fora de todas as telas e do treino: ${fora.valores.join(', ')}.`,
-          causas: ['Acrescente a regra da posição em src/ml/core/sites.py.'] });
+          causas: ['Cadastre o prédio em Conjunto > Adicionar dados, ou edite src/ml/core/predios.json.'] });
       }
     });
     return avisos;

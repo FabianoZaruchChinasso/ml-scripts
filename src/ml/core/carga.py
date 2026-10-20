@@ -46,6 +46,18 @@ def _generation(columns) -> str:
   return 'current' if all(m in columns for m in CURRENT_MARKERS) else 'legacy'
 
 
+def fingerprint(frame: pd.DataFrame) -> str:
+  """Identidade dos alvos até a 6a casa: o mesmo critério das duplicatas."""
+  alvos = frame[list(TARGETS)].round(FINGERPRINT_DECIMALS)
+  digest = hashlib.sha256(pd.util.hash_pandas_object(alvos, index=False).values.tobytes())
+  return digest.hexdigest()[:12]
+
+
+def chaves_alvos(frame: pd.DataFrame) -> set:
+  """Linhas de alvos como tuplas de texto: um dataset está contido noutro quando o conjunto está."""
+  return set(map(tuple, frame[list(TARGETS)].round(FINGERPRINT_DECIMALS).astype(str).values))
+
+
 def discover() -> list:
   """Varre data/ e devolve um descritor por dataset utilizavel."""
   found = []
@@ -64,8 +76,6 @@ def discover() -> list:
       continue
     if 'local' not in frame.columns or not all(t in frame.columns for t in TARGETS):
       continue
-    alvos = frame[list(TARGETS)].round(FINGERPRINT_DECIMALS)
-    digest = hashlib.sha256(pd.util.hash_pandas_object(alvos, index=False).values.tobytes())
     found.append({
       'id': name,
       'path': path,
@@ -73,7 +83,7 @@ def discover() -> list:
       'rows': int(len(frame)),
       'columns': int(len(frame.columns)),
       'generation': _generation(frame.columns),
-      'fingerprint': digest.hexdigest()[:12],
+      'fingerprint': fingerprint(frame),
       '_frame': frame,
     })
   return found
@@ -90,6 +100,12 @@ def descobertos() -> list:
   return _descobertos
 
 
+def esquecer_descobertos() -> None:
+  """Dataset novo em data/: a próxima chamada de descobertos() varre a pasta de novo."""
+  global _descobertos
+  _descobertos = None
+
+
 def _superseded(datasets: list) -> dict:
   """Marca datasets cujas linhas estao inteiras dentro de outro (0817 dentro de 0827)."""
   verdict = {}
@@ -97,9 +113,7 @@ def _superseded(datasets: list) -> dict:
   for item in datasets:
     if not item.get('usable'):
       continue
-    frame = item['_frame']
-    keys = set(map(tuple, frame[list(TARGETS)].round(FINGERPRINT_DECIMALS).astype(str).values))
-    keyed[item['id']] = keys
+    keyed[item['id']] = chaves_alvos(item['_frame'])
   for a, keys_a in keyed.items():
     for b, keys_b in keyed.items():
       if a == b or not keys_a:
@@ -292,7 +306,7 @@ def preparar(frames: dict, alvo: str, tabela: dict, ambiente: str = None, catalo
       desconhecidos.append(str(valor))
   fora = int((~df['local'].isin(list(posicoes))).sum())
   if fora:
-    avisos.append(f'{fora} linhas com local desconhecido em core/sites.py descartadas: '
+    avisos.append(f'{fora} linhas com local desconhecido em core/predios.json descartadas: '
                   f'{sorted(desconhecidos)}')
   df = df[df['local'].isin(list(posicoes))].reset_index(drop=True)
   df = df.assign(_site=df['local'].map(predios), _pos=df['local'].map(posicoes))

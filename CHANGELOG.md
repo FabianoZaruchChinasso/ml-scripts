@@ -1,3 +1,15 @@
+# Changelog — Dados novos pela interface e reavaliação de versões
+
+**Data:** 2026-10-20
+
+## Mudanças
+
+- Prédios de coleta saem de `core/sites.py` para `src/ml/core/predios.json`, a fonte única do treino e do Studio. A resolução de `local` não muda (teste de equivalência com todos os valores de `data/`).
+- Painel Conjunto: **Adicionar dados** envia um CSV ou zip, mostra a prévia (linhas, prédios, posições, % preenchido de `combo`, `n_clients`, `station_x`, `house_x0`, duplicatas) e grava em `data/` só na confirmação. Prefixo de `local` desconhecido é cadastrado como prédio novo na mesma tela.
+- Área Modelo: **Reavaliar** recalcula a avaliação de uma versão existente com o conjunto atual, sem criar versão nova. Features continuam imutáveis; avaliação e cobertura são relatório, e cada reavaliação deixa uma linha no `historico`.
+
+---
+
 # Changelog — QoE Studio: interface simplificada
 
 **Data:** 2026-10-13

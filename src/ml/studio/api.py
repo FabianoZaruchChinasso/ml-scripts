@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ml.core import aplicacoes as core_aplicacoes
 from ml.core import avaliacao as core_avaliacao
@@ -29,11 +30,13 @@ from ml.core import quantis as core_quantis
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES
 from ml.studio import features as studio_features
+from ml.studio import ingestao as studio_ingestao
 from ml.studio import paralelos as studio_paralelos
 from ml.studio import plans
 from ml.studio import receitas as studio_receitas
 from ml.studio import selecao as studio_selecao
-from ml.studio.data import BUILDINGS, build_payload, descobertos
+from ml.studio import data as studio_data
+from ml.studio.data import build_payload, descobertos, predios_studio
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), 'static')
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
@@ -401,6 +404,80 @@ def modelos_desenho(job_id: str):
   return _job(job_id)
 
 
+# ---------------- Dados novos pela interface ----------------
+
+def _dados_mudaram() -> None:
+  """Dataset ou prédio novo: descoberta, payload e tudo que depende do conjunto é refeito."""
+  core_carga.esquecer_descobertos()
+  studio_data.limpar_cache_predios()
+  _cache.clear()
+  _ajustes.clear()
+  _modelos_cache.clear()
+  with _desenhos_lock:
+    for job_id in [j for j, job in _desenhos.items() if job['status'] != 'rodando']:
+      del _desenhos[job_id]
+
+
+@app.post('/api/datasets/previa')
+async def datasets_previa(request: Request, nome: str):
+  """Corpo cru (application/octet-stream): sem multipart, sem python-multipart."""
+  _so_local(request)
+  limite = studio_ingestao.LIMITE_BYTES
+  tamanho = request.headers.get('content-length')
+  if tamanho and tamanho.isdigit() and int(tamanho) > limite:
+    raise HTTPException(413, f'arquivo acima de {limite // 2 ** 20} MB')
+  conteudo = await request.body()
+  if len(conteudo) > limite:
+    raise HTTPException(413, f'arquivo acima de {limite // 2 ** 20} MB')
+  try:
+    token = studio_ingestao.guardar(nome, conteudo)
+  except ValueError as erro:
+    raise HTTPException(422, str(erro))
+  previa = await run_in_threadpool(studio_ingestao.previa, token, nome, (), None, descobertos())
+  return {'token': token, 'previa': previa}
+
+
+class PredioNovo(BaseModel):
+  chave: str
+  rotulo: str
+  ambiente: str
+  prefixo: str
+
+
+class Revisao(BaseModel):
+  token: str
+  nome: str
+  predios_novos: list[PredioNovo] = []
+
+
+@app.post('/api/datasets/revisar')
+def datasets_revisar(corpo: Revisao, request: Request):
+  _so_local(request)
+  novos = [p.model_dump() for p in corpo.predios_novos]
+  try:
+    return studio_ingestao.previa(corpo.token, corpo.nome, novos, existentes=descobertos())
+  except KeyError as erro:
+    raise HTTPException(404, erro.args[0])
+
+
+@app.post('/api/datasets/confirmar')
+def datasets_confirmar(corpo: Revisao, request: Request):
+  _so_local(request)
+  novos = [p.model_dump() for p in corpo.predios_novos]
+  try:
+    resultado = studio_ingestao.confirmar(corpo.token, corpo.nome, novos, existentes=descobertos())
+  except KeyError as erro:
+    raise HTTPException(404, erro.args[0])
+  except ValueError as erro:
+    raise HTTPException(422, str(erro))
+  except OSError as erro:
+    # O prédio pode ter sido cadastrado antes da falha: o registro em memória já mudou.
+    _dados_mudaram()
+    raise HTTPException(422, str(erro))
+  _dados_mudaram()
+  return resultado
+
+
 # ---------------- Limites e pendências dos dados ----------------
 
 @app.get('/api/pendencias')
@@ -669,6 +746,57 @@ def modelos_ativo(corpo: Ativo, request: Request):
   return modelos_listar()
 
 
+class Reavaliacao(BaseModel):
+  nomes: list[str]
+  ds: str = ''
+  ambiente: str = ''
+
+
+@app.post('/api/modelos/reavaliar')
+def modelos_reavaliar(corpo: Reavaliacao, request: Request):
+  """Recalcula a avaliação de versões existentes com o conjunto escolhido, uma por vez.
+
+  Cada versão é gravada assim que termina: se o lote parar no meio, o que já foi
+  reavaliado fica salvo e o erro diz em qual versão parou.
+  """
+  _so_local(request)
+  registro, erro = _registro()
+  if erro:
+    raise HTTPException(422, erro)
+  if not corpo.nomes:
+    raise HTTPException(422, 'nenhuma versão para reavaliar')
+  faltam = [n for n in corpo.nomes if n not in registro['versoes']]
+  if faltam:
+    raise HTTPException(422, f'versões que não existem: {faltam}')
+  tabela, _ = _tabela()
+  nomes = list(corpo.nomes)
+
+  def tarefa(progresso):
+    feitas = []
+    for i, nome in enumerate(nomes):
+      progresso({'nome': nome, 'i': i, 'total': len(nomes)})
+      versao = registro['versoes'][nome]
+      try:
+        avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, versao['features'], versao.get('denominador'))
+        nota = core_modelos.nota_reavaliacao(versao.get('avaliacao'), avaliacao, date.today().isoformat())
+        core_modelos.reavaliar(nome, avaliacao, core_features.cobertura_tr069(versao['features'], tabela), nota)
+      except Exception as falha:
+        detalhe = falha.detail if isinstance(falha, HTTPException) else str(falha)
+        raise RuntimeError(f'parou em {nome}: {detalhe}; já reavaliadas: {feitas}') from falha
+      finally:
+        _ajustes.clear()
+        _modelos_cache.clear()
+      feitas.append(nome)
+    return {'reavaliadas': feitas}
+  return _iniciar_job(('reavaliar', tuple(nomes), tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente))
+                      + _chave_versoes(), tarefa)
+
+
+@app.get('/api/modelos/reavaliar/{job_id}')
+def modelos_reavaliacao(job_id: str):
+  return _job(job_id)
+
+
 class NovaClassificacao(BaseModel):
   coluna: str
   classe: str
@@ -764,7 +892,7 @@ class Calibracao(BaseModel):
 @app.post('/api/plan/{predio}')
 def plan_salvar(predio: str, corpo: Calibracao, request: Request):
   _so_local(request)
-  if predio not in BUILDINGS:
+  if predio not in predios_studio():
     raise HTTPException(404, f'prédio {predio!r} desconhecido')
   _envelope(predio)
   try:

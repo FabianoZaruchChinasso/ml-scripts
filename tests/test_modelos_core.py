@@ -230,5 +230,56 @@ class TestDenominadorPorBanda(Base):
                      {'coluna': 'router_signal_dbm', 'radio': '5ghz'})
 
 
+class TestReavaliar(Base):
+  AVAL = {'speedtest_down_mbps': {'datasets': ['a.csv', 'b.csv'], 'ambiente': 'todos'},
+          'atende_completo': {'media': 0.7}}
+
+  def test_troca_so_avaliacao_e_cobertura_e_acrescenta_historico(self):
+    self.salvar()
+    antes = M.carregar(self.path)['versoes']['v2']
+    M.reavaliar('v2', self.AVAL, {'nivel': 'x'}, '2026-10-20: reavaliada', path=self.path)
+    depois = M.carregar(self.path)['versoes']['v2']
+    self.assertEqual(depois['avaliacao'], self.AVAL)
+    self.assertEqual(depois['cobertura'], {'nivel': 'x'})
+    self.assertEqual(depois['historico'], ['2026-10-20: reavaliada'])
+    for campo in ('features', 'descricao', 'origem', 'criado_em'):
+      self.assertEqual(depois[campo], antes[campo])
+
+  def test_historico_so_cresce(self):
+    M.reavaliar('v1', self.AVAL, {}, 'primeira', path=self.path)
+    M.reavaliar('v1', self.AVAL, {}, 'segunda', path=self.path)
+    self.assertEqual(M.carregar(self.path)['versoes']['v1']['historico'], ['primeira', 'segunda'])
+
+  def test_reavalia_versao_com_vazamento(self):
+    # A v1 de produção usa contadores que hoje são vazamento: precisa poder ser reavaliada.
+    with open(self.path, 'w', encoding='utf-8') as h:
+      json.dump({'ativo': 'v1', 'versoes': {'v1': {'features': ['router_tx_bytes'], 'descricao': 'x'}}}, h)
+    M.reavaliar('v1', self.AVAL, {}, 'nota', path=self.path)
+    self.assertEqual(M.carregar(self.path)['versoes']['v1']['avaliacao'], self.AVAL)
+
+  def test_recusa_nome_inexistente_e_nota_vazia(self):
+    with self.assertRaises(ValueError):
+      M.reavaliar('v9', self.AVAL, {}, 'nota', path=self.path)
+    with self.assertRaises(ValueError):
+      M.reavaliar('v1', self.AVAL, {}, '  ', path=self.path)
+
+  def test_nota_descreve_datasets_e_atende(self):
+    antiga = {'speedtest_down_mbps': {'datasets': ['a.csv'], 'ambiente': 'todos'},
+              'atende_completo': {'media': 0.6699}}
+    nota = M.nota_reavaliacao(antiga, self.AVAL, '2026-10-20')
+    self.assertEqual(nota, '2026-10-20: reavaliada; datasets +b.csv; atende completo 0,67 → 0,70')
+
+  def test_nota_sem_avaliacao_antiga_e_com_mesmos_datasets(self):
+    self.assertEqual(M.nota_reavaliacao(None, self.AVAL, '2026-10-20'),
+                     '2026-10-20: reavaliada; datasets +a.csv +b.csv; atende completo – → 0,70')
+    self.assertEqual(M.nota_reavaliacao(self.AVAL, self.AVAL, '2026-10-20'),
+                     '2026-10-20: reavaliada; mesmos datasets; atende completo 0,70 → 0,70')
+
+  def test_nota_registra_troca_de_ambiente(self):
+    nova = {'speedtest_down_mbps': {'datasets': ['a.csv', 'b.csv'], 'ambiente': 'domestico'},
+            'atende_completo': {'media': 0.7}}
+    self.assertIn('ambiente todos → domestico', M.nota_reavaliacao(self.AVAL, nova, '2026-10-20'))
+
+
 if __name__ == '__main__':
   unittest.main()

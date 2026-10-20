@@ -314,9 +314,10 @@ class TestModelos(Base):
 
 class TestDados(unittest.TestCase):
   def test_ambiente_do_studio_bate_com_o_core(self):
-    self.assertEqual(set(SD.PREDIO_DO_CORE), set(BUILDING_ENVIRONMENT))
-    for core, studio in SD.PREDIO_DO_CORE.items():
-      self.assertEqual(SD.BUILDINGS[studio]['ambiente'], BUILDING_ENVIRONMENT[core], core)
+    predios = SD.predios_studio()
+    self.assertEqual(len(predios), len(BUILDING_ENVIRONMENT))
+    for core, ambiente in BUILDING_ENVIRONMENT.items():
+      self.assertEqual(predios[SD.predio_studio_do_core(core)]['ambiente'], ambiente, core)
 
   def test_posicao_nova_segue_a_regra_do_core(self):
     self.assertEqual(SD._building_of('marcelo-garagem'), 'casa-marcelo')

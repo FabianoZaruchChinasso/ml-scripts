@@ -1,9 +1,11 @@
 """Registro das versões de modelo: quais features cada versão usa.
 
-Vive em modelos.json, versionado e gravado pelo QoE Studio. Uma versão salva é
-imutável; mudar uma feature cria uma versão nova. Só a definição fica aqui: o
-modelo treinado é refeito a partir dela (e registrado no MLflow quando for para
-produção).
+Vive em modelos.json, versionado e gravado pelo QoE Studio. A definição de uma
+versão salva é imutável (features, denominador, descrição, origem, seleção, data):
+mudar uma feature cria uma versão nova. Avaliação e cobertura são relatório e podem
+ser recalculadas com dados novos (reavaliar), deixando uma linha no histórico. O
+modelo treinado é refeito a partir da definição (e registrado no MLflow quando for
+para produção).
 """
 
 import hashlib
@@ -170,5 +172,51 @@ def definir_ativo(nome: str, path: str = MODELOS_PATH) -> dict:
     if nome not in registro['versoes']:
       raise ValueError(f'versão {nome!r} não existe')
     registro['ativo'] = nome
+    gravar_json_atomico(path, registro)
+  return registro
+
+
+# Alvo cujos datasets e ambiente descrevem a avaliação na nota: os quatro alvos usam o mesmo conjunto.
+ALVO_DA_NOTA = 'speedtest_down_mbps'
+
+
+def _media_texto(valor) -> str:
+  return '–' if valor is None else f'{valor:.2f}'.replace('.', ',')
+
+
+def nota_reavaliacao(antiga: Optional[dict], nova: dict, hoje: str) -> str:
+  """Linha do histórico: o que mudou de datasets e ambiente, e o atende completo antes e depois."""
+  ref_antiga = (antiga or {}).get(ALVO_DA_NOTA) or {}
+  ref_nova = nova.get(ALVO_DA_NOTA) or {}
+  ds_antes, ds_depois = set(ref_antiga.get('datasets') or []), set(ref_nova.get('datasets') or [])
+  mudancas = [f'+{d}' for d in sorted(ds_depois - ds_antes)] + [f'-{d}' for d in sorted(ds_antes - ds_depois)]
+  partes = [f'{hoje}: reavaliada', 'datasets ' + ' '.join(mudancas) if mudancas else 'mesmos datasets']
+  if antiga and ref_antiga.get('ambiente') != ref_nova.get('ambiente'):
+    partes.append(f"ambiente {ref_antiga.get('ambiente') or 'todos'} → {ref_nova.get('ambiente') or 'todos'}")
+  media_antes = ((antiga or {}).get('atende_completo') or {}).get('media')
+  media_depois = (nova.get('atende_completo') or {}).get('media')
+  partes.append(f'atende completo {_media_texto(media_antes)} → {_media_texto(media_depois)}')
+  return '; '.join(partes)
+
+
+def reavaliar(nome: str, avaliacao: dict, cobertura, nota: str, path: str = MODELOS_PATH) -> dict:
+  """Troca avaliação e cobertura de uma versão existente e acrescenta `nota` ao histórico.
+
+  Não refaz as checagens de salvar_versao (vazamento, classificação): a definição já
+  existe e não muda. A avaliação já descarta da conta as features com vazamento.
+  """
+  if not _texto(nota):
+    raise ValueError('a reavaliação precisa de uma nota para o histórico')
+  if not isinstance(avaliacao, dict) or not avaliacao:
+    raise ValueError('avaliação vazia')
+  with _lock:
+    registro = carregar(path)
+    if nome not in registro['versoes']:
+      raise ValueError(f'versão {nome!r} não existe')
+    versao = registro['versoes'][nome]
+    versao['avaliacao'] = avaliacao
+    versao['cobertura'] = cobertura
+    versao['historico'] = list(versao.get('historico') or []) + [nota.strip()]
+    validar_registro(registro)
     gravar_json_atomico(path, registro)
   return registro

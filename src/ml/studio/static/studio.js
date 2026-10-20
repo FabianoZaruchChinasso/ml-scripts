@@ -93,6 +93,18 @@
         .forEach((m) => { if (m && m.recarregar) m.recarregar(); });
       renderAll();
     },
+    // Dataset ou prédio novo: relê o payload, mantém o que já estava ligado ou desligado
+    // e liga os datasets que acabaram de chegar.
+    recarregarPayload(ligar) {
+      return V.util.pedir('api/payload').then((data) => {
+        const antes = state.enabled;
+        state.data = data;
+        state.enabled = {};
+        data.datasets.forEach((d) => { state.enabled[d.id] = d.id in antes ? antes[d.id] : d.enabled; });
+        (ligar || []).forEach((id) => { state.enabled[id] = true; });
+        V.app.colunasMudaram();
+      });
+    },
   };
 
   fetch('api/payload').then((r) => r.json()).then((data) => {

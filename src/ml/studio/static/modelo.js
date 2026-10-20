@@ -20,7 +20,7 @@
 
   const st = {
     ctx: null, alvo: 'speedtest_down_mbps',
-    reg: null, regErro: null, regAviso: null, msg: null, erro: null, menu: null, vereditos: {}, pendente: null,
+    reg: null, regErro: null, regAviso: null, msg: null, erro: null, menu: null, vereditos: {}, pendente: null, reav: null,
     cols: null, colsKey: null, colsErro: null,
     sug: null, sugKey: null, sugTimer: null,
     base: null, sel: new Set(), desenho: null,
@@ -229,6 +229,53 @@
       .finally(() => { st.cmpKey = null; agendar(); desenhar(); });
   }
 
+  /* ---------------- reavaliar ---------------- */
+  // Mesma régua do selo "desatualizada": a lista que a tela mostra é a que vai para o servidor.
+  const desatualizadas = () => st.reg.versoes
+    .filter((v) => motivoDesatualizada((v.avaliacao || {})[st.alvo])).map((v) => v.nome);
+
+  function reavaliar(nomes) {
+    st.menu = null; st.msg = null; st.erro = null;
+    st.reav = { status: 'rodando', progresso: [], total: nomes.length };
+    desenhar();
+    U.post('api/modelos/reavaliar', { nomes, ds: st.ctx.enabledIds.join(','), ambiente: st.ctx.ambiente })
+      .then((r) => acompanharReav(r.id))
+      .catch((e) => { st.reav = null; st.erro = `Não foi possível reavaliar: ${e.message}`; desenhar(); });
+  }
+
+  function acompanharReav(id) {
+    U.pedir('api/modelos/reavaliar/' + id).then((job) => {
+      if (job.status === 'rodando') {
+        st.reav = Object.assign(job, { total: st.reav.total });
+        desenhar();
+        setTimeout(() => acompanharReav(id), 1500);
+        return;
+      }
+      if (job.status === 'pronto') {
+        const n = job.resultado.reavaliadas.length;
+        st.msg = `${n} ${n === 1 ? 'versão reavaliada' : 'versões reavaliadas'} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
+      } else {
+        st.erro = `A reavaliação parou: ${job.erro}`;
+      }
+      st.reav = null; st.cmpKey = null;
+      // Mesmo com erro, as versões que terminaram já foram gravadas: recarrega o registro.
+      carregarRegistro();
+    }).catch((e) => { st.reav = null; st.erro = e.message; desenhar(); });
+  }
+
+  function barraReav() {
+    if (st.reav) {
+      const atual = st.reav.progresso[st.reav.progresso.length - 1];
+      const feito = atual ? atual.i / st.reav.total : 0;
+      return `<div class="reav" role="status">
+        <span>${atual ? `Reavaliando <code>${esc(atual.nome)}</code> (${atual.i + 1} de ${st.reav.total})…` : 'Reavaliando…'}</span>
+        <span class="ver-barra"><i style="width:${Math.round(feito * 100)}%"></i></span></div>`;
+    }
+    const n = desatualizadas().length;
+    return n ? `<button class="linkbtn link" data-acao="reavaliar-todas" data-k="reavaliar-todas">${icone('i-refresh')}
+      Reavaliar ${n} ${n === 1 ? 'desatualizada' : 'desatualizadas'}</button>` : '';
+  }
+
   /* ---------------- receitas ---------------- */
   function montarReceita() {
     const r = st.rec;
@@ -336,14 +383,16 @@
         <span class="ver-barra"><i style="width:${media == null ? 0 : Math.round(media * 100)}%"></i></span>
         <span class="ver-selos">${selos}</span>
       </button>
-      ${v.ativo ? '' : `<button class="btn-icone ver-menu" data-acao="menu" data-nome="${esc(v.nome)}" data-k="menu-${esc(v.nome)}"
+      <button class="btn-icone ver-menu" data-acao="menu" data-nome="${esc(v.nome)}" data-k="menu-${esc(v.nome)}"
         aria-haspopup="menu" aria-expanded="${st.menu === v.nome}" aria-label="Mais ações para ${esc(v.nome)}">${icone('i-more')}</button>
-      ${st.menu === v.nome ? `<div class="menu" role="menu"><button role="menuitem" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button></div>` : ''}`}
+      ${st.menu === v.nome ? `<div class="menu" role="menu">
+        <button role="menuitem" data-acao="reavaliar" data-nome="${esc(v.nome)}"${st.reav ? ' disabled' : ''}>Reavaliar</button>
+        ${v.ativo ? '' : `<button role="menuitem" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button>`}</div>` : ''}
     </div>`;
   }
 
   function secaoVersoes() {
-    return `<div class="secao"><div class="secao-cab"><h2>Versões</h2>
+    return `<div class="secao"><div class="secao-cab"><h2>Versões</h2>${barraReav()}
         <button class="linkbtn link" data-acao="comparar" aria-expanded="${st.cmpAberto}">${icone('i-bars')} Comparar por prédio</button></div>
       ${st.msg ? U.gate('good', 'Feito', esc(st.msg)) : ''}${st.erro ? U.gate('critical', 'Algo deu errado', esc(st.erro)) : ''}
       <div class="vers">${st.reg.versoes.map(cartao).join('')}</div></div>`;
@@ -661,6 +710,8 @@
       case 'base': escolherBase(b.dataset.nome); break;
       case 'menu': st.menu = st.menu === b.dataset.nome ? null : b.dataset.nome; desenhar(); break;
       case 'ativar': ativarManual(b.dataset.nome); break;
+      case 'reavaliar': reavaliar([b.dataset.nome]); break;
+      case 'reavaliar-todas': reavaliar(desatualizadas()); break;
       case 'comparar': st.cmpAberto = !st.cmpAberto; if (st.cmpAberto && st.cmpKey !== chaveCmp()) comparar(); desenhar(); break;
       case 'recomparar': comparar(); break;
       case 'metrica': st.metrica = b.dataset.m; desenhar(); break;

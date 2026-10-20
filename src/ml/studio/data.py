@@ -13,28 +13,25 @@ import pandas as pd
 from ml.core import aplicacoes as core_aplicacoes
 from ml.core.carga import TARGETS as _TARGETS
 from ml.core.carga import _superseded, descobertos, discover, duplicatas
+from ml.core import sites as core_sites
 from ml.core.sites import CORPORATE, DOMESTIC, resolve_site_id
 from ml.studio.plans import andar_de, montar_plantas
 
 TARGETS = list(_TARGETS)
 
-# Rótulo e ambiente de cada prédio do Studio. Qual posição é de qual prédio é
-# decidido só por core/sites.py (PREDIO_DO_CORE): assim o Studio e o treino nunca
-# discordam, e uma posição nova não some do Studio sem aviso.
-BUILDINGS = {
-  'casa': {'label': 'Casa', 'ambiente': DOMESTIC},
-  'cowork-pedra-branca': {'label': 'Cowork Pedra Branca', 'ambiente': CORPORATE},
-  'hotmilk': {'label': 'Hotmilk', 'ambiente': CORPORATE},
-  'casa-marcelo': {'label': 'Casa do Marcelo', 'ambiente': DOMESTIC},
-}
+# Rótulo, ambiente e chave do Studio de cada prédio vêm de core/predios.json, o mesmo
+# registro que o treino usa: o Studio e o treino nunca discordam, e um prédio
+# cadastrado no upload aparece aqui sem mudar código.
+def predios_studio() -> dict:
+  """{chave do Studio: {'label', 'ambiente'}} de todos os prédios do registro."""
+  return {p['studio']: {'label': p['rotulo'], 'ambiente': p['ambiente']}
+          for p in core_sites.registro_atual()['predios'].values()}
 
-# Prédio de core/sites.py -> chave do Studio (as chaves do Studio já estão em plantas.json).
-PREDIO_DO_CORE = {
-  'residencia': 'casa',
-  'coworking': 'cowork-pedra-branca',
-  'hotmilk': 'hotmilk',
-  'casa-marcelo': 'casa-marcelo',
-}
+
+def predio_studio_do_core(predio: str) -> str:
+  """Chave do Studio (a de plantas.json) de um prédio do core."""
+  return core_sites.registro_atual()['predios'][predio]['studio']
+
 
 AMBIENTES = {DOMESTIC: 'Doméstico', CORPORATE: 'Corporativo'}
 
@@ -58,11 +55,16 @@ def _canonical_local(local_value) -> str:
 
 @lru_cache(maxsize=None)
 def _building_de_texto(texto: str) -> str:
-  return PREDIO_DO_CORE[resolve_site_id(pd.Series([texto]), level='building').iloc[0]]
+  return predio_studio_do_core(resolve_site_id(pd.Series([texto]), level='building').iloc[0])
+
+
+def limpar_cache_predios() -> None:
+  """Depois de cadastrar um prédio: valores que antes eram desconhecidos passam a resolver."""
+  _building_de_texto.cache_clear()
 
 
 def _building_of(local_value) -> str:
-  """Prédio do Studio para um valor de `local`, pela regra de core/sites.py.
+  """Prédio do Studio para um valor de `local`, pelo registro de core/predios.json.
 
   Levanta ValueError para valor vazio ou que o core não conhece: nunca vira grupo próprio.
   """
@@ -173,7 +175,7 @@ def build_payload() -> dict:
   return {
     'datasets': descriptors,
     'rows': rows,
-    'buildings': {k: {'label': v['label'], 'ambiente': v['ambiente']} for k, v in BUILDINGS.items()},
+    'buildings': predios_studio(),
     'ambientes': AMBIENTES,
     'aplicacoes': core_aplicacoes.carregar(),
     'envelopes': envelopes,

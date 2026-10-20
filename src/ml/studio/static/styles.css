@@ -445,3 +445,17 @@ table.heat td.hm { width: 30px; height: 26px; border-radius: 4px; text-align: ce
   .dock-acoes { margin-left: 0; width: 100%; }
   .dock-form { grid-template-columns: 1fr; }
 }
+
+/* Upload de dados no painel Conjunto */
+.upload { display: grid; gap: 8px; margin-bottom: 12px; }
+.upload label { display: inline-flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-muted); }
+.upload input[type=text], .upload select { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); min-width: 0; }
+.upload input[type=text]:focus-visible, .upload select:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+.upload-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+.upload-predios { margin: 0; padding-left: 18px; font-size: 13px; }
+
+/* Reavaliação de versões na área Modelo */
+.reav { display: inline-flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-muted); }
+.reav .ver-barra { width: 120px; }
+.secao-cab .linkbtn .icon { width: 15px; height: 15px; }
