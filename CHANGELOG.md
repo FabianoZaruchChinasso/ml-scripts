@@ -1,3 +1,18 @@
+# Changelog — Studio: salvar versão, vazamento e assistente
+
+**Data:** 2026-10-22
+
+## Mudanças
+
+- **Salvar versão** roda num job: o botão mostra a etapa ("Avaliando upload, 2 de 5") em vez de ficar parado por 1 a 2 minutos. Recarregar a página não cancela. Validações (nome repetido, base inexistente, coluna com vazamento) continuam respondendo na hora.
+- O rascunho começa sem as colunas da versão base que hoje estão marcadas como vazamento, com aviso. Salvar com uma delas é recusado com mensagem clara, em vez de `AssertionError`.
+- Versões antigas com colunas de vazamento (v1) voltam a ser reavaliáveis: a avaliação roda sem elas e registra `removidas_por_vazamento`, como o benchmark já fazia.
+- O assistente de sugestões só roda quando se clica em "sugerir features"; antes, disparava a cada abertura da aba Modelo e disputava CPU com o salvamento.
+- Painel Conjunto avisa quando `data/` mudou depois que o Studio leu os dados.
+- Os scripts do benchmark não mudaram (combinado com o Fabiano em 2026-10-22).
+
+---
+
 # Changelog — Dados novos pela interface e reavaliação de versões
 
 **Data:** 2026-10-20
