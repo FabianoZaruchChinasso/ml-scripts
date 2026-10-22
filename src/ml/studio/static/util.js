@@ -69,7 +69,8 @@
     if (!sel) return;
     const novo = host.querySelector(sel);
     if (!novo) return;
-    novo.focus();
+    // Sem preventScroll, o polling de jobs (a cada 1,5 s) puxava a página de volta ao elemento focado.
+    novo.focus({ preventScroll: true });
     if (ini != null) {
       try { novo.setSelectionRange(ini, fim); } catch (e) { /* select e checkbox não têm cursor */ }
     }

@@ -189,3 +189,17 @@ test('corTr181, sugerirNome e descricaoRascunho', () => {
   assert.equal(L.descricaoRascunho({ mais: ['a'], menos: ['b'] }, 'download: melhor'), '+a −b · download: melhor');
   assert.equal(L.descricaoRascunho({ mais: [], menos: [] }, ''), 'sem mudança de features');
 });
+
+test('semVazamento: tira do rascunho as colunas marcadas e diz quais saíram', () => {
+  assert.deepEqual(L.semVazamento(['router_snr', 'router_tx_retries', 'router_noise'], ['router_tx_retries']),
+    { features: ['router_snr', 'router_noise'], removidas: ['router_tx_retries'] });
+  assert.deepEqual(L.semVazamento(['router_snr'], undefined), { features: ['router_snr'], removidas: [] });
+});
+
+test('diffContraBase: colunas com vazamento tiradas da base não contam como mudança do rascunho', () => {
+  const base = ['router_snr', 'router_tx_retries', 'router_noise'];
+  assert.deepEqual(L.diffContraBase(base, ['router_tx_retries'], ['router_snr', 'router_noise']), { mais: [], menos: [] });
+  assert.deepEqual(L.diffContraBase(base, ['router_tx_retries'], ['router_snr', 'router_power_dbm']),
+    { mais: ['router_power_dbm'], menos: ['router_noise'] });
+  assert.deepEqual(L.diffContraBase(base, undefined, ['router_snr']), { mais: [], menos: ['router_noise', 'router_tx_retries'] });
+});

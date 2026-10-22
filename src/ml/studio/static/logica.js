@@ -253,8 +253,17 @@
     return ((partes.join(' ') || 'sem mudança de features') + (sufixo ? ' · ' + sufixo : '')).slice(0, 500);
   }
 
+  // Uma versão salva antes de uma coluna virar vazamento ainda a lista; o rascunho começa sem ela.
+  function semVazamento(features, vazadas) {
+    const fora = new Set(vazadas || []);
+    return { features: features.filter((f) => !fora.has(f)), removidas: features.filter((f) => fora.has(f)) };
+  }
+
+  // O rascunho começa sem as colunas com vazamento da base: tirá-las não é mudança do usuário.
+  const diffContraBase = (base, vazadas, sel) => diffRascunho(semVazamento(base, vazadas).features, sel);
+
   return { METRICAS, MIN_AMOSTRAS, FOLGA_PCT, reprova, atende, mediana, chavePos, posicoes, daPosicao,
            reprovacao, gargalo, celulas, semContagem, contencao, piores, avisosConjunto,
            diffRascunho, mesmasFeatures, podeAtivar, vooUnico, corTr181, agruparColunas,
-           sugerirNome, descricaoRascunho };
+           sugerirNome, descricaoRascunho, semVazamento, diffContraBase };
 });

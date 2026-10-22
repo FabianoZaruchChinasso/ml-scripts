@@ -28,7 +28,7 @@
     aval: null, avalKey: null, avalErro: null, avalErroKey: null, avaliando: false, inicio: 0, relogio: null,
     outros: null, outrosKey: null, outrosCarregando: false,
     cmp: null, cmpKey: null, cmpErro: null, comparando: false, cmpAberto: false, metrica: 'r2', cmpHits: null,
-    form: null, salvando: false, salvarErro: null,
+    form: null, salvando: false, salvarErro: null, salvarEtapa: null, avisoVaz: null,
     receitas: null, recAberto: false,
     rec: { id: 'razao', colunas: [], montada: null, nome: '', ocupado: false, erro: null, resultado: null, montarKey: null },
   };
@@ -43,7 +43,7 @@
   const versao = (nome) => (st.reg ? st.reg.versoes.find((v) => v.nome === nome) : null);
   const ativa = () => versao(st.reg.ativo);
   const featsBase = () => (versao(st.base) || { features: [] }).features;
-  const diff = () => L.diffRascunho(featsBase(), selLista());
+  const diff = () => L.diffContraBase(featsBase(), (versao(st.base) || {}).vazadas, selLista());
   const sujo = () => { const d = diff(); return d.mais.length + d.menos.length > 0; };
   const igualAtiva = () => L.mesmasFeatures(ativa().features, selLista());
   const pronto = () => !!(st.ctx && st.ctx.enabledIds.length && st.reg);
@@ -56,7 +56,9 @@
   /* ---------------- carregamento ---------------- */
   function usarBase(nome) {
     st.base = nome;
-    st.sel = new Set(featsBase());
+    const limpo = L.semVazamento(featsBase(), (versao(nome) || {}).vazadas);
+    st.sel = new Set(limpo.features);
+    st.avisoVaz = limpo.removidas.length ? limpo.removidas : null;
     st.desenho = null; st.form = null; st.salvarErro = null;
   }
 
@@ -72,7 +74,7 @@
       if (!st.base || !versao(st.base)) usarBase(reg.ativo);
       if (st.pendente) { aplicarRascunho(st.pendente.features, st.pendente.desenhoId); st.pendente = null; }
     }).catch((e) => { st.regErro = e.message; })
-      .finally(() => { iniciarSugestoes(); agendar(); desenhar(); });
+      .finally(() => { agendar(); desenhar(); });
   }
 
   function carregarColunas() {
@@ -198,19 +200,31 @@
     // O vínculo com o desenho automático só vale se o rascunho for exatamente o conjunto escolhido.
     const desenho = st.desenho && L.mesmasFeatures(st.desenho.features, selLista()) ? st.desenho.id : null;
     const nome = f.nome;
-    st.salvando = true; desenhar();
+    st.salvando = true; st.salvarEtapa = null; desenhar();
     U.post('api/modelos', { nome, descricao: f.desc, features: selLista(), ds: st.ctx.enabledIds.join(','),
-                            ambiente: st.ctx.ambiente, base: st.base, desenho })
-      .then((reg) => {
-        st.reg = reg;
-        usarBase(nome);
-        if (!f.ativar) { st.msg = `Versão ${nome} salva em src/ml/core/modelos.json. Revise no git diff antes do commit.`; return null; }
-        return U.post('api/modelos/ativo', { nome })
-          .then((reg2) => { st.reg = reg2; st.msg = `Versão ${nome} salva e ativa em src/ml/core/modelos.json. Revise no git diff antes do commit.`; })
-          .catch((e) => { st.erro = `Versão ${nome} salva, mas não foi possível ativar: ${e.message}`; });
-      })
-      .catch((e) => { st.salvarErro = e.message; })
-      .finally(() => { st.salvando = false; st.cmpKey = null; iniciarSugestoes(); agendar(); desenhar(); });
+                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar })
+      .then((r) => acompanharSalvar(r.id, nome))
+      .catch((e) => { st.salvando = false; st.salvarErro = e.message; desenhar(); });
+  }
+
+  // O servidor avalia os quatro alvos e o "atende" antes de gravar (1 a 2 minutos). Recarregar a
+  // página não cancela: a versão é gravada mesmo assim e aparece no registro quando terminar.
+  function acompanharSalvar(id, nome) {
+    U.pedir('api/modelos/salvar/' + id).then((job) => {
+      if (job.status === 'rodando') {
+        st.salvarEtapa = job.progresso[job.progresso.length - 1] || null;
+        desenhar();
+        setTimeout(() => acompanharSalvar(id, nome), 1500);
+        return null;
+      }
+      st.salvando = false; st.salvarEtapa = null;
+      if (job.status === 'erro') { st.salvarErro = job.erro; desenhar(); return null; }
+      const r = job.resultado;
+      if (r.erro_ativar) st.erro = `Versão ${nome} salva, mas não foi possível ativar: ${r.erro_ativar}`;
+      else st.msg = `Versão ${nome} salva${r.ativa ? ' e ativa' : ''} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
+      st.cmpKey = null;
+      return U.pedir('api/modelos').then((reg) => { st.reg = reg; usarBase(nome); agendar(); desenhar(); });
+    }).catch((e) => { st.salvando = false; st.salvarEtapa = null; st.salvarErro = e.message; desenhar(); });
   }
 
   function ativarManual(nome) {
@@ -268,7 +282,7 @@
       const atual = st.reav.progresso[st.reav.progresso.length - 1];
       const feito = atual ? atual.i / st.reav.total : 0;
       return `<div class="reav" role="status">
-        <span>${atual ? `Reavaliando <code>${esc(atual.nome)}</code> (${atual.i + 1} de ${st.reav.total})…` : 'Reavaliando…'}</span>
+        <span>${atual ? `Reavaliando <code>${esc(atual.nome)}</code> (${atual.i + 1} de ${st.reav.total})${atual.etapa ? ` · ${esc(atual.etapa)}` : ''}…` : 'Reavaliando…'}</span>
         <span class="ver-barra"><i style="width:${Math.round(feito * 100)}%"></i></span></div>`;
     }
     const n = desatualizadas().length;
@@ -466,12 +480,16 @@
       aria-label="Devolver ${esc(f)} ao rascunho" title="Desfazer">${icone('i-undo')}</button>` : ''}</span>`;
   }
 
+  // O assistente roda um ajuste por coluna candidata: só quando alguém pede.
   function statusSugestoes(n) {
-    if (!st.sug || st.sug.status === 'rodando') {
-      const u = st.sug && st.sug.progresso && st.sug.progresso[st.sug.progresso.length - 1];
+    const botao = (rotulo) => `<button class="linkbtn link" data-acao="refazer-sug" data-k="refazer-sug">${rotulo}</button>`;
+    if (!st.sug) return botao('sugerir features') + ' (roda em segundo plano)';
+    if (st.sug.status === 'rodando') {
+      const u = st.sug.progresso && st.sug.progresso[st.sug.progresso.length - 1];
       return `calculando sugestões…${u ? ` ${u.feito}/${u.total}` : ''}`;
     }
-    if (st.sug.status === 'erro') return 'sugestões indisponíveis · <button class="linkbtn link" data-acao="refazer-sug">tentar de novo</button>';
+    if (st.sug.status === 'erro') return 'sugestões indisponíveis · ' + botao('tentar de novo');
+    if (st.sugKey !== chaveConj() + '|' + st.base) return 'sugestões de outro conjunto ou base · ' + botao('atualizar');
     return n ? '' : 'nenhuma agora';
   }
 
@@ -604,19 +622,26 @@
     const criticos = L.avisosConjunto(st.ctx.data, st.ctx.rows, st.ctx.enabled, st.ctx.ambiente).filter((a) => a.sev === 'critical');
     return `<div class="secao"><div class="secao-cab"><h2>Rascunho a partir de <code>${esc(st.base)}</code></h2>
         ${st.desenho ? '<span class="tag current" title="ao salvar, a versão guarda a nota aninhada e os passos da seleção">do desenho automático</span>' : ''}</div>
+      ${st.avisoVaz ? U.gate('warning', `${st.avisoVaz.length} ${st.avisoVaz.length === 1 ? 'coluna' : 'colunas'} com vazamento fora do rascunho`,
+        `<code>${st.avisoVaz.map(esc).join('</code>, <code>')}</code> estão em ${esc(st.base)}, mas hoje são marcadas como vazamento
+        (contadores da janela do speedtest carregam o próprio resultado). Uma versão nova não pode usá-las.`) : ''}
       <div class="ed">${painelFeatures()}
         <div class="painel-ver">${criticos.map((a) => U.gate('critical', esc(a.titulo), esc(a.msg))).join('')}${painelVeredito()}</div></div></div>`;
   }
 
   /* ---------------- barra fixa ---------------- */
+  const textoSalvando = () => (st.salvarEtapa
+    ? `Avaliando ${st.salvarEtapa.etapa} (${st.salvarEtapa.passo + 1} de ${st.salvarEtapa.passos})…` : 'Salvando…');
+
   function formSalvar() {
     const f = st.form;
     return `<div class="dock-form">
       <label for="mNome">Nome</label><input id="mNome" class="minput" maxlength="40" value="${esc(f.nome)}">
       <label for="mDesc">Descrição</label><input id="mDesc" class="minput" maxlength="500" value="${esc(f.desc)}">
       ${st.salvarErro ? `<p class="dock-erro" role="alert">${esc(st.salvarErro)}</p>` : ''}
-      <div class="dock-form-acoes"><button class="btn" data-acao="cancelar-salvar">Cancelar</button>
-        <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? 'Salvando…' : f.ativar ? 'Salvar e tornar ativa' : 'Salvar versão'}</button></div></div>`;
+      ${st.salvando ? '<p class="hint" role="status">Leva de 1 a 2 minutos. Recarregar a página não cancela: a versão é gravada mesmo assim.</p>' : ''}
+      <div class="dock-form-acoes"><button class="btn" data-acao="cancelar-salvar"${st.salvando ? ' disabled' : ''}>Cancelar</button>
+        <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? textoSalvando() : f.ativar ? 'Salvar e tornar ativa' : 'Salvar versão'}</button></div></div>`;
   }
 
   function dock() {
@@ -686,13 +711,12 @@
     }
     usarBase(nome);
     st.msg = null; st.erro = null;
-    iniciarSugestoes();
     mudouRascunho();
   }
 
   function trocarAlvo(alvo) {
     st.alvo = alvo;
-    carregarColunas(); iniciarSugestoes(); agendar(); desenhar();
+    carregarColunas(); agendar(); desenhar();
   }
 
   /* ---------------- eventos ---------------- */
@@ -780,7 +804,7 @@
       st.ctx = ctx;
       if (ctx.enabledIds.length) {
         if (!st.reg && !st.regErro) carregarRegistro();
-        carregarColunas(); carregarReceitas(); iniciarSugestoes(); agendar();
+        carregarColunas(); carregarReceitas(); agendar();
       }
       desenhar();
     },

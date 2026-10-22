@@ -246,6 +246,8 @@
       ? ` Só ${st.pend.n_locais} locais de coleta: os números ainda mudam quando novos prédios entrarem.` : '';
     U.redesenhar($('#painelCorpo'), `<p class="resumo"><b>${c.rows.length.toLocaleString('pt-BR')}</b> amostras ·
         <b>${predios}</b> prédios · <b>${L.posicoes(c.rows).length}</b> posições.${poucos}</p>
+      ${c.data.dataMudou ? U.gate('warning', 'data/ mudou depois que o Studio leu os dados',
+        'Reinicie o Studio para ver os datasets atuais: ele só relê data/ e predios.json ao subir.') : ''}
       <h3>Avisos (${avisos.length})</h3>${secaoAvisos(avisos)}
       <h3>Pendências</h3>${secaoPendencias()}
       <h3>Ambiente</h3>${secaoAmbiente()}
