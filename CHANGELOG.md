@@ -1,3 +1,29 @@
+# Changelog — Studio novo, parte 2: Modelo com MLflow próprio
+
+**Data:** 2026-10-22
+
+## Mudanças
+
+- `src/studio/run.py` sobe também um `mlflow server` do Studio (backend `.studio/mlflow.db`, artefatos `.studio/artefatos/`, só em 127.0.0.1). Com a porta ocupada, recusa: nunca se conecta a outro MLflow. O `mlflow.db` e o `mlruns/` da raiz, do Fabiano, não são lidos nem escritos (teste automático).
+- Área Modelo: por alvo, card da versão `@ativo`, **Novo treino** (datasets, features com marca de vazamento, RandomForest/ExtraTrees/HistGradientBoosting/XGBoost com hiperparâmetros editáveis, regras `descartar_alvo_zero` e `teto_wan`), **Promover** (comparação com a `@ativo` e avisos) e **Reavaliar** (prevê sem retreinar, avisa quando o dataset estava no treino).
+- Avaliação própria do Studio: LOGO por prédio, MAE/RMSE/R² globais e por prédio, acurácia balanceada do "atende" por aplicação. Sem relação com a régua de `src/ml/core/avaliacao.py`.
+- Cada treino é um run no experimento "QoE Studio" e uma versão nova em `studio-<alvo>`. Listar, comparar e ver gráficos de runs: link "Abrir no MLflow".
+
+---
+
+# Changelog — Studio novo, parte 1: Dados e Conjunto
+
+**Data:** 2026-10-22
+
+## Mudanças
+
+- Pacote novo `src/studio/` (sobe com `./venv/bin/python src/studio/run.py`), construído ao lado do Studio antigo, que continua em `src/ml/studio/` até o novo cobrir tudo.
+- Isolado do benchmark: não importa `ml.*`, lê `data/` sem nunca escrever lá, e tem configuração própria em `src/studio/config/` (prédios, aplicações, colunas), copiada do core uma vez. Teste automático confere que um ciclo de upload, conjunto e payload não altera `data/`, `src/ml/`, `mlflow.db` nem `mlruns/`.
+- Uploads vão para `.studio/uploads/` (fora do git); prédios novos para `src/studio/config/predios.json`. O conjunto ativo fica gravado em `.studio/conjunto.json`.
+- Área Dados e painel Conjunto migrados do Studio antigo. Saíram as pendências de classificação de colunas, contadores, Laboratório e Modelo antigo.
+
+---
+
 # Changelog — Dados novos pela interface e reavaliação de versões
 
 **Data:** 2026-10-20

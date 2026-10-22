@@ -4,3 +4,4 @@ venv
 .superpowers/
 mlruns/
 mlflow.db
+.studio/

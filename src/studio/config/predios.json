@@ -1,0 +1,49 @@
+{
+  "aliases": {
+    "quarto-marcelo": "hotmilk-aquario"
+  },
+  "predios": {
+    "casa-marcelo": {
+      "ambiente": "domestico",
+      "prefixos": [
+        "marcelo"
+      ],
+      "rotulo": "Casa do Marcelo",
+      "studio": "casa-marcelo"
+    },
+    "coworking": {
+      "ambiente": "corporativo",
+      "prefixos": [
+        "cwpb"
+      ],
+      "rotulo": "Cowork Pedra Branca",
+      "studio": "cowork-pedra-branca"
+    },
+    "hotmilk": {
+      "ambiente": "corporativo",
+      "prefixos": [
+        "hotmilk"
+      ],
+      "rotulo": "Hotmilk",
+      "studio": "hotmilk"
+    },
+    "residencia": {
+      "ambiente": "domestico",
+      "posicoes": {
+        "1": "res-sala",
+        "2": "res-quarto",
+        "3": "res-suite",
+        "quarto": "res-quarto",
+        "sala": "res-sala",
+        "suite": "res-suite"
+      },
+      "prefixos": [],
+      "rotulo": "Casa",
+      "studio": "casa",
+      "tetos_wan": {
+        "speedtest_down_mbps": 154.0,
+        "speedtest_up_mbps": 99.0
+      }
+    }
+  }
+}
