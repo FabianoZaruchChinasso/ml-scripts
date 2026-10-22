@@ -399,7 +399,11 @@ class TestDenominadorNaApi(Base):
   def test_salvar_copia_o_denominador_da_base(self):
     pedido = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
     corpo = api.NovaVersao(nome='v9', features=['router_snr'], descricao='x', ds='a.csv', base='v1')
-    with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar:
+    def sincrono(chave, tarefa):  # o job roda na hora, sem thread
+      return tarefa(lambda evento: None)
+    with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar, \
+         mock.patch.object(api, 'avaliacao_completa', return_value={}), \
+         mock.patch.object(api, '_iniciar_job', side_effect=sincrono):
       api.modelos_salvar(corpo, pedido)
     self.assertEqual(salvar.call_args.kwargs['denominador'], {'speedtest_down_mbps': 'router_snr'})
 

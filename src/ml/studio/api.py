@@ -7,6 +7,7 @@ da propria maquina; o commit e sempre humano.
 
 import os
 import threading
+import time
 import uuid
 from datetime import date
 from typing import Optional
@@ -67,8 +68,25 @@ _modelos_cache = {}
 
 def _payload() -> dict:
   if 'payload' not in _cache:
+    # Marca antes de ler: um arquivo que chegue durante a leitura conta como mudança.
+    _cache['lido_em'] = time.time()
     _cache['payload'] = build_payload()
   return _cache['payload']
+
+
+def _data_mudou() -> bool:
+  """data/ ganhou, perdeu ou renomeou arquivo depois da última leitura: a tela mostra dados velhos.
+
+  O upload pelo próprio Studio relê tudo (_dados_mudaram limpa _cache), então só avisa de
+  mudanças feitas fora dele (git pull, arquivo copiado, arquivo apagado).
+  """
+  lido_em = _cache.get('lido_em')
+  if lido_em is None:
+    return False
+  try:
+    return os.path.getmtime(core_carga.DATA_DIR) > lido_em
+  except OSError:
+    return False
 
 
 @app.get('/api/payload')
@@ -78,7 +96,7 @@ def payload():
   Reiniciar o servidor e o jeito de recarregar apos um `git pull` — deliberado:
   uma varredura por requisicao releria todo o CSV a cada F5.
   """
-  return JSONResponse(_payload())
+  return JSONResponse(dict(_payload(), dataMudou=_data_mudou()))
 
 
 def _so_local(request: Request) -> None:
@@ -306,38 +324,57 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
   return _modelos_cache[chave]
 
 
-def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None) -> dict:
+# Rótulo de cada etapa da avaliação completa, na ordem em que roda (progresso do salvar e do reavaliar).
+ETAPAS = {'speedtest_down_mbps': 'download', 'speedtest_up_mbps': 'upload',
+          'latency_ms': 'latência', 'jitter_ms': 'jitter'}
+N_ETAPAS = len(ETAPAS) + 1
+
+
+def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None, progresso=None) -> dict:
   """Avaliação dos quatro alvos, de "atende em throughput" e de "atende completo", guardada junto da versão.
 
-  Latência e jitter levam também o resumo quantílico (p50 e p90).
+  Latência e jitter levam também o resumo quantílico (p50 e p90). Colunas hoje marcadas como
+  vazamento saem da conta e ficam em `removidas_por_vazamento` (a versão salva antes da marcação
+  continua avaliável, como no benchmark). `progresso(evento)` recebe {'etapa', 'passo', 'passos'}
+  antes de cada uma das cinco etapas.
   """
+  avisar = progresso or (lambda evento: None)
   saida, previsoes, quantis = {}, {}, {}
   aplicacoes = core_aplicacoes.carregar()
-  for alvo in studio_features.TARGETS:
+  removidas = set()
+  for passo, alvo in enumerate(studio_features.TARGETS):
+    avisar({'etapa': ETAPAS[alvo], 'passo': passo, 'passos': N_ETAPAS})
     conj, _ = _conjunto(ds, alvo, ambiente)
-    resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, features, studio_features.vazadas_do_conjunto(conj),
-                                                     com_previsoes=True,
+    vazadas = studio_features.vazadas_do_conjunto(conj)
+    usadas = [f for f in features if f not in vazadas]
+    fora = [f for f in features if f in vazadas]
+    removidas.update(fora)
+    resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, usadas, vazadas, com_previsoes=True,
                                                      denominador=(denominador or {}).get(alvo))
     saida[alvo] = dict(resumo, datasets=conj.datasets, ambiente=_ambiente(ambiente) or 'todos',
                        versao_tabela=core_features.versao_tabela(),
-                       versao_catalogo=core_features.CATALOGO_VERSAO)
+                       versao_catalogo=core_features.CATALOGO_VERSAO,
+                       removidas_por_vazamento=fora)
     if alvo in core_quantis.ALVOS_QUANTILICOS:
-      quantis[alvo] = _prever_quantis(conj, features)
+      quantis[alvo] = _prever_quantis(conj, usadas)
       saida[alvo]['quantis'] = core_quantis.resumir_quantis(quantis[alvo], resumo['n'])
+  avisar({'etapa': 'atende', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
+  usadas = [f for f in features if f not in removidas]
   saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
                                                      previsoes['speedtest_up_mbps'], aplicacoes)
   conj_dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
   conj_up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
   den = denominador or {}
-  decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, features, aplicacoes,
+  decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, usadas, aplicacoes,
                                          den.get(conj_dn.alvo), den.get(conj_up.alvo))
   saida['atende_ajustado'] = dict(core_limiar.resumir_decisoes(decisoes),
                                   fatores_producao=core_limiar.fatores_producao(
-                                    conj_dn, conj_up, features, aplicacoes, den.get(conj_dn.alvo),
+                                    conj_dn, conj_up, usadas, aplicacoes, den.get(conj_dn.alvo),
                                     den.get(conj_up.alvo)))
   saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
                                                           previsoes['speedtest_up_mbps'],
                                                           quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)
+  saida['removidas_por_vazamento'] = sorted(removidas)
   return saida
 
 
@@ -700,10 +737,16 @@ class NovaVersao(BaseModel):
   ambiente: str = ''
   desenho: Optional[str] = None
   base: Optional[str] = None
+  ativar: bool = False
 
 
 @app.post('/api/modelos')
 def modelos_salvar(corpo: NovaVersao, request: Request):
+  """Valida na hora (422 com o motivo); avaliação, gravação e ativação rodam num job.
+
+  A avaliação completa leva de 1 a 2 minutos: na requisição, o botão ficava parado sem
+  dizer nada. O front acompanha por GET /api/modelos/salvar/{id}.
+  """
   _so_local(request)
   tabela, erro_tabela = _tabela()
   if erro_tabela:
@@ -713,21 +756,48 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
     raise HTTPException(422, f'a versão {corpo.nome!r} já existe e é imutável; escolha outro nome')
   if corpo.base and corpo.base not in registro['versoes']:
     raise HTTPException(422, f'versão base {corpo.base!r} não existe')
+  vazadas = [f for f, c in core_modelos.classificar_features(corpo.features, tabela).items()
+             if c is not None and c.vazamento]
+  if vazadas:
+    raise HTTPException(422, f'estas colunas estão marcadas como vazamento e não podem entrar numa versão nova: '
+                             f'{vazadas}. Tire-as do rascunho.')
   # Mesma regra da avaliação do rascunho: herda o denominador da base (ou da ativa).
   denominador = registro['versoes'][corpo.base or registro['ativo']].get('denominador') or None
   try:
     core_modelos.validar_registro({'ativo': corpo.nome, 'versoes': {corpo.nome: {
       'features': corpo.features, 'descricao': corpo.descricao or '-'}}})
     selecao = _metadados_do_desenho(corpo.desenho, corpo.features) if corpo.desenho else None
-    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador)
-    core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, _colunas_conhecidas(),
-                               tabela, origem='selecao-gulosa' if selecao else 'studio',
-                               avaliacao=avaliacao, selecao=selecao, denominador=denominador)
   except (ValueError, AssertionError) as erro:
     raise HTTPException(422, str(erro))
-  _ajustes.clear()
-  _modelos_cache.clear()
-  return modelos_listar()
+  conhecidas = _colunas_conhecidas()
+
+  def tarefa(progresso):
+    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador, progresso=progresso)
+    try:
+      core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, conhecidas,
+                                 tabela, origem='selecao-gulosa' if selecao else 'studio',
+                                 avaliacao=avaliacao, selecao=selecao, denominador=denominador)
+    finally:
+      _ajustes.clear()
+      _modelos_cache.clear()
+    erro_ativar = None
+    if corpo.ativar:
+      try:
+        core_modelos.definir_ativo(corpo.nome)
+      except (OSError, ValueError) as erro:
+        erro_ativar = str(erro)
+      finally:
+        _ajustes.clear()
+        _modelos_cache.clear()
+    return {'nome': corpo.nome, 'ativa': corpo.ativar and erro_ativar is None, 'erro_ativar': erro_ativar}
+
+  return _iniciar_job(('salvar', corpo.nome, tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente))
+                      + _chave_versoes(), tarefa)
+
+
+@app.get('/api/modelos/salvar/{job_id}')
+def modelos_salvamento(job_id: str):
+  return _job(job_id)
 
 
 class Ativo(BaseModel):
@@ -777,7 +847,9 @@ def modelos_reavaliar(corpo: Reavaliacao, request: Request):
       progresso({'nome': nome, 'i': i, 'total': len(nomes)})
       versao = registro['versoes'][nome]
       try:
-        avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, versao['features'], versao.get('denominador'))
+        etapa = lambda evento, nome=nome, i=i: progresso({'nome': nome, 'i': i, 'total': len(nomes), **evento})
+        avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, versao['features'], versao.get('denominador'),
+                                       progresso=etapa)
         nota = core_modelos.nota_reavaliacao(versao.get('avaliacao'), avaliacao, date.today().isoformat())
         core_modelos.reavaliar(nome, avaliacao, core_features.cobertura_tr069(versao['features'], tabela), nota)
       except Exception as falha:
