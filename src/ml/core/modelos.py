@@ -16,13 +16,14 @@ import threading
 from datetime import date
 from typing import Optional
 
+from ml.core import aplicacoes as core_aplicacoes
 from ml.core import features as F
 from ml.core.arquivos import gravar_json_atomico
 
 MODELOS_PATH = os.path.join(os.path.dirname(__file__), 'modelos.json')
 NOME = re.compile(r'^[a-z0-9][a-z0-9-]{1,39}$')
 CAMPOS = {'features', 'descricao', 'origem', 'criado_em', 'avaliacao', 'selecao', 'denominador',
-          'cobertura', 'historico'}
+          'cobertura', 'historico', 'perfil_qoe'}
 # Alvos em que a versão pode prever a eficiência (alvo ÷ coluna) em vez de Mbps absolutos.
 ALVOS_COM_DENOMINADOR = ('speedtest_down_mbps', 'speedtest_up_mbps')
 
@@ -66,6 +67,8 @@ def validar_registro(registro) -> None:
     if 'historico' in versao and (not isinstance(versao['historico'], list)
                                    or not all(_texto(h) for h in versao['historico'])):
       raise ValueError(f'{nome!r}: historico precisa ser uma lista de textos')
+    if 'perfil_qoe' in versao and versao['perfil_qoe'] not in core_aplicacoes.PERFIS:
+      raise ValueError(f'{nome!r}: perfil_qoe precisa ser um de {list(core_aplicacoes.PERFIS)}')
     if 'denominador' in versao:
       den = versao['denominador']
       if (not isinstance(den, dict) or not den or not set(den) <= set(ALVOS_COM_DENOMINADOR)
@@ -101,6 +104,11 @@ def denominador_de(registro: dict, nome: str, alvo: str):
   return (versao.get('denominador') or {}).get(alvo)
 
 
+def perfil_de(registro: dict, nome: str) -> str:
+  """Perfil de QoE da versão; as salvas antes do campo existir usam o perfil atual."""
+  return registro['versoes'][nome].get('perfil_qoe', 'atual')
+
+
 def classificar_features(features, tabela: dict) -> dict:
   """Classe de cada feature, olhando o catálogo de derivadas antes da tabela."""
   derivadas = {d.nome: d for d in F.catalogo_completo()}
@@ -121,9 +129,12 @@ def fora_do_tr069(features, tabela: dict) -> list:
 def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabela: dict,
                   origem: str = 'studio', avaliacao: Optional[dict] = None,
                   selecao: Optional[dict] = None, denominador: Optional[dict] = None,
+                  perfil_qoe: str = 'norma',  # versão nova nasce na norma; as antigas são lidas como 'atual' (perfil_de)
                   path: str = MODELOS_PATH) -> dict:
   """Acrescenta uma versão. Recusa nome existente, feature desconhecida e vazamento."""
   features = list(features)
+  if perfil_qoe not in core_aplicacoes.PERFIS:
+    raise ValueError(f'perfil_qoe precisa ser um de {list(core_aplicacoes.PERFIS)}')
   if not isinstance(descricao, str) or not descricao.strip() or len(descricao) > 500:
     raise ValueError('descrição obrigatória, de até 500 caracteres')
   desconhecidas = [f for f in features if f not in colunas_conhecidas]
@@ -151,7 +162,7 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
     if nome in registro['versoes']:
       raise ValueError(f'a versão {nome!r} já existe e é imutável; escolha outro nome')
     versao = {'features': features, 'descricao': descricao.strip(), 'origem': origem,
-              'criado_em': date.today().isoformat(),
+              'criado_em': date.today().isoformat(), 'perfil_qoe': perfil_qoe,
               # Cobertura com a tabela de hoje; o Studio sempre recalcula e avisa se mudou.
               'cobertura': F.cobertura_tr069(features, tabela)}
     if avaliacao:
@@ -196,6 +207,10 @@ def nota_reavaliacao(antiga: Optional[dict], nova: dict, hoje: str) -> str:
   media_antes = ((antiga or {}).get('atende_completo') or {}).get('media')
   media_depois = (nova.get('atende_completo') or {}).get('media')
   partes.append(f'atende completo {_media_texto(media_antes)} → {_media_texto(media_depois)}')
+  qoe_antes = (((antiga or {}).get('qoe') or {}).get('modelo') or {}).get('nota')
+  qoe_depois = ((nova.get('qoe') or {}).get('modelo') or {}).get('nota')
+  if qoe_antes is not None or qoe_depois is not None:
+    partes.append(f'QoE {_media_texto(qoe_antes)} → {_media_texto(qoe_depois)}')
   return '; '.join(partes)
 
 

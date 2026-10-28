@@ -281,5 +281,33 @@ class TestReavaliar(Base):
     self.assertIn('ambiente todos → domestico', M.nota_reavaliacao(self.AVAL, nova, '2026-10-20'))
 
 
+class TestPerfilQoe(Base):
+  def test_versao_nova_e_norma_por_padrao(self):
+    self.salvar()
+    self.assertEqual(M.carregar(self.path)['versoes']['v2']['perfil_qoe'], 'norma')
+
+  def test_perfil_explicito(self):
+    M.salvar_versao('v2', ['router_snr'], 'teste', CONHECIDAS, TABELA, perfil_qoe='atual', path=self.path)
+    self.assertEqual(M.perfil_de(M.carregar(self.path), 'v2'), 'atual')
+
+  def test_versao_antiga_sem_campo_e_atual(self):
+    self.assertEqual(M.perfil_de(M.carregar(self.path), 'v1'), 'atual')
+
+  def test_perfil_invalido_recusado(self):
+    with self.assertRaisesRegex(ValueError, 'perfil_qoe'):
+      M.salvar_versao('v2', ['router_snr'], 'teste', CONHECIDAS, TABELA, perfil_qoe='x', path=self.path)
+    with self.assertRaisesRegex(ValueError, 'perfil_qoe'):
+      M.validar_registro({'ativo': 'v1', 'versoes': {'v1': {'features': ['a'], 'descricao': 'd', 'perfil_qoe': 'x'}}})
+
+  def test_nota_traz_o_qoe_quando_existe(self):
+    antiga = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.65}}}
+    nova = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.7}}}
+    self.assertIn('QoE 0,65 → 0,70', M.nota_reavaliacao(antiga, nova, '2026-10-27'))
+
+  def test_nota_sem_qoe_continua_igual(self):
+    nota = M.nota_reavaliacao({'atende_completo': {'media': 0.5}}, {'atende_completo': {'media': 0.6}}, '2026-10-27')
+    self.assertNotIn('QoE', nota)
+
+
 if __name__ == '__main__':
   unittest.main()

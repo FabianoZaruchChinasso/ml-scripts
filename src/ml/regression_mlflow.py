@@ -11,7 +11,8 @@ Se a versão tiver denominador para o ALVO (core/modelos.json), o modelo aprende
 (alvo ÷ coluna) e eficiencia.json diz como voltar para Mbps.
 Com denominador condicional ({"coluna", "radio"}), registra dois modelos finais por configuração (<modelo>_eficiencia e <modelo>_absoluto).
 Todo run grava contrato.json (core/producao.py: as colunas exatas que o modelo final viu). Download
-e upload gravam também fatores_atende.json, o fator de decisão do "atende" por aplicação (core/limiar.py).
+e upload gravam também fatores_atende.json, o fator de decisão do "atende" por aplicação (core/limiar.py),
+com os limiares do perfil da versão (core/modelos.perfil_de).
 Todo run grava também cobertura_tr069.json e o parâmetro cobertura_tr069 (core/features.cobertura_tr069).
 """
 
@@ -123,11 +124,12 @@ def fatores_atende(registro: dict, nome_modelo: str, conj, ids, features) -> dic
   outro = 'speedtest_up_mbps' if conj.alvo == 'speedtest_down_mbps' else 'speedtest_down_mbps'
   conj_outro = core_carga.carregar(outro, ids=ids)
   dn, up = (conj, conj_outro) if conj.alvo == 'speedtest_down_mbps' else (conj_outro, conj)
-  aplicacoes = core_aplicacoes.carregar()
+  perfil = core_modelos.perfil_de(registro, nome_modelo)
+  aplicacoes = core_aplicacoes.carregar_perfil(perfil)
   fatores = core_limiar.fatores_producao(dn, up, features, aplicacoes,
                                          core_modelos.denominador_de(registro, nome_modelo, dn.alvo),
                                          core_modelos.denominador_de(registro, nome_modelo, up.alvo))
-  return {'fatores': fatores, 'aplicacoes': aplicacoes, 'versao_regua': core_avaliacao.VERSAO_REGUA,
+  return {'fatores': fatores, 'perfil': perfil, 'aplicacoes': aplicacoes, 'versao_regua': core_avaliacao.VERSAO_REGUA,
           'uso': 'atende = previsao_download >= k * dn e previsao_upload >= k * up, k = fatores[aplicação]',
           'origem': 'LOGO com todos os prédios, modelo da régua (core/avaliacao.modelo_regua)'}
 
