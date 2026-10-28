@@ -44,6 +44,36 @@
         "speedtest_down_mbps": 154.0,
         "speedtest_up_mbps": 99.0
       }
+    },
+    "villa-escritorio": {
+      "ambiente": "corporativo",
+      "posicoes": {
+        "villa_esc_copa": "villa_esc_copa",
+        "villa_esc_estoque": "villa_esc_estoque",
+        "villa_esc_recepcao": "villa_esc_recepcao",
+        "villa_esc_sala1": "villa_esc_sala1",
+        "villa_esc_sala2": "villa_esc_sala2"
+      },
+      "prefixos": [],
+      "rotulo": "Escritório do Villa",
+      "studio": "villa-escritorio",
+      "tetos_wan": {
+        "speedtest_down_mbps": 93.1,
+        "speedtest_up_mbps": 100.2
+      }
+    },
+    "villa-residencial": {
+      "ambiente": "domestico",
+      "posicoes": {
+        "villa_res_cozinha": "villa_res_cozinha",
+        "villa_res_escritorio": "villa_res_escritorio",
+        "villa_res_quarto1": "villa_res_quarto1",
+        "villa_res_quarto2": "villa_res_quarto2",
+        "villa_res_sala": "villa_res_sala"
+      },
+      "prefixos": [],
+      "rotulo": "Casa do Villa",
+      "studio": "villa-residencial"
     }
   }
 }
