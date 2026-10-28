@@ -1,0 +1,29 @@
+{
+  "perfil": "norma",
+  "aplicacoes": {
+    "Navegação": {
+      "dn": {"valor": 2, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": "G.1010 não fixa vazão para navegação"},
+      "up": {"valor": 0.5, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": ""},
+      "lat": {"valor": 800, "fonte": "ITU-T Y.1541, classe 3 (dados transacionais interativos)", "url": "https://www.rfc-editor.org/rfc/rfc5976.html", "nota": "400 ms de ida x 2: latency_ms é ping de ida e volta ao servidor do speedtest"},
+      "jit": {"valor": 100, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": "Y.1541 classe 3 não especifica variação de atraso"}
+    },
+    "Chamada de vídeo": {
+      "dn": {"valor": 3.0, "fonte": "Zoom, requisitos de sistema, vídeo 1080p", "url": "https://developers.zoom.us/docs/video-sdk/system-requirements/", "nota": "3,8 Mbps de envio e 3,0 de recepção"},
+      "up": {"valor": 3.8, "fonte": "Zoom, requisitos de sistema, vídeo 1080p", "url": "https://developers.zoom.us/docs/video-sdk/system-requirements/", "nota": ""},
+      "lat": {"valor": 200, "fonte": "ITU-T Y.1541, classe 0 (tempo real, interativo)", "url": "https://www.rfc-editor.org/rfc/rfc5976.html", "nota": "100 ms de ida x 2: latency_ms é ping de ida e volta"},
+      "jit": {"valor": 50, "fonte": "ITU-T Y.1541, classe 0", "url": "https://www.rfc-editor.org/rfc/rfc5976.html", "nota": "a Y.1541 define variação como quantil 0,999 do atraso menos o mínimo; o jitter do speedtest é outra conta"}
+    },
+    "Streaming 4K": {
+      "dn": {"valor": 15, "fonte": "Netflix, velocidades recomendadas, Ultra HD 4K", "url": "https://help.netflix.com/en/node/306", "nota": ""},
+      "up": {"valor": 0, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": ""},
+      "lat": {"valor": 500, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": "streaming com buffer tolera atraso alto"},
+      "jit": {"valor": 100, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": ""}
+    },
+    "Jogo em nuvem": {
+      "dn": {"valor": 15, "fonte": "NVIDIA GeForce NOW, requisitos, mínimo 720p a 60 fps", "url": "https://www.nvidia.com/en-me/geforce-now/system-reqs/", "nota": "1080p a 60 fps pede 25 Mbps"},
+      "up": {"valor": 1, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": ""},
+      "lat": {"valor": 80, "fonte": "NVIDIA GeForce NOW, requisitos (exigido)", "url": "https://www.nvidia.com/en-me/geforce-now/system-reqs/", "nota": "a NVIDIA recomenda menos de 40 ms; o limite já é de ida e volta"},
+      "jit": {"valor": 10, "fonte": "sem norma; valor do perfil atual", "url": "", "nota": "a NVIDIA não publica limite de jitter"}
+    }
+  }
+}
