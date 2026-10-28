@@ -3,6 +3,9 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 CLASS_NAMES = ['bad', 'mid', 'good']
+# Erro de unidade separa grupos por 1000x (bps x kbps) ou mais; prédios reais na mesma
+# unidade chegam a ~1,4x (casa-marcelo, máx 226 Mbps, contra o Q1 de 320 do villa-residencial).
+RAZAO_UNIDADE = 10.0
 
 
 def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -55,12 +58,13 @@ def assert_multiclass(y: pd.Series, context: str) -> None:
 
 
 def assert_comparable_scales(y: pd.Series, group_ids: pd.Series, target: str) -> None:
-  """Levanta erro quando a faixa inteira de um grupo fica abaixo do Q1 de outro.
+  """Levanta erro quando a faixa inteira de um grupo fica RAZAO_UNIDADE vezes abaixo do Q1 de outro.
 
-  Dois grupos medindo a mesma grandeza física têm distribuições que se sobrepõem.
-  Um grupo cujo MÁXIMO fica abaixo do primeiro quartil de outro está quase
-  certamente registrado em outra unidade — o sintoma clássico de um dataset ter
-  passado por `normalize` e o outro não.
+  Dois grupos medindo a mesma grandeza física têm distribuições que se sobrepõem
+  ou ficam perto. Um grupo cujo MÁXIMO fica muito abaixo do primeiro quartil de
+  outro está quase certamente registrado em outra unidade — o sintoma clássico de
+  um dataset ter passado por `normalize` e o outro não. Sem a margem, um prédio
+  lento e outro com Wi-Fi rápido (mesma unidade) também disparavam.
 
   Isso importa mais na classificação: limiares de quartil calculados sobre escalas
   incompatíveis transformam o rótulo de classe num proxy de "de qual grupo veio
@@ -79,11 +83,12 @@ def assert_comparable_scales(y: pd.Series, group_ids: pd.Series, target: str) ->
     for high in stats.index:
       if low == high:
         continue
-      if stats.loc[low, 'maximum'] < stats.loc[high, 'q1']:
+      maximo, q1 = stats.loc[low, 'maximum'], stats.loc[high, 'q1']
+      if maximo < q1 and (maximo <= 0 or q1 / maximo >= RAZAO_UNIDADE):
         raise ValueError(
           f'escalas incompatíveis para {target!r}: todo valor de {low!r} '
           f'(max={stats.loc[low, "maximum"]:.4f}) fica abaixo do primeiro quartil de '
-          f'{high!r} (Q1={stats.loc[high, "q1"]:.4f}). Os grupos quase certamente estão '
+          f'{high!r} (Q1={stats.loc[high, "q1"]:.4f}), {RAZAO_UNIDADE:g}x ou mais. Os grupos quase certamente estão '
           'em unidades diferentes — verifique se um dataset passou por normalize e o '
           'outro não.'
         )

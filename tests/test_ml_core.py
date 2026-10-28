@@ -213,7 +213,7 @@ class TestMetrics(unittest.TestCase):
 
   def test_disjoint_scales_raise(self):
     from ml.core.metrics import assert_comparable_scales
-    y = pd.Series([0.1, 0.5, 1.9, 3.0, 20.0, 6000.0])
+    y = pd.Series([0.1, 0.5, 1.9, 300.0, 2000.0, 6000000.0])
     groups = pd.Series(['coworking'] * 3 + ['residencia'] * 3)
     with self.assertRaises(ValueError) as ctx:
       assert_comparable_scales(y, groups, 'qoe_dw_score')
@@ -226,6 +226,13 @@ class TestMetrics(unittest.TestCase):
     from ml.core.metrics import assert_comparable_scales
     y = pd.Series([38.0, 94.0, 204.0, 567.0, 48.0, 105.0, 208.0, 667.0])
     groups = pd.Series(['coworking'] * 4 + ['residencia'] * 4)
+    assert_comparable_scales(y, groups, 'speedtest_down_mbps')
+
+  def test_slow_and_fast_building_in_the_same_unit_pass(self):
+    from ml.core.metrics import assert_comparable_scales
+    # casa-marcelo inteira abaixo do Q1 do villa-residencial, mas só ~1,4x: mesma unidade
+    y = pd.Series([8.0, 60.0, 150.0, 226.0, 300.0, 320.0, 700.0, 830.0])
+    groups = pd.Series(['casa-marcelo'] * 4 + ['villa-residencial'] * 4)
     assert_comparable_scales(y, groups, 'speedtest_down_mbps')
 
   def test_single_group_has_nothing_to_compare(self):
