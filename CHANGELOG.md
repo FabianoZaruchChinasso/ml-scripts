@@ -1,3 +1,57 @@
+# Changelog — QoE com limiares de norma (classificador por aplicação, nota por prédio)
+
+**Data:** 2026-10-27
+
+## Por quê
+
+O "atende completo" da régua de regressão ficou em 0,63 a 0,66 da v1 à v5, e um classificador só com
+`radio` decidia melhor (0,714 contra 0,649). Spec: `docs/superpowers/specs/2026-10-27-qoe-norma-design.md`;
+plano: `docs/superpowers/plans/2026-10-27-qoe-norma.md`.
+
+## Mudanças
+
+- `core/aplicacoes_norma.json`: limiares com fonte (Zoom, Netflix, NVIDIA, ITU-T Y.1541); `aplicacoes.json` e `carregar()` sem mudança.
+- `core/qoe.py`: XGBoost monotônico (taxas PHY e contenção) por aplicação, RF de referência e piso "só radio", LOGO por prédio, nota por prédio, alarme falso e veredito.
+- Registro: `perfil_qoe` (versões novas: `norma`; v1 a v5: `atual`).
+- Studio: etapa QoE na avaliação, seletor de perfil, bloco de QoE no rascunho, cartão com a nota de QoE; a ativação segue o veredito de QoE.
+- `qoe_mlflow.py` novo; `regression_mlflow.py` calcula os fatores do "atende" no perfil da versão.
+- Benchmarks do Fabiano não mudaram; `core/` e `modelos.json` (compartilhados) mudaram.
+
+## Efeito medido
+
+Medida de aceite (features da v5, todos os datasets, LOGO por prédio, nota = média por prédio da acurácia balanceada):
+
+| Perfil | QoE do modelo | Intervalo | RF de referência | Piso (só radio) |
+|---|---|---|---|---|
+| norma | 0,6985 | 0,6532 a 0,7138 | 0,6929 | 0,6496 |
+| atual | 0,6954 | 0,6474 a 0,7122 | 0,6855 | 0,6561 |
+
+No villa-residencial (perfil norma), as aplicações de uma classe só (Navegação, Chamada de vídeo, Streaming 4K) têm
+`atende: true` e alarme falso de 0,0000, 0,0036 e 0,0073; Jogo em nuvem tem duas classes (acurácia 0,4963).
+Nenhum prédio ficou fora da nota.
+
+Nota de QoE (perfil atual, nota do modelo) das versões depois da reavaliação pelo Studio, com o "atende" da régua de regressão ao lado:
+
+| Versão | QoE | "atende" |
+|---|---|---|
+| v1 | 0,70 (0,6978) | 0,63 |
+| v2-tr069 | 0,68 (0,6830) | 0,66 |
+| v3-tr069 | 0,69 (0,6901) | 0,64 |
+| v4 | 0,69 (0,6901) | 0,65 |
+| v5 | 0,70 (0,6954) | 0,65 |
+
+No rascunho a partir da v5 contra a v1 ativa, o veredito de QoE foi "empate" nos dois perfis (norma: 0,698, diferença
+-0,032 a 0,021; atual: 0,695, diferença -0,010 a 0,011), embora a régua de regressão aponte "melhor que v1" (MAE -11,9 Mbps).
+
+## Verificação
+
+- Suíte Python: 603 testes, 2 falhas que já existiam antes deste trabalho (`test_features_core.TestSemente.test_tabela_tr181_do_repositorio` e `test_modelos_core.TestSemente.test_registro_do_repositorio`); nenhuma falha nova.
+- `node --test tests/js/logica.test.js`: 26 testes, 0 falhas.
+- Navegador (Playwright): reavaliação de v1 a v5 pelo menu de cada cartão, bloco de QoE do rascunho da v5 nos perfis norma e atual, troca rápida norma, atual, norma sem travar; console sem erros (só o 404 de `favicon.ico`).
+- `tests/studio_screenshots.sh`: gerou as oito telas (claro e escuro) em `/tmp/qoe-studio-telas`.
+
+---
+
 # Changelog — Studio: salvar versão, vazamento e assistente
 
 **Data:** 2026-10-22
