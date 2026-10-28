@@ -155,12 +155,12 @@
     return !d.mais.length && !d.menos.length;
   };
 
-  // Trava do "Salvar e tornar ativa" (os mesmos textos do antigo passo Publicar). A ativação
-  // manual, sem trava, fica no menu do cartão da versão.
-  function podeAtivar(aval, atual) {
+  // A ativação segue o veredito de QoE (classificador por aplicação, nota por prédio); o de
+  // promoção da regressão continua na tela, mas não trava. `qoe` é a resposta de api/modelos/avaliar_qoe.
+  function podeAtivar(aval, atual, qoe) {
     if (!aval || !atual) return { ok: false, motivo: 'Espere a avaliação do rascunho atual terminar.' };
-    const v = aval.promocao ? aval.promocao.veredito : aval.veredito;
-    if (!v) return { ok: false, motivo: 'Sem veredito contra a versão ativa.' };
+    const v = qoe && qoe.promocao_qoe;
+    if (!v) return { ok: false, motivo: 'Sem veredito de QoE contra a versão ativa: espere a avaliação de QoE.' };
     const cob = aval.cobertura;
     if (!cob || (cob.nivel !== '100%' && cob.nivel !== 'proxy')) {
       const lacunas = cob ? cob.lacunas.map((l) => l.feature).join(', ') : '';
@@ -168,12 +168,27 @@
     }
     const contra = v.predios_contra || [];
     if (v.resultado === 'melhor' && contra.length) {
-      return { ok: false, motivo: `A régua diz "melhor", mas piora em ${contra.join(', ')}: para ativar mesmo assim, salve e use o menu do cartão.` };
+      return { ok: false, motivo: `O QoE diz "melhor", mas piora em ${contra.join(', ')}: para ativar mesmo assim, salve e use o menu do cartão.` };
     }
     if (v.resultado !== 'melhor') {
-      return { ok: false, motivo: 'A régua de promoção não diz "melhor": para ativar mesmo assim, salve e use o menu do cartão.' };
+      return { ok: false, motivo: 'O veredito de QoE não diz "melhor": para ativar mesmo assim, salve e use o menu do cartão.' };
     }
     return { ok: true, motivo: '' };
+  }
+
+  // Decisão de pedir o QoE: há rascunho diferente da ativa e o que está guardado é de outra chave
+  // (ou de nenhuma). Idempotente por chave: em voo ou pronto, não repete.
+  function precisaPedirQoe(e) {
+    return !!e.temSel && !e.igualAtiva && e.qoeKey !== e.chaveQoe;
+  }
+
+  // Número principal do cartão de versão: a nota de QoE, se a versão já foi avaliada com ela.
+  function notaCartao(v) {
+    const a = (v && v.avaliacao) || {};
+    const ac = a.atende_completo && a.atende_completo.media != null ? a.atende_completo.media : null;
+    const q = a.qoe && a.qoe.modelo && a.qoe.modelo.nota != null ? a.qoe : null;
+    if (q) return { valor: q.modelo.nota, rotulo: `QoE (${q.perfil})`, secundario: ac };
+    return { valor: ac, rotulo: 'atende', secundario: null };
   }
 
   // Agendador da avaliação reativa: `pedir(estado)` espera `atraso` ms sem pedidos novos e
@@ -264,6 +279,6 @@
 
   return { METRICAS, MIN_AMOSTRAS, FOLGA_PCT, reprova, atende, mediana, chavePos, posicoes, daPosicao,
            reprovacao, gargalo, celulas, semContagem, contencao, piores, avisosConjunto,
-           diffRascunho, mesmasFeatures, podeAtivar, vooUnico, corTr181, agruparColunas,
+           diffRascunho, mesmasFeatures, podeAtivar, notaCartao, precisaPedirQoe, vooUnico, corTr181, agruparColunas,
            sugerirNome, descricaoRascunho, semVazamento, diffContraBase };
 });

@@ -28,11 +28,12 @@ class TestAvaliacaoCompleta(unittest.TestCase):
       'resumir_decisoes': mock.patch.object(api.core_limiar, 'resumir_decisoes', return_value={}),
       'fatores': mock.patch.object(api.core_limiar, 'fatores_producao', return_value={}),
       'completo': mock.patch.object(api.core_quantis, 'atende_completo', return_value={}),
-      'aplicacoes': mock.patch.object(api.core_aplicacoes, 'carregar', return_value={}),
+      'aplicacoes': mock.patch.object(api.core_aplicacoes, 'carregar_perfil', return_value={}),
+      'qoe': mock.patch.object(api.core_qoe, 'avaliar', return_value={'modelo': {'nota': 0.7}}),
     }
     m = {k: p.start() for k, p in patches.items()}
     self.addCleanup(lambda: [p.stop() for p in patches.values()])
-    return api.avaliacao_completa('a.csv', '', features, None, progresso=progresso), m
+    return api.avaliacao_completa('a.csv', '', features, None, progresso=progresso, perfil_qoe='norma'), m
 
   def test_colunas_com_vazamento_saem_da_conta_e_ficam_registradas(self):
     saida, m = self.rodar(['router_snr', 'router_tx_retries'])
@@ -45,12 +46,21 @@ class TestAvaliacaoCompleta(unittest.TestCase):
     self.assertEqual(saida['removidas_por_vazamento'], ['router_tx_retries'])
     self.assertEqual(saida['speedtest_down_mbps']['removidas_por_vazamento'], ['router_tx_retries'])
 
-  def test_progresso_tem_as_cinco_etapas_em_ordem(self):
+  def test_progresso_tem_as_seis_etapas_em_ordem(self):
     eventos = []
     self.rodar(['router_snr'], eventos.append)
-    self.assertEqual([e['etapa'] for e in eventos], ['download', 'upload', 'latência', 'jitter', 'atende'])
-    self.assertEqual([e['passo'] for e in eventos], [0, 1, 2, 3, 4])
-    self.assertTrue(all(e['passos'] == 5 for e in eventos))
+    self.assertEqual([e['etapa'] for e in eventos], ['download', 'upload', 'latência', 'jitter', 'atende', 'QoE'])
+    self.assertEqual([e['passo'] for e in eventos], [0, 1, 2, 3, 4, 5])
+    self.assertTrue(all(e['passos'] == 6 for e in eventos))
+
+  def test_qoe_com_o_perfil_da_versao_e_sem_vazamento(self):
+    saida, m = self.rodar(['router_snr', 'router_tx_retries'])
+    m['aplicacoes'].assert_called_with('norma')
+    conjs, feats, vazadas, perfil = m['qoe'].call_args.args
+    self.assertEqual(sorted(conjs), sorted(api.core_qoe.ALVOS))
+    self.assertEqual((feats, vazadas, perfil), (['router_snr'], ['router_tx_retries'], 'norma'))
+    self.assertEqual(saida['qoe'], {'modelo': {'nota': 0.7}})
+    self.assertEqual(saida['perfil'], 'norma')
 
   def test_sem_vazamento_nada_e_removido(self):
     saida, _ = self.rodar(['router_snr'])
@@ -102,6 +112,29 @@ class TestSalvarRota(unittest.TestCase):
     ativar.assert_not_called()
     self.assertEqual(self.job.call_args.args[0][:2], ('salvar', 'v2'))
 
+  def test_perfil_vai_para_a_avaliacao_e_para_o_registro(self):
+    r, aval, salvar, _ = self.salvar(perfil_qoe='atual')
+    self.assertEqual(aval.call_args.kwargs['perfil_qoe'], 'atual')
+    self.assertEqual(salvar.call_args.kwargs['perfil_qoe'], 'atual')
+
+  def test_perfil_padrao_e_norma(self):
+    _, aval, salvar, _ = self.salvar()
+    self.assertEqual(salvar.call_args.kwargs['perfil_qoe'], 'norma')
+
+  def test_perfil_invalido_e_422_sem_job(self):
+    r, _, salvar, _ = self.salvar(perfil_qoe='outro')
+    self.assertIsInstance(r, api.HTTPException)
+    self.assertEqual(r.status_code, 422)
+    self.job.assert_not_called()
+    salvar.assert_not_called()
+
+  def test_perfis_diferentes_tem_chaves_de_job_diferentes(self):
+    self.salvar(perfil_qoe='atual')
+    self.salvar(perfil_qoe='norma')
+    chaves = [c.args[0] for c in self.job.call_args_list]
+    self.assertEqual(len(chaves), 2)
+    self.assertNotEqual(chaves[0], chaves[1])
+
   def test_ativar_no_mesmo_job(self):
     r, _, _, ativar = self.salvar(ativar=True)
     ativar.assert_called_once_with('v2')
@@ -142,7 +175,7 @@ class TestReavaliarProgresso(unittest.TestCase):
     def job(chave, tarefa):
       return {'resultado': tarefa(eventos.append)}
 
-    def aval(ds, amb, feats, den, progresso=None):
+    def aval(ds, amb, feats, den, progresso=None, perfil_qoe='atual'):
       progresso({'etapa': 'download', 'passo': 0, 'passos': 5})
       return AVAL
 

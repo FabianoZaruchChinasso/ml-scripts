@@ -21,6 +21,7 @@
   const st = {
     ctx: null, alvo: 'speedtest_down_mbps',
     reg: null, regErro: null, regAviso: null, msg: null, erro: null, menu: null, vereditos: {}, pendente: null, reav: null,
+    perfil: 'norma', qoe: null, qoeKey: null, qoeErro: null,
     cols: null, colsKey: null, colsErro: null,
     sug: null, sugKey: null, sugTimer: null,
     base: null, sel: new Set(), desenho: null,
@@ -51,6 +52,12 @@
   const chaveAval = () => [chaveConj(), selLista().join(','), st.base, st.reg.ativo].join('|');
   const avalAtual = () => !!st.aval && st.avalKey === chaveAval();
   const promocao = (a) => (a.promocao ? a.promocao.veredito : a.veredito);
+  // O QoE não depende do alvo da tela: a chave é a do rascunho mais o perfil.
+  const chaveQoe = () => [dsIds().join(','), st.ctx.ambiente, selLista().join(','), st.reg.ativo, st.perfil].join('|');
+  const qoeAtual = () => (st.qoe && st.qoeKey === chaveQoe() ? st.qoe : null);
+  // Último veredito de QoE de cada versão (para o "Tornar ativa" do cartão); independe do alvo.
+  // Inclui a ativa: "melhor contra a ativa antiga" não vale depois que outra versão é ativada.
+  const chaveVered = (nome) => [nome, 'qoe', dsIds().join(','), st.ctx.ambiente, st.perfil, st.reg.ativo].join('|');
   const chaveCmp = () => chaveConj() + '|' + st.reg.ativo + '|' + st.reg.versoes.map((v) => v.nome).join(',');
 
   /* ---------------- carregamento ---------------- */
@@ -122,14 +129,33 @@
       '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo);
   }
 
+  function urlQoe() {
+    return 'api/modelos/avaliar_qoe?ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
+      '&ambiente=' + encodeURIComponent(st.ctx.ambiente) + '&features=' + encodeURIComponent(selLista().join(',')) +
+      '&contra=' + encodeURIComponent(st.reg.ativo) + '&perfil=' + encodeURIComponent(st.perfil);
+  }
+
+  // Síncrono no servidor (cerca de 40 s sem cache). Resposta de chave velha é descartada.
+  function avaliarQoe() {
+    if (!pronto()) return Promise.resolve();
+    const k = chaveQoe();
+    if (!L.precisaPedirQoe({ temSel: st.sel.size > 0, igualAtiva: igualAtiva(), qoeKey: st.qoeKey, chaveQoe: k })) return Promise.resolve();
+    const base = st.base;
+    st.qoeKey = k; st.qoe = null; st.qoeErro = null;
+    return U.pedir(urlQoe()).then((q) => {
+      if (st.qoeKey !== k) return;                     // resposta de rascunho/perfil antigo
+      st.qoe = q; st.qoeErro = null;
+      if (base === st.base && !sujo()) st.vereditos[chaveVered(base)] = q.promocao_qoe ? q.promocao_qoe.resultado : null;
+    }).catch((e) => { if (st.qoeKey === k) st.qoeErro = e.message; }).finally(desenhar);
+  }
+
   function avaliarAgora(k) {
     if (!pronto() || k !== chaveAval()) return Promise.resolve();   // o rascunho já mudou: o próximo voo cuida
     st.avalErro = null;
+    avaliarQoe();
     return U.pedir(urlAvaliar(st.alvo)).then((a) => {
       if (k !== chaveAval()) return;                                   // resposta velha
       st.aval = a; st.avalKey = k; st.avaliando = false;
-      // Guardado para o menu "Tornar ativa" do cartão daquela versão.
-      if (!sujo()) st.vereditos[st.base + '|' + chaveConj()] = promocao(a).resultado;
     }).catch((e) => {
       if (k !== chaveAval()) return;
       st.avalErro = e.message; st.avalErroKey = k; st.avaliando = false;
@@ -142,7 +168,7 @@
   function agendar() {
     if (!pronto() || !st.sel.size || igualAtiva()) { st.avaliando = false; voo.cancelar(); return; }
     const k = chaveAval();
-    if (st.avalKey === k || st.avalErroKey === k) { st.avaliando = false; return; }
+    if (st.avalKey === k || st.avalErroKey === k) { st.avaliando = false; avaliarQoe(); return; }   // regressão em cache: o QoE pode ter ficado para trás
     if (!st.avaliando) st.inicio = Date.now();
     st.avaliando = true;
     voo.pedir(k);
@@ -200,26 +226,29 @@
     // O vínculo com o desenho automático só vale se o rascunho for exatamente o conjunto escolhido.
     const desenho = st.desenho && L.mesmasFeatures(st.desenho.features, selLista()) ? st.desenho.id : null;
     const nome = f.nome;
+    const qPub = qoeAtual();   // o veredito de QoE do que está sendo salvo, para lembrar na versão nova
+    const verPub = qPub && qPub.promocao_qoe ? qPub.promocao_qoe.resultado : null;
     st.salvando = true; st.salvarEtapa = null; desenhar();
     U.post('api/modelos', { nome, descricao: f.desc, features: selLista(), ds: st.ctx.enabledIds.join(','),
-                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar })
-      .then((r) => acompanharSalvar(r.id, nome))
+                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar, perfil_qoe: st.perfil })
+      .then((r) => acompanharSalvar(r.id, nome, verPub))
       .catch((e) => { st.salvando = false; st.salvarErro = e.message; desenhar(); });
   }
 
   // O servidor avalia os quatro alvos e o "atende" antes de gravar (1 a 2 minutos). Recarregar a
   // página não cancela: a versão é gravada mesmo assim e aparece no registro quando terminar.
-  function acompanharSalvar(id, nome) {
+  function acompanharSalvar(id, nome, verPub) {
     U.pedir('api/modelos/salvar/' + id).then((job) => {
       if (job.status === 'rodando') {
         st.salvarEtapa = job.progresso[job.progresso.length - 1] || null;
         desenhar();
-        setTimeout(() => acompanharSalvar(id, nome), 1500);
+        setTimeout(() => acompanharSalvar(id, nome, verPub), 1500);
         return null;
       }
       st.salvando = false; st.salvarEtapa = null;
       if (job.status === 'erro') { st.salvarErro = job.erro; desenhar(); return null; }
       const r = job.resultado;
+      if (verPub) st.vereditos[chaveVered(nome)] = verPub;   // ainda com a ativa antiga: a chave é a do veredito que foi dado
       if (r.erro_ativar) st.erro = `Versão ${nome} salva, mas não foi possível ativar: ${r.erro_ativar}`;
       else st.msg = `Versão ${nome} salva${r.ativa ? ' e ativa' : ''} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
       st.cmpKey = null;
@@ -229,11 +258,11 @@
 
   function ativarManual(nome) {
     st.menu = null;
-    const conhecido = st.vereditos[nome + '|' + chaveConj()];
+    const conhecido = st.vereditos[chaveVered(nome)];
     if (conhecido !== 'melhor') {
       const txt = conhecido
-        ? `O último veredito de ${nome} contra ${st.reg.ativo} (${U.ALVO[st.alvo].rotulo.toLowerCase()}) foi "${VEREDITO[conhecido].rotulo}".`
-        : `Não há veredito de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
+        ? `O último veredito de QoE de ${nome} contra ${st.reg.ativo} foi "${VEREDITO[conhecido].rotulo}".`
+        : `Não há veredito de QoE de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
       if (!window.confirm(`${txt}\n\nTornar ${nome} a versão ativa mesmo assim?`)) { desenhar(); return; }
     }
     st.msg = null; st.erro = null;
@@ -380,20 +409,22 @@
   }
 
   function cartao(v) {
-    const ac = (v.avaliacao || {}).atende_completo;
-    const media = ac && ac.media != null ? ac.media : null;
+    const nota = L.notaCartao(v);
+    const media = nota.valor;
     const motivo = motivoDesatualizada((v.avaliacao || {})[st.alvo]);
     const editando = v.nome === st.base;
     const selos = [U.tagNivel(v.cobertura),
       (v.vazadas || []).length ? `<span class="tag leak" title="${esc(v.vazadas.join(', '))}">${v.vazadas.length} c/ vazamento</span>` : '',
       seloEficiencia(v),
+      ((v.avaliacao || {}).qoe || {}).perfil ? `<span class="tag" title="limiares do QoE desta versão">${v.avaliacao.qoe.perfil === 'norma' ? 'norma' : 'perfil atual'}</span>` : '',
+      (((v.avaliacao || {}).qoe || {}).supera_piso === false) ? '<span class="tag leak" title="não supera o classificador só com radio">abaixo do piso</span>' : '',
       motivo ? `<span class="tag lab" title="${esc(motivo)}">desatualizada</span>` : '',
       `<span class="tag">${v.features.length} feat.</span>`].join(' ');
     return `<div class="ver${editando ? ' base' : ''}">
       <button class="ver-corpo" data-acao="base" data-nome="${esc(v.nome)}" data-k="ver-${esc(v.nome)}" aria-pressed="${editando}"
         title="${esc(v.descricao || '')}">
         <span class="ver-nome"><code>${esc(v.nome)}</code>${v.ativo ? ' <span class="tag ativa">ativa</span>' : ''}${editando ? ' <span class="tag editando">editando</span>' : ''}</span>
-        <span class="ver-num">${media == null ? '–' : num(media, 2)} <small>atende</small></span>
+        <span class="ver-num">${media == null ? '–' : num(media, 2)} <small>${esc(nota.rotulo)}</small>${nota.secundario == null ? '' : ` <small class="gate-msg">atende ${num(nota.secundario, 2)}</small>`}</span>
         <span class="ver-barra"><i style="width:${media == null ? 0 : Math.round(media * 100)}%"></i></span>
         <span class="ver-selos">${selos}</span>
       </button>
@@ -604,6 +635,51 @@
     </div>`;
   }
 
+  const PERFIS = [['norma', 'Norma'], ['atual', 'Atual']];
+
+  function seletorPerfil() {
+    return `<div class="seg" role="group" aria-label="Limiares do QoE">${PERFIS.map(([p, r]) =>
+      `<button data-acao="perfil" data-p="${p}" data-k="perfil-${p}" aria-pressed="${st.perfil === p}"${st.salvando ? ' disabled' : ''}>${r}</button>`).join('')}</div>`;
+  }
+
+  function tabelaLimiares(q) {
+    const chaves = [['dn', 'Download', 'Mbps'], ['up', 'Upload', 'Mbps'], ['lat', 'Latência', 'ms'], ['jit', 'Jitter', 'ms']];
+    const linhas = Object.keys(q.limiares).map((app) => `<tr><td>${esc(app)}</td>${chaves.map(([c, , u]) => {
+      const f = ((q.fontes || {})[app] || {})[c];
+      const titulo = f ? [f.fonte, f.nota].filter(Boolean).join(' · ') : 'perfil atual (aplicacoes.json)';
+      const valor = `${num(q.limiares[app][c], 1)} ${u}`;
+      const link = f && typeof f.url === 'string' && /^https?:\/\//.test(f.url);
+      return `<td class="num" title="${esc(titulo)}">${link ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${valor}</a>` : valor}</td>`;
+    }).join('')}</tr>`).join('');
+    return `<table><thead><tr><th>Aplicação</th>${chaves.map(([, r]) => `<th class="num">${r}</th>`).join('')}</tr></thead><tbody>${linhas}</tbody></table>`;
+  }
+
+  function blocoQoe() {
+    const q = qoeAtual();
+    if (st.qoeErro && st.qoeKey === chaveQoe()) return U.gate('critical', 'Não foi possível avaliar o QoE', `${esc(st.qoeErro)} Tente de novo; se persistir, mude o rascunho ou o perfil.
+      <button class="btn" data-acao="qoe-repetir" data-k="qoe-repetir">Tentar de novo</button>`);
+    if (!q) return '<p class="hint" role="status">Avaliando QoE (classificador por aplicação, cerca de 1 min)…</p>';
+    const v = q.promocao_qoe;
+    const faixa = (iv) => (iv ? ` <em>${num(iv[0], 3)} a ${num(iv[1], 3)}</em>` : '');
+    const kpis = [['QoE rascunho', num(q.modelo.nota, 3), faixa(q.modelo.intervalo)],
+                  ['QoE ativa', v ? num(v.nota_base, 3) : '–', ''],
+                  ['RF referência', num(q.referencia.nota, 3), ''],
+                  ['Piso (só radio)', q.piso ? num(q.piso.nota, 3) : '–', '']];
+    const alarmes = Object.entries(q.modelo.por_predio).flatMap(([s, apps]) => Object.entries(apps)
+      .filter(([, x]) => x.classes === 1).map(([app, x]) => `${esc(s)} · ${esc(app)}: ${num(x.erro * 100, 1)}% ${x.atende ? 'alarme falso' : 'perda'}`));
+    return `<div class="qoe">
+      ${v ? `<div class="veredito ${v.resultado}">${icone(VEREDITO[v.resultado].icone)}
+        <div><b>QoE: ${esc(VEREDITO[v.resultado].frase(st.reg.ativo))}</b> <span class="gate-msg">(decide a ativação)</span>
+          <div class="gate-msg">${esc(v.motivo)}</div></div></div>` : ''}
+      ${q.supera_piso === false ? U.gate('warning', 'Não supera o piso', 'O rascunho não decide melhor que um classificador que só sabe a banda (radio).') : ''}
+      <div class="kpis">${kpis.map(([t, b, e]) => `<div><span>${t}</span><b>${b}</b>${e}</div>`).join('')}</div>
+      <p class="gate-msg">Nota: média por prédio da acurácia balanceada, nos ${q.modelo.predios_na_nota.length} prédios com as duas classes
+        (${q.modelo.n_posicoes} posições). Fora da nota: ${q.modelo.predios_fora_da_nota.map(esc).join(', ') || 'nenhum'}.</p>
+      ${alarmes.length ? `<details class="fold" data-k="qoe-alarmes"><summary>Prédios de uma classe só</summary><div class="inner">${alarmes.join('<br>')}</div></details>` : ''}
+      <details class="fold" data-k="qoe-limiares"><summary>Limiares do perfil ${esc(q.perfil)}</summary><div class="inner" style="overflow-x:auto">${tabelaLimiares(q)}</div></details>
+    </div>`;
+  }
+
   function painelVeredito() {
     if (!st.sel.size) return '<p class="hint">Adicione features para avaliar.</p>';
     if (igualAtiva()) {
@@ -613,14 +689,16 @@
     const vivo = st.avaliando ? `<div class="ao-vivo"><span class="giro" aria-hidden="true"></span>
       <span role="status">Reavaliando com a última mudança…</span>
       <span id="mRelogio" aria-hidden="true">${Math.round((Date.now() - st.inicio) / 1000)} s</span></div>` : '';
-    if (st.avalErro && !st.avaliando) return U.gate('critical', 'Não foi possível avaliar', esc(st.avalErro));
-    if (!st.aval) return vivo || '<p class="hint">Preparando a avaliação…</p>';
-    return vivo + cartaoVeredito(st.aval, avalAtual());
+    const bq = blocoQoe();   // o QoE decide a ativação: aparece mesmo sem o resultado da regressão
+    if (st.avalErro && !st.avaliando) return bq + U.gate('critical', 'Não foi possível avaliar', esc(st.avalErro));
+    if (!st.aval) return vivo + bq + (vivo ? '' : '<p class="hint">Preparando a avaliação…</p>');
+    return vivo + bq + cartaoVeredito(st.aval, avalAtual());
   }
 
   function secaoRascunho() {
     const criticos = L.avisosConjunto(st.ctx.data, st.ctx.rows, st.ctx.enabled, st.ctx.ambiente).filter((a) => a.sev === 'critical');
     return `<div class="secao"><div class="secao-cab"><h2>Rascunho a partir de <code>${esc(st.base)}</code></h2>
+        ${seletorPerfil()}
         ${st.desenho ? '<span class="tag current" title="ao salvar, a versão guarda a nota aninhada e os passos da seleção">do desenho automático</span>' : ''}</div>
       ${st.avisoVaz ? U.gate('warning', `${st.avisoVaz.length} ${st.avisoVaz.length === 1 ? 'coluna' : 'colunas'} com vazamento fora do rascunho`,
         `<code>${st.avisoVaz.map(esc).join('</code>, <code>')}</code> estão em ${esc(st.base)}, mas hoje são marcadas como vazamento
@@ -639,9 +717,17 @@
       <label for="mNome">Nome</label><input id="mNome" class="minput" maxlength="40" value="${esc(f.nome)}">
       <label for="mDesc">Descrição</label><input id="mDesc" class="minput" maxlength="500" value="${esc(f.desc)}">
       ${st.salvarErro ? `<p class="dock-erro" role="alert">${esc(st.salvarErro)}</p>` : ''}
-      ${st.salvando ? '<p class="hint" role="status">Leva de 1 a 2 minutos. Recarregar a página não cancela: a versão é gravada mesmo assim.</p>' : ''}
+      ${st.salvando ? '<p class="hint" role="status">Leva de 2 a 3 minutos. Recarregar a página não cancela: a versão é gravada mesmo assim.</p>' : ''}
       <div class="dock-form-acoes"><button class="btn" data-acao="cancelar-salvar"${st.salvando ? ' disabled' : ''}>Cancelar</button>
         <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? textoSalvando() : f.ativar ? 'Salvar e tornar ativa' : 'Salvar versão'}</button></div></div>`;
+  }
+
+  // Por que "Salvar e tornar ativa" está desabilitado: o QoE ainda roda, falhou, ou a trava diz.
+  function motivoDock(q, pode) {
+    if (!q && st.sel.size && !igualAtiva()) {
+      return st.qoeErro && st.qoeKey === chaveQoe() ? `QoE falhou: ${st.qoeErro} (use "Tentar de novo" no painel)` : 'Avaliando QoE…';
+    }
+    return st.avaliando ? 'Reavaliando o rascunho…' : pode.motivo;
   }
 
   function dock() {
@@ -651,8 +737,9 @@
     if (!mostrar) { el.innerHTML = ''; return; }
     const d = diff();
     const atual = avalAtual();
-    const v = atual ? promocao(st.aval) : null;
-    const pode = L.podeAtivar(st.aval, atual);
+    const q = qoeAtual();
+    const v = q && q.promocao_qoe ? q.promocao_qoe : null;
+    const pode = L.podeAtivar(st.aval, atual, q);
     const estado = st.avaliando ? '<span class="dock-ver">avaliando…</span>'
       : v ? `<span class="dock-ver ${v.resultado}">${icone(VEREDITO[v.resultado].icone)} ${VEREDITO[v.resultado].rotulo}</span>` : '';
     U.redesenhar(el, `<div class="dock-linha">
@@ -664,7 +751,7 @@
           <button class="btn" data-acao="abrir-salvar" data-k="abrir-salvar"${st.sel.size ? '' : ' disabled'}>Salvar…</button>
           <button class="btn-pri" data-acao="abrir-ativar" data-k="abrir-ativar"${pode.ok ? '' : ' disabled'} aria-describedby="mDockMotivo">Salvar e tornar ativa</button>
         </span></div>
-      ${pode.ok || st.avaliando || !st.aval ? '' : `<p class="dock-motivo" id="mDockMotivo">${esc(pode.motivo)}</p>`}
+      ${pode.ok ? '' : `<p class="dock-motivo" id="mDockMotivo" role="status">${esc(motivoDock(q, pode))}</p>`}
       ${st.form ? formSalvar() : ''}`);
   }
 
@@ -731,6 +818,8 @@
     const col = b.dataset.col;
     switch (b.dataset.acao) {
       case 'conjunto': V.conjunto.abrir(); break;
+      case 'qoe-repetir': st.qoeKey = null; avaliarQoe(); desenhar(); break;
+      case 'perfil': st.perfil = b.dataset.p; avaliarQoe(); desenhar(); break;
       case 'base': escolherBase(b.dataset.nome); break;
       case 'menu': st.menu = st.menu === b.dataset.nome ? null : b.dataset.nome; desenhar(); break;
       case 'ativar': ativarManual(b.dataset.nome); break;

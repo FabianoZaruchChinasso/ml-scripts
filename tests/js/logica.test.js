@@ -96,22 +96,51 @@ test('diffRascunho separa o que entrou do que saiu, em ordem alfabética', () =>
   assert.equal(L.mesmasFeatures(['a'], ['a', 'b']), false);
 });
 
-const AVAL = (resultado, extra = {}) => Object.assign({
-  promocao: { veredito: { resultado, motivo: 'm', predios_contra: [] } },
-  cobertura: { nivel: '100%', lacunas: [] },
-}, extra);
+const AVAL = (extra = {}) => Object.assign({ cobertura: { nivel: '100%', lacunas: [] } }, extra);
+const QOE = (resultado, contra = []) => ({ promocao_qoe: { resultado, motivo: 'm', predios_contra: contra } });
 
-test('podeAtivar só libera com veredito atual, melhor, sem prédio contra e implantável', () => {
-  assert.deepEqual(L.podeAtivar(AVAL('melhor'), true), { ok: true, motivo: '' });
-  assert.equal(L.podeAtivar(AVAL('melhor'), false).ok, false);
-  assert.equal(L.podeAtivar(null, true).ok, false);
-  assert.match(L.podeAtivar(AVAL('empate'), true).motivo, /não diz "melhor"/);
-  const contra = AVAL('melhor');
-  contra.promocao.veredito.predios_contra = ['casa'];
-  assert.match(L.podeAtivar(contra, true).motivo, /piora em casa/);
-  const parcial = AVAL('melhor', { cobertura: { nivel: 'parcial', lacunas: [{ feature: 'client_mode' }] } });
-  assert.match(L.podeAtivar(parcial, true).motivo, /TR-069 parcial" \(client_mode\)/);
-  assert.equal(L.podeAtivar(AVAL('melhor', { cobertura: { nivel: 'proxy', lacunas: [] } }), true).ok, true);
+test('podeAtivar segue o veredito de QoE, sem prédio contra e com cobertura implantável', () => {
+  assert.deepEqual(L.podeAtivar(AVAL(), true, QOE('melhor')), { ok: true, motivo: '' });
+  assert.equal(L.podeAtivar(AVAL(), false, QOE('melhor')).ok, false);
+  assert.equal(L.podeAtivar(null, true, QOE('melhor')).ok, false);
+  assert.match(L.podeAtivar(AVAL(), true, null).motivo, /QoE/);
+  assert.match(L.podeAtivar(AVAL(), true, { modelo: {} }).motivo, /QoE/);
+  assert.match(L.podeAtivar(AVAL(), true, QOE('empate')).motivo, /QoE não diz "melhor"/);
+  assert.match(L.podeAtivar(AVAL(), true, QOE('pior')).motivo, /QoE não diz "melhor"/);
+  assert.match(L.podeAtivar(AVAL(), true, QOE('melhor', ['casa'])).motivo, /piora em casa/);
+  const parcial = AVAL({ cobertura: { nivel: 'parcial', lacunas: [{ feature: 'client_mode' }] } });
+  assert.match(L.podeAtivar(parcial, true, QOE('melhor')).motivo, /TR-069 parcial" \(client_mode\)/);
+  assert.equal(L.podeAtivar(AVAL({ cobertura: { nivel: 'proxy', lacunas: [] } }), true, QOE('melhor')).ok, true);
+});
+
+test('podeAtivar: sem promocao_qoe dá a mensagem específica; predios_contra ausente não trava', () => {
+  assert.match(L.podeAtivar(AVAL(), true, { promocao_qoe: null }).motivo, /^Sem veredito de QoE contra a versão ativa/);
+  assert.match(L.podeAtivar(AVAL(), true, { modelo: {} }).motivo, /^Sem veredito de QoE contra a versão ativa/);
+  assert.equal(L.podeAtivar(AVAL(), true, { promocao_qoe: { resultado: 'melhor', motivo: 'm' } }).ok, true);
+});
+
+test('notaCartao trata 0 como valor e nota nula como ausente', () => {
+  const zero = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: 0 } }, atende_completo: { media: 0 } } };
+  assert.deepEqual(L.notaCartao(zero), { valor: 0, rotulo: 'QoE (norma)', secundario: 0 });
+  const nula = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: null } }, atende_completo: { media: 0.5 } } };
+  assert.deepEqual(L.notaCartao(nula), { valor: 0.5, rotulo: 'atende', secundario: null });
+});
+
+test('precisaPedirQoe: pede quando a chave mudou, mesmo com a anterior em voo; não repete a mesma', () => {
+  const base = { temSel: true, igualAtiva: false, qoeKey: 'A', chaveQoe: 'A' };
+  assert.equal(L.precisaPedirQoe(base), false);
+  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B' }), true);
+  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: null }), true);
+  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B', igualAtiva: true }), false);
+  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B', temSel: false }), false);
+});
+
+test('notaCartao usa o QoE quando existe e cai para o atende completo', () => {
+  const comQoe = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: 0.705 } }, atende_completo: { media: 0.65 } } };
+  assert.deepEqual(L.notaCartao(comQoe), { valor: 0.705, rotulo: 'QoE (norma)', secundario: 0.65 });
+  const semQoe = { avaliacao: { atende_completo: { media: 0.64 } } };
+  assert.deepEqual(L.notaCartao(semQoe), { valor: 0.64, rotulo: 'atende', secundario: null });
+  assert.deepEqual(L.notaCartao({}), { valor: null, rotulo: 'atende', secundario: null });
 });
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));

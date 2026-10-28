@@ -14,7 +14,7 @@ NOVA = {'speedtest_down_mbps': {'datasets': ['a.csv', 'villa.csv'], 'ambiente': 
         'atende_completo': {'media': 0.6}}
 REGISTRO = {'ativo': 'v1', 'versoes': {
   'v1': {'features': ['router_snr'], 'descricao': 'x', 'avaliacao': ANTIGA},
-  'v2': {'features': ['router_snr', 'router_noise'], 'descricao': 'y',
+  'v2': {'features': ['router_snr', 'router_noise'], 'descricao': 'y', 'perfil_qoe': 'norma',
          'denominador': {'speedtest_down_mbps': 'router_snr'}}}}
 
 
@@ -55,6 +55,11 @@ class TestReavaliarRota(unittest.TestCase):
     self.assertEqual((nome, avaliacao, cobertura), ('v1', NOVA, {'c': 1}))
     self.assertIn('+villa.csv', nota)
     self.assertIn('0,50 → 0,60', nota)
+
+  def test_reavalia_no_perfil_da_versao(self):
+    r, aval, _ = self.rodar(['v1', 'v2'], [NOVA, NOVA])
+    perfis = [c.kwargs['perfil_qoe'] for c in aval.call_args_list]
+    self.assertEqual(perfis, ['atual', 'norma'])
 
   def test_falha_no_meio_mantem_as_anteriores_e_cita_a_versao(self):
     r, _, reav = self.rodar(['v1', 'v2'], [NOVA, RuntimeError('sem memória')])

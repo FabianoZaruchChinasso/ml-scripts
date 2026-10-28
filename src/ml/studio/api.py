@@ -27,6 +27,7 @@ from ml.core import features as core_features
 from ml.core import limiar as core_limiar
 from ml.core import formulas as core_formulas
 from ml.core import modelos as core_modelos
+from ml.core import qoe as core_qoe
 from ml.core import quantis as core_quantis
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES
@@ -135,7 +136,8 @@ def _denominadores(registro) -> dict:
 
 def _chave_versoes():
   return (core_features.versao_tabela(), core_features.CATALOGO_VERSAO,
-          core_features.versao_derivadas(), core_modelos.versao_registro(), core_aplicacoes.versao())
+          core_features.versao_derivadas(), core_modelos.versao_registro(), core_aplicacoes.versao(),
+          core_aplicacoes.versao(core_aplicacoes.APLICACOES_NORMA_PATH))
 
 
 def _conjunto(ds: str, alvo: str, ambiente: str = ''):
@@ -203,6 +205,7 @@ def modelos_listar():
                         # Recalculada com a tabela de hoje; 'cobertura_salva' é a gravada na versão.
                         cobertura=core_features.cobertura_tr069(v['features'], tabela),
                         cobertura_salva=v.get('cobertura'),
+                        perfil_qoe=core_modelos.perfil_de(registro, nome),
                         pendentes=[f for f, c in classes.items() if c is not None and c.pendente],
                         vazadas=[f for f, c in classes.items() if c is not None and c.vazamento]))
   return {'ativo': registro['ativo'], 'versoes': versoes, 'erro': erro,
@@ -324,27 +327,63 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
   return _modelos_cache[chave]
 
 
+@app.get('/api/modelos/avaliar_qoe')
+def modelos_avaliar_qoe(features: str, ds: str = '', ambiente: str = '', contra: str = '',
+                        perfil: str = 'norma'):
+  """QoE do rascunho (classificador por aplicação, nota por prédio) e o veredito contra `contra`.
+
+  Separado de /api/modelos/avaliar, que é por alvo: o QoE junta os quatro alvos. As duas
+  versões são medidas com o perfil pedido, nas mesmas linhas.
+
+  A chamada é síncrona e leva cerca de 40 s nos dados reais (um acerto de cache é instantâneo):
+  o front chama uma vez por mudança do rascunho.
+  """
+  feats = _lista(features)
+  if not feats:
+    raise HTTPException(422, 'escolha pelo menos uma feature')
+  if perfil not in core_aplicacoes.PERFIS:
+    raise HTTPException(422, f'perfil {perfil!r} desconhecido; '
+                             f'use um de {list(core_aplicacoes.PERFIS)}')
+  registro, _ = _registro()
+  if contra and contra not in registro['versoes']:
+    raise HTTPException(404, f'versão {contra!r} não existe')
+  chave = (('avaliar_qoe', tuple(sorted(_lista(ds))), _ambiente(ambiente), tuple(feats), contra, perfil)
+           + _chave_versoes())
+  if chave not in _modelos_cache:
+    conjs = {alvo: _conjunto(ds, alvo, ambiente)[0] for alvo in core_qoe.ALVOS}
+    vazadas = studio_features.vazadas_do_conjunto(conjs[core_qoe.ALVOS[0]])
+    base = registro['versoes'][contra]['features'] if contra else None
+    try:
+      _modelos_cache[chave] = core_qoe.avaliar(conjs, feats, vazadas, perfil, features_base=base)
+    except (ValueError, AssertionError) as erro:
+      raise HTTPException(422, str(erro))
+  return _modelos_cache[chave]
+
+
 # Rótulo de cada etapa da avaliação completa, na ordem em que roda (progresso do salvar e do reavaliar).
 ETAPAS = {'speedtest_down_mbps': 'download', 'speedtest_up_mbps': 'upload',
           'latency_ms': 'latência', 'jitter_ms': 'jitter'}
-N_ETAPAS = len(ETAPAS) + 1
+# Depois dos quatro alvos: o "atende" da regressão e o QoE do classificador.
+N_ETAPAS = len(ETAPAS) + 2
 
 
-def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None, progresso=None) -> dict:
+def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None, progresso=None,
+                       perfil_qoe: str = 'atual') -> dict:
   """Avaliação dos quatro alvos, de "atende em throughput" e de "atende completo", guardada junto da versão.
 
   Latência e jitter levam também o resumo quantílico (p50 e p90). Colunas hoje marcadas como
   vazamento saem da conta e ficam em `removidas_por_vazamento` (a versão salva antes da marcação
   continua avaliável, como no benchmark). `progresso(evento)` recebe {'etapa', 'passo', 'passos'}
-  antes de cada uma das cinco etapas.
+  antes de cada uma das seis etapas (a última é o QoE, medido com o perfil `perfil_qoe`).
   """
   avisar = progresso or (lambda evento: None)
   saida, previsoes, quantis = {}, {}, {}
-  aplicacoes = core_aplicacoes.carregar()
-  removidas = set()
+  aplicacoes = core_aplicacoes.carregar_perfil(perfil_qoe)
+  conjs, removidas = {}, set()
   for passo, alvo in enumerate(studio_features.TARGETS):
     avisar({'etapa': ETAPAS[alvo], 'passo': passo, 'passos': N_ETAPAS})
     conj, _ = _conjunto(ds, alvo, ambiente)
+    conjs[alvo] = conj
     vazadas = studio_features.vazadas_do_conjunto(conj)
     usadas = [f for f in features if f not in vazadas]
     fora = [f for f in features if f in vazadas]
@@ -358,12 +397,11 @@ def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict
     if alvo in core_quantis.ALVOS_QUANTILICOS:
       quantis[alvo] = _prever_quantis(conj, usadas)
       saida[alvo]['quantis'] = core_quantis.resumir_quantis(quantis[alvo], resumo['n'])
-  avisar({'etapa': 'atende', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
+  avisar({'etapa': 'atende', 'passo': N_ETAPAS - 2, 'passos': N_ETAPAS})
   usadas = [f for f in features if f not in removidas]
   saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
                                                      previsoes['speedtest_up_mbps'], aplicacoes)
-  conj_dn, _ = _conjunto(ds, 'speedtest_down_mbps', ambiente)
-  conj_up, _ = _conjunto(ds, 'speedtest_up_mbps', ambiente)
+  conj_dn, conj_up = conjs['speedtest_down_mbps'], conjs['speedtest_up_mbps']
   den = denominador or {}
   decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, usadas, aplicacoes,
                                          den.get(conj_dn.alvo), den.get(conj_up.alvo))
@@ -374,6 +412,9 @@ def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict
   saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
                                                           previsoes['speedtest_up_mbps'],
                                                           quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)
+  avisar({'etapa': 'QoE', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
+  saida['qoe'] = core_qoe.avaliar(conjs, usadas, sorted(removidas), perfil_qoe)
+  saida['perfil'] = perfil_qoe
   saida['removidas_por_vazamento'] = sorted(removidas)
   return saida
 
@@ -738,6 +779,7 @@ class NovaVersao(BaseModel):
   desenho: Optional[str] = None
   base: Optional[str] = None
   ativar: bool = False
+  perfil_qoe: str = 'norma'
 
 
 @app.post('/api/modelos')
@@ -748,6 +790,9 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
   dizer nada. O front acompanha por GET /api/modelos/salvar/{id}.
   """
   _so_local(request)
+  if corpo.perfil_qoe not in core_aplicacoes.PERFIS:
+    raise HTTPException(422, f'perfil {corpo.perfil_qoe!r} desconhecido; '
+                             f'use um de {list(core_aplicacoes.PERFIS)}')
   tabela, erro_tabela = _tabela()
   if erro_tabela:
     raise HTTPException(422, erro_tabela)
@@ -772,11 +817,13 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
   conhecidas = _colunas_conhecidas()
 
   def tarefa(progresso):
-    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador, progresso=progresso)
+    avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador, progresso=progresso,
+                                  perfil_qoe=corpo.perfil_qoe)
     try:
       core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, conhecidas,
                                  tabela, origem='selecao-gulosa' if selecao else 'studio',
-                                 avaliacao=avaliacao, selecao=selecao, denominador=denominador)
+                                 avaliacao=avaliacao, selecao=selecao, denominador=denominador,
+                                 perfil_qoe=corpo.perfil_qoe)
     finally:
       _ajustes.clear()
       _modelos_cache.clear()
@@ -791,7 +838,8 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
         _modelos_cache.clear()
     return {'nome': corpo.nome, 'ativa': corpo.ativar and erro_ativar is None, 'erro_ativar': erro_ativar}
 
-  return _iniciar_job(('salvar', corpo.nome, tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente))
+  return _iniciar_job(('salvar', corpo.nome, tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente),
+                       corpo.perfil_qoe, tuple(corpo.features))
                       + _chave_versoes(), tarefa)
 
 
@@ -849,7 +897,7 @@ def modelos_reavaliar(corpo: Reavaliacao, request: Request):
       try:
         etapa = lambda evento, nome=nome, i=i: progresso({'nome': nome, 'i': i, 'total': len(nomes), **evento})
         avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, versao['features'], versao.get('denominador'),
-                                       progresso=etapa)
+                                       progresso=etapa, perfil_qoe=core_modelos.perfil_de(registro, nome))
         nota = core_modelos.nota_reavaliacao(versao.get('avaliacao'), avaliacao, date.today().isoformat())
         core_modelos.reavaliar(nome, avaliacao, core_features.cobertura_tr069(versao['features'], tabela), nota)
       except Exception as falha:
