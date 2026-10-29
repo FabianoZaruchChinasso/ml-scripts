@@ -1,0 +1,39 @@
+{
+  "classes": {
+    "Excelente": "excelente",
+    "Bom": "media",
+    "Ok": "media",
+    "Ruim": "ruim",
+    "Ausente": "ruim"
+  },
+  "posicoes": {
+    "villa_res_sala": "Excelente",
+    "villa_res_cozinha": "Ausente",
+    "villa_res_escritorio": "Excelente",
+    "villa_res_quarto1": "Bom",
+    "villa_res_quarto2": "Ruim",
+    "villa_esc_recepcao": "Bom",
+    "villa_esc_sala1": "Excelente",
+    "villa_esc_sala2": "Excelente",
+    "villa_esc_copa": "Excelente",
+    "villa_esc_estoque": "Bom",
+    "marcelo-copa": "Bom",
+    "marcelo-copa-split": "Bom",
+    "marcelo-sala-estar": "Ruim",
+    "marcelo-quarto": "Excelente",
+    "marcelo-quarto-split": "Excelente",
+    "marcelo-inf-sala": "Bom",
+    "marcelo-inf-sala-split": "Bom",
+    "marcelo-inf-quarto": "Ok",
+    "marcelo-inf-quarto-split": "Ok",
+    "marcelo-inf-ext": "Ruim",
+    "res-sala": "Excelente",
+    "res-quarto": "Bom",
+    "res-suite": "Ruim",
+    "cwpb-1": "Excelente",
+    "cwpb-2": "Bom",
+    "hotmilk-aquario": "Excelente",
+    "hotmilk-aquario-fora": "Excelente",
+    "hotmilk-copa": "Ok"
+  }
+}

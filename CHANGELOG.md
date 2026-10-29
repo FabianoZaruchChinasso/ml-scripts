@@ -1,3 +1,45 @@
+# Changelog — Rótulo de percepção por cômodo (classificador de 3 classes)
+
+**Data:** 2026-10-29
+
+## Por quê
+
+Na reunião de 2026-10-28 ficou alinhado rotular a percepção de quem estava no local. Este experimento
+mede se esse rótulo é aprendível com as features do roteador. Spec:
+`docs/superpowers/specs/2026-10-29-rotulo-percepcao-design.md`; plano:
+`docs/superpowers/plans/2026-10-29-rotulo-percepcao.md`.
+
+## Mudanças
+
+- `core/percepcao.json`: rótulo de 28 posições em 5 níveis, agrupados em excelente / media / ruim.
+- `core/percepcao.py`: carga validada, peso por posição, RF com LOGO por prédio, métricas por posição, regra de leitura.
+- `percepcao_benchmark.py` novo (`MODELO=<nome>` e `DATASETS=a,b` como no `qoe_mlflow.py`). Studio, MLflow e `core/qoe.py` não mudaram.
+
+## Efeito medido
+
+Base padrão (7 datasets, 1710 linhas), 27 posições (10 excelente, 12 media, 5 ruim) em 6 prédios, LOGO por prédio,
+acurácia balanceada por posição (acaso 0,333). `marcelo-quarto` está rotulado mas não tem linhas na base padrão.
+
+| Features | Nota | Intervalo 90% |
+|---|---|---|
+| v5 | 0,594 | 0,427 a 0,738 |
+| piso (só radio) | 0,389 | 0,279 a 0,489 |
+| v5 - piso | +0,206 | 0,032 a 0,373 |
+
+Leitura pela regra do spec (seção 3.4): aprendível = sim (limite inferior da v5 acima de 0,333); v5 contra o piso = melhor.
+Por linha (só referência): v5 0,544, piso 0,355. Erros graves (excelente <-> ruim): v5 1, piso 2.
+
+A v5 acertou 17 das 27 posições. Acertos por prédio: hotmilk 3/3, coworking 2/2, casa-marcelo 6/9, residencia 2/3,
+villa-residencial 2/5, villa-escritorio 2/5. Os dois prédios do Villa, de um único avaliador, são os mais errados.
+A classe ruim é a mais difícil: 2 de 5 acertos; `villa_res_cozinha` e `villa_res_quarto2` saem como media.
+
+## Limites da leitura
+
+- 27 posições e um avaliador por prédio: o LOGO não separa o critério do avaliador do Wi-Fi do prédio.
+- O piso (só radio) fica abaixo do acaso na nota (0,389, limite superior 0,489 no intervalo), ao passo que a v5 tem o intervalo
+  largo (0,43 a 0,74). O resultado diz que há sinal, não quanto.
+- Testes que falham (download vazio ou 0) não entram na base (14 descartados); `villa_res_cozinha`, rotulada Ausente, não tem nenhum.
+
 # Changelog — QoE com limiares de norma (classificador por aplicação, nota por prédio)
 
 **Data:** 2026-10-27
