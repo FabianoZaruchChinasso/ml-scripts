@@ -1,3 +1,61 @@
+# Changelog — Régua por cômodo (experiência relativa à casa)
+
+**Data:** 2026-10-29
+
+## Por quê
+
+Depois da reavaliação de 2026-10-28, todas as versões ficaram em cerca de 0,66 no Studio: os dois prédios
+do Villa prendem um terço da nota de QoE em 0,5, e o alvo de limiar absoluto não separa as versões. Esta
+régua mede a pergunta do produto, "quais cômodos de uma casa nova estão ruins?", com a experiência relativa
+à casa. Spec: `docs/superpowers/specs/2026-10-29-regua-comodo-design.md`; plano:
+`docs/superpowers/plans/2026-10-29-regua-comodo.md`.
+
+## Mudanças
+
+- `core/comodo.py`: verdade por posição (linhas sozinhas no rádio; capacidade como fração da melhor posição do prédio; latência e jitter p90 contra a norma), classe bom / degradado / ruim, "apto para jogo", previsão pelas funções fora do fold existentes, nota sobre posições juntas. Versão `2026-10-29.1`.
+- `comodo_benchmark.py` novo. Studio, registro e as réguas de regressão e QoE não mudaram.
+
+## Efeito medido
+
+Base padrão, 981 de 1708 linhas sozinhas no rádio, 27 posições, 6 prédios. Verdade: 14 bom, 6 degradado,
+7 ruim; 10 posições aptas para jogo. Verdade contra o rótulo humano: acurácia balanceada 0,495
+(17 de 27 posições coincidem). As 10 discordâncias: rotuladas Excelente ou Bom e classificadas degradado
+(hotmilk-aquario, hotmilk-aquario-fora, marcelo-copa, marcelo-copa-split, cwpb-2); res-quarto, Bom no rótulo e
+ruim na verdade; hotmilk-copa, Ok no rótulo e bom na verdade; marcelo-inf-quarto e marcelo-inf-quarto-split, Ok
+no rótulo e ruins na verdade; villa_res_quarto2, Ruim no rótulo e degradado na verdade.
+
+Nota = acurácia balanceada das 3 classes por posição (acaso 0,333), LOGO por prédio, versão ativa = v1:
+
+| Versão | Nota (IC 90%) | vs piso (IC 90%) | vs v1 (IC 90%) | Acertos | Graves | Jogo |
+|---|---|---|---|---|---|---|
+| piso (só radio) | 0,452 (0,346 a 0,553) | | -0,191 (-0,328 a -0,059) | 14/27 | 5 | 0,550 |
+| v1 | 0,643 (0,546 a 0,765) | +0,191 (+0,059 a +0,328) | | 16/27 | 0 | 0,500 |
+| v2-tr069 | 0,643 (0,556 a 0,750) | +0,191 (+0,053 a +0,322) | +0,000 (-0,048 a +0,042) | 16/27 | 0 | 0,500 |
+| v3-tr069 | 0,722 (0,630 a 0,833) | +0,270 (+0,164 a +0,386) | +0,079 (+0,000 a +0,170) | 18/27 | 0 | 0,500 |
+| v4 | 0,722 (0,630 a 0,833) | +0,270 (+0,164 a +0,386) | +0,079 (+0,000 a +0,170) | 18/27 | 0 | 0,500 |
+| v5 | 0,722 (0,630 a 0,833) | +0,270 (+0,164 a +0,386) | +0,079 (+0,000 a +0,170) | 18/27 | 2 | 0,500 |
+
+Pela regra de comparação (intervalo todo acima de 0 é melhor), todas as versões são **melhores que o piso**
+e todas **empatam com a v1**; o limite inferior de v3, v4 e v5 contra a v1 fica em +0,000.
+
+Leitura:
+
+- Com esta régua, as versões se separam do piso (0,45) por uma margem de 0,19 a 0,27, ao contrário dos 0,04 a 0,05 da nota de QoE sem os dois prédios do Villa (0,739 a 0,744 contra o piso em 0,695).
+- v3, v4 e v5 acertam 18 posições, v1 e v2-tr069 16; a diferença entre elas fica dentro do ruído.
+- Todas as versões erram na mesma direção: classificam como degradado cômodos que a verdade dá como bom (7 de 14 posições "bom" em v3 e v4), e nenhuma erra bom por ruim, exceto a v5 (2 posições da casa-marcelo).
+  - Causa (investigada em v1 e v3): todos esses erros disparam pela capacidade (razão abaixo de 0,75), nenhum por latência ou jitter; com download e upload reais a nota vai a 1,0. O modelo não alcança o topo do prédio (villa-residencial: melhor posição prevista 245/385 Mbps contra 682/671 reais; hotmilk, upload 94 contra 177) e subestima o upload da casa-marcelo (50 a 77 contra 115 a 153 Mbps; ali o upload é maior que o download). Treinar a fração do V0 da casa em vez de Mbps absolutos não ajudou (v1 0,643 para 0,564; v3 0,722 para 0,579).
+  - Os 2 erros graves da v5 vêm do conjunto de features dela, não do denominador de eficiência: as features da v5 sem denominador repetem os erros (upload previsto 21 e 24 Mbps contra 115 e 144 reais); as features da v3 com o denominador da v5 não têm erros graves. A v5 não tem `router_expected_throughput_mbps`, `eficiencia_espectral_tx` e `perda_percurso_db`; qual delas pesa não foi isolado.
+- "Apto para jogo" fica em 0,500 em todas as versões porque nenhuma prevê "apto" em posição alguma (jitter p90 previsto mínimo de 13 a 15 ms, limiar de 10 ms). A causa é a correção conformal: ela calibra o p90 de cada linha, e a régua compara a mediana desses p90 com um limiar definido sobre o p90 da posição, que é outra estatística. Na v3, sem a correção o jitter previsto mínimo cai para 6 ms, 14 posições são previstas como aptas e a acurácia balanceada sobe para 0,644 (com a mediana, q50, 24 aptas e 0,588). A verdade também é instável: em 8 das 27 posições a classe "apto" muda em mais de 10% das reamostras das linhas (o jitter p90 do villa-escritório fica entre 9,6 e 10,8 ms, colado no limiar). Não corrigido nesta régua.
+- villa-residencial é o prédio mais difícil (1 a 2 de 5); villa-escritorio acerta 5 de 5 em todas as versões.
+
+## Limites
+
+- A posição que define a referência é "bom" em capacidade por construção.
+- A referência é relativa: num prédio em que todos os cômodos são ruins, ela fica errada.
+- O V0 vem da verdade da própria casa de teste (tratado como conhecido).
+- Nota provisória até o teste de vídeo e o V0 com cabo existirem.
+- 27 posições e 6 prédios: o intervalo reamostra posições com os prédios fixos e não mede a variação entre prédios.
+
 # Changelog — Rótulo de percepção por cômodo (classificador de 3 classes)
 
 **Data:** 2026-10-29
