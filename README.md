@@ -2,6 +2,8 @@
 
 This project provides Python scripts to collect WIFI metrics from InfluxDB and transform them into CSV datasets for analysis and ML workflows.
 
+For the QoE model (per-room Wi-Fi quality from TR-069 counters), see [QoE model from TR-069](#qoe-model-from-tr-069) at the end of this file.
+
 ## Main scripts
 
 - `src/get-metrics.py`: collect raw metrics from InfluxDB into CSV.
@@ -57,3 +59,113 @@ Run tests with:
 ```bash
 python -m unittest tests/test_fn_metrics.py
 ```
+
+## QoE model from TR-069
+
+The model estimates the Wi-Fi quality of each room in a home using only counters the router exposes over TR-069 (the protocol an ISP uses to read and configure the router): transmit and receive PHY rates, signal, SNR, noise, channel width, client mode, band (`radio`) and number of clients. The predictions do not need a speed test; the per-room classification still uses one reference measurement per home (see "Known limitations").
+
+### What the model answers
+
+For each position (room), the model predicts download, upload, latency and jitter. From these it classifies the room relative to the rest of the home (the "per-room ruler", `comodo` in the code):
+
+- **good**, **degraded** or **poor** (`bom`, `degradado`, `ruim`);
+- **fit for cloud gaming** (`apto para jogo`), yes or no.
+
+The code lives in `src/ml/core/`: `carga.py` (dataset loading), `features.py`, `modelos.py` (version registry), `avaliacao.py` (regression evaluation), `quantis.py` (latency and jitter), `comodo.py` (per-room ruler).
+
+### Data
+
+The canonical set has 7 datasets in `data/`: `20260827-metrics.zip`, `20260917-metrics-fix.zip`, `20260921-metrics-distcalc.zip`, `20260925-metrics.zip`, `20260928-metrics.zip`, `villa-20261025.csv` and `villa-esc-20261026.csv`. That is 1708 rows, 6 buildings (casa-marcelo, coworking, hotmilk, residencia, villa-escritorio, villa-residencial) and 27 positions in the per-room ruler. Buildings are registered in `src/ml/core/predios.json`; column classification is in `src/ml/core/column_provenance.json`.
+
+Counters measured during the speed test (`router_tx_retries`, `router_rx_duration_us`, `router_tx_duration_us`, `router_tx_failed`, `router_rx_drop_misc`) are deltas over the test window itself. They leak the result, so the evaluation drops them.
+
+### How it is evaluated
+
+**LOGO (leave-one-building-out):** each building is predicted by a model trained on the other five. 90% intervals come from a bootstrap over positions, stratified by building.
+
+**Floor (`piso`):** the same pipeline using only the band (`radio`). It is the minimum any version has to beat.
+
+**Per-room ruler** (`src/ml/core/comodo.py`):
+
+| Item | Rule |
+|---|---|
+| Rows used | only rows alone on the radio (`concorrentes_mesmo_radio == 1`): 981 of 1708 |
+| Capacity ratio | min(download, upload) of the position / the same value at the best measured position of the building (reference V0, provisional) |
+| Class by capacity | ratio < 0.25 poor; < 0.75 degraded; otherwise good |
+| Latency and jitter | position p90 against the "norma" profile (`src/ml/core/aplicacoes_norma.json`) |
+| Failures | failing Web browsing (Navegação) drops the room to poor; failing Video call (Chamada de vídeo) caps it at degraded |
+| Fit for gaming | position p90 of latency and jitter within the Cloud gaming limits (80 ms and 10 ms) |
+| Score | balanced accuracy over positions |
+
+Latency and jitter are predicted by quantile models (p50 and p90). The CQR conformal correction (conformalized quantile regression, which adjusts the p90 to reach nominal coverage) is used in the coverage metrics. The per-room ruler uses the p90 without it (`q90_bruto`), because CQR is conservative per row and left every position outside "fit for gaming".
+
+### Versions
+
+The registry is `src/ml/core/modelos.json`. The active version is **v5** (TR-069 coverage "proxy": standard TR-181 only, plus a contention proxy).
+
+| Version | What changes |
+|---|---|
+| v1 | Original model (`MODELO_ATUAL`), with `router_expected_throughput_mbps` and other counters; the window counters are dropped in evaluation |
+| v2-tr069 | TR-069 only: PHY rate, SNR, signal, channel width, spectral efficiency and path loss |
+| v3-tr069 | v2 plus contention (`n_clients`, `concorrentes_mesmo_radio`) |
+| v4 | v3 predicting efficiency (throughput / PHY rate) on 5 GHz and absolute Mbps on 2.4 GHz |
+| v5 | Same as v4 without `router_expected_throughput_mbps` (an extension outside TR-181); costs about 0.02 of "atende" |
+
+Numbers stored in `modelos.json` (90% intervals in parentheses; the R² columns come from the MLflow "Studio" runs):
+
+| Version | Per-room score | Fit for gaming | Atende completo | R² download | R² upload |
+|---|---|---|---|---|---|
+| floor (`radio` only) | 0.452 (0.346 to 0.553) | 0.550 (0.500 to 0.611) | - | - | - |
+| v1 | 0.643 (0.546 to 0.765) | 0.782 (0.667 to 0.917) | 0.661 | 0.594 | 0.434 |
+| v2-tr069 | 0.643 (0.556 to 0.750) | 0.594 (0.441 to 0.744) | 0.652 | 0.549 | 0.519 |
+| v3-tr069 | 0.722 (0.630 to 0.833) | 0.644 (0.500 to 0.782) | 0.661 | 0.597 | 0.650 |
+| v4 | 0.722 (0.630 to 0.833) | 0.644 (0.500 to 0.782) | 0.666 | 0.759 | 0.752 |
+| v5 (active) | 0.722 (0.630 to 0.833) | 0.673 (0.528 to 0.815) | 0.661 | 0.746 | 0.739 |
+
+"Atende completo" is the balanced accuracy, per row and per application, of "the measurement meets the application" (download and upload above the thresholds, latency and jitter p90 below), comparing predictions with measurements; the number is the mean over the four applications. R² is pooled, i.e. computed over all rows predicted outside the training buildings.
+
+### How to run
+
+Everything from the repository root.
+
+```bash
+python3 -m venv venv && venv/bin/pip install -r requirements.txt   # environment
+venv/bin/python -m unittest discover -s tests -p 'test_*.py'       # Python tests, about 30 min
+node --test tests/js/logica.test.js                                # Studio JS tests
+venv/bin/python src/ml/studio.py --port 8100                       # Studio: http://127.0.0.1:8100
+venv/bin/python src/ml/comodo_benchmark.py                         # per-room ruler (MODELO=<v> restricts)
+MODELO=v5 ALVO=speedtest_down_mbps venv/bin/python src/ml/regression_mlflow.py
+MODELO=v5 venv/bin/python src/ml/qoe_mlflow.py
+venv/bin/python src/ml/studio_mlflow.py                            # logs the Studio evaluation
+```
+
+In the scripts, `MODELO` is the version (default: the active one), `ALVO` is the target of `regression_mlflow.py` (default: download; also `speedtest_up_mbps`, `latency_ms`, `jitter_ms`) and `DATASETS=a.zip,b.zip` changes the dataset set (default: the canonical one). Recreating the models of all versions takes about 50 min.
+
+### MLflow
+
+`res/mlflow/` is a versioned snapshot of MLflow from 2026-11-03 with v1 to v5, in the experiments "MLflow Wifi Regressions", "MLflow Wifi QoE" and "MLflow Wifi Studio". To open it (mlflow 3.15.1):
+
+```bash
+cd res/mlflow
+../../venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5055
+```
+
+Then open http://127.0.0.1:5055 and switch the interface to "Model training".
+
+- Model binaries (`model.skops`, about 45 MB each) are not versioned; the folder's `README.md` explains how to recreate them.
+- The working MLflow at the root (`mlflow.db` and `mlruns/`) is in `.gitignore`.
+- Do not click "explore demo", "Detect Issues" or the assistant prompts: they write demo data into the open database. If that happens, run `git restore res/mlflow/mlflow.db`.
+
+### Known limitations
+
+- Only 6 buildings and 27 positions. The intervals are wide.
+- Every version beats the floor, but v3, v4 and v5 tie with v1 on the per-room ruler (difference +0.079, 90% interval 0.000 to 0.170). That is why activation in the Studio, which only unlocks on a "better" verdict, stays locked.
+- The class uses the best measured position of the home as reference. A new home in production does not have that reference without a reference test.
+- The "fit for gaming" estimator was chosen after looking at these same 27 positions. Only v1 and v5 have a lower bound above 0.5, and the model tends to over-predict fit (12 to 14 positions against 10 real ones).
+- The human perception label agrees with the ruler's truth on 17 of 27 positions: the label judges absolute experience, the ruler judges relative to the home.
+- villa-escritorio is capped at 93.1 Mbps download and 100.2 upload (link limit, in `predios.json`), so per-building R² there is meaningless.
+
+### Further reading
+
+- `CHANGELOG.md` (in Portuguese): decisions and measured effects, newest first.
+- `docs/superpowers/specs/` and `docs/superpowers/plans/`: designs and plans, by date.
