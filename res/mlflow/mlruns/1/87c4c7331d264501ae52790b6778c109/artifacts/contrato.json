@@ -1,0 +1,39 @@
+{
+  "features": [
+    "client_mode",
+    "radio",
+    "router_rx_rate_mbps",
+    "router_snr",
+    "router_signal_dbm",
+    "router_tx_rate_mbps",
+    "channel_width",
+    "n_clients",
+    "concorrentes_mesmo_radio"
+  ],
+  "colunas": [
+    "client_mode_WiFi 4 (11n)",
+    "client_mode_WiFi 5 (11ac)",
+    "client_mode_WiFi 6 (11ax)",
+    "radio_2.4ghz",
+    "radio_5ghz",
+    "router_rx_rate_mbps",
+    "router_snr",
+    "router_signal_dbm",
+    "router_tx_rate_mbps",
+    "channel_width",
+    "n_clients",
+    "concorrentes_mesmo_radio"
+  ],
+  "categorias": {
+    "client_mode": [
+      "WiFi 4 (11n)",
+      "WiFi 5 (11ac)",
+      "WiFi 6 (11ax)"
+    ],
+    "radio": [
+      "2.4ghz",
+      "5ghz"
+    ]
+  },
+  "uso": "X = producao.preparar_entrada(linhas, contrato)[0]; modelo.predict(X)"
+}

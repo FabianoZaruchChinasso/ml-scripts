@@ -1,0 +1,8 @@
+{
+  "quantil": 0.9,
+  "correcao_log": 0.4596034092288721,
+  "escala": "log1p",
+  "uso": "q90_ms = expm1(predict(X) + correcao_log)",
+  "sem_correcao": false,
+  "versao_regua": "2026-10-08.1"
+}

@@ -1,0 +1,37 @@
+{
+  "perfil": "atual",
+  "versao_qoe": "2026-10-27.1",
+  "limiares": {
+    "Navega\u00e7\u00e3o": {
+      "dn": 2,
+      "up": 0.5,
+      "lat": 300,
+      "jit": 100
+    },
+    "Chamada de v\u00eddeo": {
+      "dn": 3.8,
+      "up": 3.8,
+      "lat": 150,
+      "jit": 30
+    },
+    "Streaming 4K": {
+      "dn": 25,
+      "up": 0,
+      "lat": 500,
+      "jit": 100
+    },
+    "Jogo em nuvem": {
+      "dn": 15,
+      "up": 1,
+      "lat": 40,
+      "jit": 10
+    }
+  },
+  "fontes": {},
+  "restricoes": {
+    "router_expected_throughput_mbps": 1,
+    "router_rx_rate_mbps": 1,
+    "router_tx_rate_mbps": 1
+  },
+  "uso": "atende[aplica\u00e7\u00e3o] = modelo_<aplica\u00e7\u00e3o>.predict(producao.preparar_entrada(linhas, contrato)[0]) == 1"
+}

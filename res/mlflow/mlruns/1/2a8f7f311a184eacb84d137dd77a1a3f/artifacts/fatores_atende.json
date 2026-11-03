@@ -1,0 +1,38 @@
+{
+  "fatores": {
+    "Navega\u00e7\u00e3o": 6.1688,
+    "Chamada de v\u00eddeo": 8.7241,
+    "Streaming 4K": 2.3784,
+    "Jogo em nuvem": 3.0844
+  },
+  "perfil": "atual",
+  "aplicacoes": {
+    "Navega\u00e7\u00e3o": {
+      "dn": 2,
+      "up": 0.5,
+      "lat": 300,
+      "jit": 100
+    },
+    "Chamada de v\u00eddeo": {
+      "dn": 3.8,
+      "up": 3.8,
+      "lat": 150,
+      "jit": 30
+    },
+    "Streaming 4K": {
+      "dn": 25,
+      "up": 0,
+      "lat": 500,
+      "jit": 100
+    },
+    "Jogo em nuvem": {
+      "dn": 15,
+      "up": 1,
+      "lat": 40,
+      "jit": 10
+    }
+  },
+  "versao_regua": "2026-10-08.1",
+  "uso": "atende = previsao_download >= k * dn e previsao_upload >= k * up, k = fatores[aplica\u00e7\u00e3o]",
+  "origem": "LOGO com todos os pr\u00e9dios, modelo da r\u00e9gua (core/avaliacao.modelo_regua)"
+}

@@ -1,10 +1,57 @@
-# Changelog — Ajustes antes da avaliação externa: apto para jogo, v5 ativa, testes
+# Changelog — MLflow versionado: v1 a v5 e as notas do Studio
 
 **Data:** 2026-11-03
 
 ## Por quê
 
-Uma avaliadora externa (aluna de mestrado) vai avaliar o modelo completo. O "apto para jogo" ficava em 0,500 em
+O MLflow de trabalho (`mlflow.db` e `mlruns/` na raiz) é ignorado pelo git e tem 2,1 GB, quase tudo
+modelos treinados: quem clona o repositório não vê run nenhum. E as notas que o Studio mostra (nota por
+cômodo, apto para jogo, "atende") não iam para o MLflow.
+
+## Mudanças
+
+- `studio_mlflow.py`: registra, para cada versão do registro, a avaliação que o Studio guardou
+  (experimento "MLflow Wifi Studio", um run `<versão>-studio`, sem treino). Testes em
+  `tests/test_studio_mlflow.py`.
+- `res/mlflow/`: cópia do MLflow com os runs de 2026-11-03 de v1 a v5 nos 7 datasets padrão (70 de
+  regressão, 5 de QoE, 5 do Studio), com caminhos relativos e sem os binários dos modelos (`model.skops`,
+  cerca de 45 MB cada; no lugar fica `MODELO_NAO_VERSIONADO.txt` com o comando para recriar). 8,3 MB.
+  Como abrir: `res/mlflow/README.md`.
+- `.gitignore`: `/mlruns/` e `/mlflow.db` presos à raiz, para a cópia em `res/mlflow/` entrar.
+
+## Efeito medido
+
+Runs "Studio" (iguais ao `modelos.json`):
+
+| Versão | Nota por cômodo | Apto para jogo | Atende completo | R² download | R² upload |
+|---|---|---|---|---|---|
+| v1 | 0,643 | 0,782 | 0,661 | 0,594 | 0,434 |
+| v2-tr069 | 0,643 | 0,594 | 0,652 | 0,549 | 0,519 |
+| v3-tr069 | 0,722 | 0,644 | 0,661 | 0,597 | 0,650 |
+| v4 | 0,722 | 0,644 | 0,666 | 0,759 | 0,752 |
+| v5 (ativa) | 0,722 | 0,673 | 0,661 | 0,746 | 0,739 |
+
+## Verificação
+
+- `tests/test_studio_mlflow.py`: 5 testes, OK.
+- A cópia aberta com `mlflow ui` a partir de `res/mlflow/`: os três experimentos, 70/5/5 runs, artefatos
+  listados e baixados; nenhum caminho `/home/...` sobrou.
+
+## Limites
+
+- O MLflow 3 gera um experimento "MLflow Demo" dentro do banco aberto se alguém clicar em "explore demo"
+  na interface, e não há opção para desligar: o README recomenda abrir uma cópia da pasta.
+- Os modelos não estão no git; recriar todos leva cerca de 50 min (`regression_mlflow.py` e
+  `qoe_mlflow.py` com `MODELO=<versão>`).
+- A cópia é uma foto de 2026-11-03: novos runs só entram nela refazendo a cópia.
+
+# Changelog — Revisão do modelo: apto para jogo, v5 ativa, testes
+
+**Data:** 2026-11-03
+
+## Por quê
+
+Revisão do modelo completo. O "apto para jogo" ficava em 0,500 em
 todas as versões: a régua comparava a mediana do p90 por linha com correção CQR (um limite conservador por
 linha; o jitter previsto nunca ficava abaixo do limite de 10 ms) com o p90 da posição na verdade. Plano:
 `docs/superpowers/plans/2026-11-03-ajustes-avaliacao.md`.

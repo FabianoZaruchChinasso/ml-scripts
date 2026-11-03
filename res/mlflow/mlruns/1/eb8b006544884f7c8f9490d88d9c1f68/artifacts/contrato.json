@@ -1,0 +1,26 @@
+{
+  "features": [
+    "router_expected_throughput_mbps",
+    "router_noise",
+    "router_rx_rate_mbps",
+    "router_signal_avg_dbm",
+    "router_signal_dbm",
+    "router_snr",
+    "router_tx_rate_mbps",
+    "router_opportunity_medium_use",
+    "client_opportunity_medium_use"
+  ],
+  "colunas": [
+    "router_expected_throughput_mbps",
+    "router_noise",
+    "router_rx_rate_mbps",
+    "router_signal_avg_dbm",
+    "router_signal_dbm",
+    "router_snr",
+    "router_tx_rate_mbps",
+    "router_opportunity_medium_use",
+    "client_opportunity_medium_use"
+  ],
+  "categorias": {},
+  "uso": "X = producao.preparar_entrada(linhas, contrato)[0]; modelo.predict(X)"
+}

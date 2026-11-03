@@ -1,0 +1,1130 @@
+{
+  "atende_ajustado": {
+    "avisos": [],
+    "fatores": {
+      "Chamada de v\u00eddeo": {
+        "casa-marcelo": 3.0844,
+        "coworking": 7.336,
+        "hotmilk": 7.336,
+        "residencia": 11.3137,
+        "villa-escritorio": 6.7272,
+        "villa-residencial": 3.0844
+      },
+      "Jogo em nuvem": {
+        "casa-marcelo": 6.1688,
+        "coworking": 4.0,
+        "hotmilk": 2.8284,
+        "residencia": 5.6569,
+        "villa-escritorio": 2.8284,
+        "villa-residencial": 2.5937
+      },
+      "Navega\u00e7\u00e3o": {
+        "casa-marcelo": 16.0,
+        "coworking": 12.3377,
+        "hotmilk": 12.3377,
+        "residencia": 16.0,
+        "villa-escritorio": 5.6569,
+        "villa-residencial": 5.1874
+      },
+      "Streaming 4K": {
+        "casa-marcelo": 3.3636,
+        "coworking": 2.3784,
+        "hotmilk": 2.0,
+        "residencia": 3.3636,
+        "villa-escritorio": 2.181,
+        "villa-residencial": 1.834
+      }
+    },
+    "fatores_producao": {
+      "Chamada de v\u00eddeo": 7.336,
+      "Jogo em nuvem": 2.8284,
+      "Navega\u00e7\u00e3o": 5.1874,
+      "Streaming 4K": 2.0
+    },
+    "intervalo": [
+      0.7767,
+      0.8469
+    ],
+    "media": 0.8219,
+    "n": 1710,
+    "por_aplicacao": {
+      "Chamada de v\u00eddeo": 0.8253,
+      "Jogo em nuvem": 0.8204,
+      "Navega\u00e7\u00e3o": 0.7903,
+      "Streaming 4K": 0.8517
+    }
+  },
+  "atende_completo": {
+    "avisos": [],
+    "intervalo": [
+      0.6389,
+      0.6966
+    ],
+    "media": 0.661,
+    "n": 1708,
+    "por_aplicacao": {
+      "Chamada de v\u00eddeo": 0.7306,
+      "Jogo em nuvem": 0.5687,
+      "Navega\u00e7\u00e3o": 0.5663,
+      "Streaming 4K": 0.7784
+    }
+  },
+  "atende_throughput": {
+    "avisos": [],
+    "intervalo": [
+      0.6385,
+      0.6834
+    ],
+    "media": 0.6611,
+    "n": 1710,
+    "por_aplicacao": {
+      "Chamada de v\u00eddeo": 0.5634,
+      "Jogo em nuvem": 0.7744,
+      "Navega\u00e7\u00e3o": 0.515,
+      "Streaming 4K": 0.7914
+    }
+  },
+  "comodo": {
+    "ambiente": "todos",
+    "confusao": [
+      [
+        7,
+        5,
+        2
+      ],
+      [
+        0,
+        4,
+        2
+      ],
+      [
+        0,
+        0,
+        7
+      ]
+    ],
+    "contra_piso": {
+      "diferenca": 0.2698,
+      "intervalo": [
+        0.1637,
+        0.3864
+      ],
+      "resultado": "melhor"
+    },
+    "datasets": [
+      "20260827-metrics.zip",
+      "20260917-metrics-fix.zip",
+      "20260921-metrics-distcalc.zip",
+      "20260925-metrics.zip",
+      "20260928-metrics.zip",
+      "villa-20261025.csv",
+      "villa-esc-20261026.csv"
+    ],
+    "graves": 2,
+    "intervalo": [
+      0.6296,
+      0.8333
+    ],
+    "jogo": {
+      "intervalo": [
+        0.5278,
+        0.8153
+      ],
+      "nota": 0.6735,
+      "piso": {
+        "intervalo": [
+          0.5,
+          0.6111
+        ],
+        "nota": 0.55
+      }
+    },
+    "nota": 0.7222,
+    "piso": {
+      "intervalo": [
+        0.3461,
+        0.5531
+      ],
+      "nota": 0.4524
+    },
+    "piso_posicoes": [
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "cwpb-1",
+        "previsto": "bom",
+        "razao_prevista": 2.74,
+        "real": "bom",
+        "site": "coworking"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "cwpb-2",
+        "previsto": "bom",
+        "razao_prevista": 1.5074,
+        "real": "degradado",
+        "site": "coworking"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "hotmilk-aquario",
+        "previsto": "ruim",
+        "razao_prevista": 0.1378,
+        "real": "degradado",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "hotmilk-aquario-fora",
+        "previsto": "bom",
+        "razao_prevista": 1.301,
+        "real": "degradado",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "hotmilk-copa",
+        "previsto": "bom",
+        "razao_prevista": 1.301,
+        "real": "bom",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-copa",
+        "previsto": "bom",
+        "razao_prevista": 1.6503,
+        "real": "degradado",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-copa-split",
+        "previsto": "bom",
+        "razao_prevista": 1.6503,
+        "real": "degradado",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-ext",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-quarto",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-quarto-split",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-sala",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-sala-split",
+        "previsto": "bom",
+        "razao_prevista": 0.8697,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "marcelo-quarto-split",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-sala-estar",
+        "previsto": "ruim",
+        "razao_prevista": 0.0892,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "res-quarto",
+        "previsto": "degradado",
+        "razao_prevista": 0.329,
+        "real": "ruim",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "res-sala",
+        "previsto": "bom",
+        "razao_prevista": 1.5597,
+        "real": "bom",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "res-suite",
+        "previsto": "degradado",
+        "razao_prevista": 0.329,
+        "real": "ruim",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_esc_copa",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "villa_esc_estoque",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_esc_recepcao",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "villa_esc_sala1",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_esc_sala2",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_cozinha",
+        "previsto": "ruim",
+        "razao_prevista": 0.1926,
+        "real": "ruim",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_escritorio",
+        "previsto": "ruim",
+        "razao_prevista": 0.1926,
+        "real": "bom",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_quarto1",
+        "previsto": "ruim",
+        "razao_prevista": 0.1926,
+        "real": "bom",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_quarto2",
+        "previsto": "ruim",
+        "razao_prevista": 0.1926,
+        "real": "degradado",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_sala",
+        "previsto": "ruim",
+        "razao_prevista": 0.1926,
+        "real": "bom",
+        "site": "villa-residencial"
+      }
+    ],
+    "por_predio": {
+      "casa-marcelo": [
+        4,
+        9
+      ],
+      "coworking": [
+        2,
+        2
+      ],
+      "hotmilk": [
+        2,
+        3
+      ],
+      "residencia": [
+        3,
+        3
+      ],
+      "villa-escritorio": [
+        5,
+        5
+      ],
+      "villa-residencial": [
+        2,
+        5
+      ]
+    },
+    "posicoes": [
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "cwpb-1",
+        "previsto": "bom",
+        "razao_prevista": 0.873,
+        "real": "bom",
+        "site": "coworking"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "cwpb-2",
+        "previsto": "degradado",
+        "razao_prevista": 0.4776,
+        "real": "degradado",
+        "site": "coworking"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "hotmilk-aquario",
+        "previsto": "degradado",
+        "razao_prevista": 0.4434,
+        "real": "degradado",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "hotmilk-aquario-fora",
+        "previsto": "degradado",
+        "razao_prevista": 0.5087,
+        "real": "degradado",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "hotmilk-copa",
+        "previsto": "degradado",
+        "razao_prevista": 0.4113,
+        "real": "bom",
+        "site": "hotmilk"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-copa",
+        "previsto": "ruim",
+        "razao_prevista": 0.107,
+        "real": "degradado",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-copa-split",
+        "previsto": "ruim",
+        "razao_prevista": 0.1095,
+        "real": "degradado",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-ext",
+        "previsto": "ruim",
+        "razao_prevista": 0.0335,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-quarto",
+        "previsto": "ruim",
+        "razao_prevista": 0.0346,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-quarto-split",
+        "previsto": "ruim",
+        "razao_prevista": 0.0835,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-sala",
+        "previsto": "ruim",
+        "razao_prevista": 0.136,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-inf-sala-split",
+        "previsto": "degradado",
+        "razao_prevista": 0.6083,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "marcelo-quarto-split",
+        "previsto": "ruim",
+        "razao_prevista": 0.1555,
+        "real": "bom",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "marcelo-sala-estar",
+        "previsto": "ruim",
+        "razao_prevista": 0.0436,
+        "real": "ruim",
+        "site": "casa-marcelo"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "res-quarto",
+        "previsto": "ruim",
+        "razao_prevista": 0.1972,
+        "real": "ruim",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "res-sala",
+        "previsto": "bom",
+        "razao_prevista": 1.1869,
+        "real": "bom",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": false,
+        "pos": "res-suite",
+        "previsto": "ruim",
+        "razao_prevista": 0.1696,
+        "real": "ruim",
+        "site": "residencia"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_esc_copa",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "villa_esc_estoque",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_esc_recepcao",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": false,
+        "pos": "villa_esc_sala1",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_esc_sala2",
+        "previsto": "bom",
+        "razao_prevista": 1.0003,
+        "real": "bom",
+        "site": "villa-escritorio"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_res_cozinha",
+        "previsto": "ruim",
+        "razao_prevista": 0.121,
+        "real": "ruim",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": false,
+        "apto_real": true,
+        "pos": "villa_res_escritorio",
+        "previsto": "degradado",
+        "razao_prevista": 0.6061,
+        "real": "bom",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_res_quarto1",
+        "previsto": "degradado",
+        "razao_prevista": 0.4832,
+        "real": "bom",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_res_quarto2",
+        "previsto": "degradado",
+        "razao_prevista": 0.2886,
+        "real": "degradado",
+        "site": "villa-residencial"
+      },
+      {
+        "apto_previsto": true,
+        "apto_real": true,
+        "pos": "villa_res_sala",
+        "previsto": "degradado",
+        "razao_prevista": 0.5597,
+        "real": "bom",
+        "site": "villa-residencial"
+      }
+    ],
+    "versao_comodo": "2026-11-03.1"
+  },
+  "jitter_ms": {
+    "ambiente": "todos",
+    "ausentes": [],
+    "datasets": [
+      "20260827-metrics.zip",
+      "20260917-metrics-fix.zip",
+      "20260921-metrics-distcalc.zip",
+      "20260925-metrics.zip",
+      "20260928-metrics.zip",
+      "villa-20261025.csv",
+      "villa-esc-20261026.csv"
+    ],
+    "den_imputados": 0,
+    "denominador": null,
+    "intervalos": {
+      "mae": [
+        11.7333,
+        19.8704
+      ],
+      "mae_log": [
+        0.8151,
+        0.9508
+      ],
+      "pooled": [
+        -0.3153,
+        -0.0005
+      ]
+    },
+    "mae": 15.7487,
+    "mae_log": 0.8814,
+    "mae_log_por_local": {
+      "casa-marcelo": 1.1954,
+      "coworking": 0.5925,
+      "hotmilk": 0.9405,
+      "residencia": 0.8693,
+      "villa-escritorio": 0.5778,
+      "villa-residencial": 0.7616
+    },
+    "mae_por_local": {
+      "casa-marcelo": 17.6512,
+      "coworking": 7.1268,
+      "hotmilk": 17.0256,
+      "residencia": 21.8648,
+      "villa-escritorio": 10.9101,
+      "villa-residencial": 8.0726
+    },
+    "media": -29.2214,
+    "n": 9,
+    "pooled": -0.0813,
+    "por_local": {
+      "casa-marcelo": -0.4766,
+      "coworking": 0.0826,
+      "hotmilk": -0.0577,
+      "residencia": 0.008,
+      "villa-escritorio": -128.3739,
+      "villa-residencial": -46.5106
+    },
+    "quantis": {
+      "cobertura": {
+        "q50": 0.5052,
+        "q90": 0.9081
+      },
+      "correcao_por_local": {
+        "casa-marcelo": 0.531,
+        "coworking": 0.8964,
+        "hotmilk": 0.66,
+        "residencia": 0.5751,
+        "villa-escritorio": 0.7683,
+        "villa-residencial": 0.7484
+      },
+      "cruzados": 0,
+      "intervalos": {
+        "cobertura_q50": [
+          0.4583,
+          0.5581
+        ],
+        "cobertura_q90": [
+          0.8867,
+          0.9327
+        ],
+        "pinball_q50": [
+          4.4164,
+          8.6167
+        ],
+        "pinball_q90": [
+          4.6858,
+          10.4134
+        ]
+      },
+      "mediana_mae": 13.1387,
+      "n": 9,
+      "pinball": {
+        "q50": 6.5693,
+        "q90": 7.5135
+      },
+      "por_local": {
+        "casa-marcelo": {
+          "cobertura": {
+            "q50": 0.673,
+            "q90": 0.9025
+          },
+          "pinball": {
+            "q50": 6.3898,
+            "q90": 6.3019
+          }
+        },
+        "coworking": {
+          "cobertura": {
+            "q50": 0.3007,
+            "q90": 0.972
+          },
+          "pinball": {
+            "q50": 3.2187,
+            "q90": 2.9028
+          }
+        },
+        "hotmilk": {
+          "cobertura": {
+            "q50": 0.4907,
+            "q90": 0.8747
+          },
+          "pinball": {
+            "q50": 7.6716,
+            "q90": 10.1563
+          }
+        },
+        "residencia": {
+          "cobertura": {
+            "q50": 0.443,
+            "q90": 0.8418
+          },
+          "pinball": {
+            "q50": 11.3828,
+            "q90": 12.087
+          }
+        },
+        "villa-escritorio": {
+          "cobertura": {
+            "q50": 0.3429,
+            "q90": 1.0
+          },
+          "pinball": {
+            "q50": 1.4557,
+            "q90": 1.8828
+          }
+        },
+        "villa-residencial": {
+          "cobertura": {
+            "q50": 0.6296,
+            "q90": 0.9963
+          },
+          "pinball": {
+            "q50": 1.2256,
+            "q90": 2.6026
+          }
+        }
+      },
+      "sem_correcao": 0,
+      "versao_regua": "2026-10-08.1"
+    },
+    "removidas_por_vazamento": [],
+    "versao_catalogo": "2026-10-02.1",
+    "versao_regua": "2026-10-08.1",
+    "versao_tabela": "395593c283eb"
+  },
+  "latency_ms": {
+    "ambiente": "todos",
+    "ausentes": [],
+    "datasets": [
+      "20260827-metrics.zip",
+      "20260917-metrics-fix.zip",
+      "20260921-metrics-distcalc.zip",
+      "20260925-metrics.zip",
+      "20260928-metrics.zip",
+      "villa-20261025.csv",
+      "villa-esc-20261026.csv"
+    ],
+    "den_imputados": 0,
+    "denominador": null,
+    "intervalos": {
+      "mae": [
+        14.758,
+        31.1249
+      ],
+      "mae_log": [
+        0.5986,
+        0.7131
+      ],
+      "pooled": [
+        -1.1214,
+        -0.0145
+      ]
+    },
+    "mae": 22.5762,
+    "mae_log": 0.6549,
+    "mae_log_por_local": {
+      "casa-marcelo": 0.9977,
+      "coworking": 0.4113,
+      "hotmilk": 0.7,
+      "residencia": 0.6181,
+      "villa-escritorio": 0.5063,
+      "villa-residencial": 0.4592
+    },
+    "mae_por_local": {
+      "casa-marcelo": 22.3191,
+      "coworking": 8.3715,
+      "hotmilk": 31.5008,
+      "residencia": 26.0424,
+      "villa-escritorio": 30.742,
+      "villa-residencial": 7.6548
+    },
+    "media": -307.1954,
+    "n": 9,
+    "pooled": -0.1261,
+    "por_local": {
+      "casa-marcelo": -1.1362,
+      "coworking": -0.089,
+      "hotmilk": -0.0192,
+      "residencia": 0.0057,
+      "villa-escritorio": -1672.3771,
+      "villa-residencial": -169.5567
+    },
+    "quantis": {
+      "cobertura": {
+        "q50": 0.502,
+        "q90": 0.9111
+      },
+      "correcao_por_local": {
+        "casa-marcelo": 0.4247,
+        "coworking": 0.7508,
+        "hotmilk": 0.5045,
+        "residencia": 0.534,
+        "villa-escritorio": 0.5904,
+        "villa-residencial": 0.6599
+      },
+      "cruzados": 11,
+      "intervalos": {
+        "cobertura_q50": [
+          0.4635,
+          0.5425
+        ],
+        "cobertura_q90": [
+          0.8977,
+          0.9243
+        ],
+        "pinball_q50": [
+          5.5982,
+          13.0067
+        ],
+        "pinball_q90": [
+          5.527,
+          17.4597
+        ]
+      },
+      "mediana_mae": 18.353,
+      "n": 9,
+      "pinball": {
+        "q50": 9.1765,
+        "q90": 11.2792
+      },
+      "por_local": {
+        "casa-marcelo": {
+          "cobertura": {
+            "q50": 0.7138,
+            "q90": 0.8962
+          },
+          "pinball": {
+            "q50": 7.1356,
+            "q90": 6.6499
+          }
+        },
+        "coworking": {
+          "cobertura": {
+            "q50": 0.3636,
+            "q90": 1.0
+          },
+          "pinball": {
+            "q50": 3.6591,
+            "q90": 3.626
+          }
+        },
+        "hotmilk": {
+          "cobertura": {
+            "q50": 0.5319,
+            "q90": 0.8777
+          },
+          "pinball": {
+            "q50": 15.079,
+            "q90": 23.462
+          }
+        },
+        "residencia": {
+          "cobertura": {
+            "q50": 0.3376,
+            "q90": 0.8439
+          },
+          "pinball": {
+            "q50": 14.1549,
+            "q90": 14.556
+          }
+        },
+        "villa-escritorio": {
+          "cobertura": {
+            "q50": 0.4571,
+            "q90": 1.0
+          },
+          "pinball": {
+            "q50": 1.2927,
+            "q90": 2.1463
+          }
+        },
+        "villa-residencial": {
+          "cobertura": {
+            "q50": 0.5963,
+            "q90": 1.0
+          },
+          "pinball": {
+            "q50": 1.6307,
+            "q90": 2.8021
+          }
+        }
+      },
+      "sem_correcao": 0,
+      "versao_regua": "2026-10-08.1"
+    },
+    "removidas_por_vazamento": [],
+    "versao_catalogo": "2026-10-02.1",
+    "versao_regua": "2026-10-08.1",
+    "versao_tabela": "395593c283eb"
+  },
+  "perfil": "atual",
+  "removidas_por_vazamento": [],
+  "speedtest_down_mbps": {
+    "ambiente": "todos",
+    "ausentes": [],
+    "datasets": [
+      "20260827-metrics.zip",
+      "20260917-metrics-fix.zip",
+      "20260921-metrics-distcalc.zip",
+      "20260925-metrics.zip",
+      "20260928-metrics.zip",
+      "villa-20261025.csv",
+      "villa-esc-20261026.csv"
+    ],
+    "den_imputados": 0,
+    "denominador": {
+      "coluna": "router_tx_rate_mbps",
+      "radio": "5ghz"
+    },
+    "intervalos": {
+      "mae": [
+        50.358,
+        67.7977
+      ],
+      "mae_log": [
+        0.5213,
+        0.7062
+      ],
+      "pooled": [
+        0.6468,
+        0.8061
+      ]
+    },
+    "mae": 59.2212,
+    "mae_log": 0.6186,
+    "mae_log_por_local": {
+      "casa-marcelo": 0.6889,
+      "coworking": 0.5044,
+      "hotmilk": 0.7473,
+      "residencia": 0.8027,
+      "villa-escritorio": 0.0133,
+      "villa-residencial": 0.4135
+    },
+    "mae_por_local": {
+      "casa-marcelo": 32.7792,
+      "coworking": 24.6789,
+      "hotmilk": 94.4254,
+      "residencia": 16.2447,
+      "villa-escritorio": 1.0994,
+      "villa-residencial": 165.4944
+    },
+    "media": 0.3823,
+    "n": 9,
+    "pooled": 0.7455,
+    "por_local": {
+      "casa-marcelo": 0.4095,
+      "coworking": 0.7321,
+      "hotmilk": 0.2337,
+      "residencia": 0.67,
+      "villa-escritorio": -0.0706,
+      "villa-residencial": 0.3194
+    },
+    "removidas_por_vazamento": [],
+    "versao_catalogo": "2026-10-02.1",
+    "versao_regua": "2026-10-08.1",
+    "versao_tabela": "395593c283eb"
+  },
+  "speedtest_up_mbps": {
+    "ambiente": "todos",
+    "ausentes": [],
+    "datasets": [
+      "20260827-metrics.zip",
+      "20260917-metrics-fix.zip",
+      "20260921-metrics-distcalc.zip",
+      "20260925-metrics.zip",
+      "20260928-metrics.zip",
+      "villa-20261025.csv",
+      "villa-esc-20261026.csv"
+    ],
+    "den_imputados": 0,
+    "denominador": {
+      "coluna": "router_rx_rate_mbps",
+      "radio": "5ghz"
+    },
+    "intervalos": {
+      "mae": [
+        43.5113,
+        67.7806
+      ],
+      "mae_log": [
+        0.6175,
+        0.8034
+      ],
+      "pooled": [
+        0.6632,
+        0.7867
+      ]
+    },
+    "mae": 55.96,
+    "mae_log": 0.7115,
+    "mae_log_por_local": {
+      "casa-marcelo": 0.9488,
+      "coworking": 0.6347,
+      "hotmilk": 0.746,
+      "residencia": 0.9209,
+      "villa-escritorio": 0.0194,
+      "villa-residencial": 0.4178
+    },
+    "mae_por_local": {
+      "casa-marcelo": 37.5252,
+      "coworking": 28.7568,
+      "hotmilk": 75.2626,
+      "residencia": 15.3466,
+      "villa-escritorio": 1.935,
+      "villa-residencial": 164.2101
+    },
+    "media": -0.1537,
+    "n": 9,
+    "pooled": 0.7387,
+    "por_local": {
+      "casa-marcelo": 0.6131,
+      "coworking": 0.4625,
+      "hotmilk": 0.4818,
+      "residencia": 0.1405,
+      "villa-escritorio": -3.0123,
+      "villa-residencial": 0.3921
+    },
+    "removidas_por_vazamento": [],
+    "versao_catalogo": "2026-10-02.1",
+    "versao_regua": "2026-10-08.1",
+    "versao_tabela": "395593c283eb"
+  }
+}

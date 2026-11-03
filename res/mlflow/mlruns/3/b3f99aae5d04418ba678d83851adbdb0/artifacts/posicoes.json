@@ -1,0 +1,492 @@
+{
+  "posicoes": [
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "cwpb-1",
+      "previsto": "degradado",
+      "razao_prevista": 0.6736,
+      "real": "bom",
+      "site": "coworking"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "cwpb-2",
+      "previsto": "degradado",
+      "razao_prevista": 0.3674,
+      "real": "degradado",
+      "site": "coworking"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "hotmilk-aquario",
+      "previsto": "degradado",
+      "razao_prevista": 0.4121,
+      "real": "degradado",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": false,
+      "pos": "hotmilk-aquario-fora",
+      "previsto": "degradado",
+      "razao_prevista": 0.4543,
+      "real": "degradado",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": false,
+      "pos": "hotmilk-copa",
+      "previsto": "degradado",
+      "razao_prevista": 0.4708,
+      "real": "bom",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-copa",
+      "previsto": "ruim",
+      "razao_prevista": 0.136,
+      "real": "degradado",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-copa-split",
+      "previsto": "ruim",
+      "razao_prevista": 0.1075,
+      "real": "degradado",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-ext",
+      "previsto": "ruim",
+      "razao_prevista": 0.0466,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-quarto",
+      "previsto": "ruim",
+      "razao_prevista": 0.0333,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-quarto-split",
+      "previsto": "ruim",
+      "razao_prevista": 0.0572,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-sala",
+      "previsto": "degradado",
+      "razao_prevista": 0.317,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-sala-split",
+      "previsto": "degradado",
+      "razao_prevista": 0.3817,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "marcelo-quarto-split",
+      "previsto": "degradado",
+      "razao_prevista": 0.4022,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-sala-estar",
+      "previsto": "ruim",
+      "razao_prevista": 0.0476,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "res-quarto",
+      "previsto": "ruim",
+      "razao_prevista": 0.1934,
+      "real": "ruim",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "res-sala",
+      "previsto": "bom",
+      "razao_prevista": 0.8937,
+      "real": "bom",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "res-suite",
+      "previsto": "ruim",
+      "razao_prevista": 0.1633,
+      "real": "ruim",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_esc_copa",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": false,
+      "pos": "villa_esc_estoque",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_esc_recepcao",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": false,
+      "pos": "villa_esc_sala1",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_esc_sala2",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_res_cozinha",
+      "previsto": "ruim",
+      "razao_prevista": 0.0768,
+      "real": "ruim",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_res_escritorio",
+      "previsto": "degradado",
+      "razao_prevista": 0.3269,
+      "real": "bom",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_res_quarto1",
+      "previsto": "degradado",
+      "razao_prevista": 0.3872,
+      "real": "bom",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_res_quarto2",
+      "previsto": "ruim",
+      "razao_prevista": 0.2056,
+      "real": "degradado",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "villa_res_sala",
+      "previsto": "degradado",
+      "razao_prevista": 0.4048,
+      "real": "bom",
+      "site": "villa-residencial"
+    }
+  ],
+  "piso_posicoes": [
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "cwpb-1",
+      "previsto": "bom",
+      "razao_prevista": 2.74,
+      "real": "bom",
+      "site": "coworking"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "cwpb-2",
+      "previsto": "bom",
+      "razao_prevista": 1.5074,
+      "real": "degradado",
+      "site": "coworking"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "hotmilk-aquario",
+      "previsto": "ruim",
+      "razao_prevista": 0.1378,
+      "real": "degradado",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "hotmilk-aquario-fora",
+      "previsto": "bom",
+      "razao_prevista": 1.301,
+      "real": "degradado",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "hotmilk-copa",
+      "previsto": "bom",
+      "razao_prevista": 1.301,
+      "real": "bom",
+      "site": "hotmilk"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-copa",
+      "previsto": "bom",
+      "razao_prevista": 1.6503,
+      "real": "degradado",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-copa-split",
+      "previsto": "bom",
+      "razao_prevista": 1.6503,
+      "real": "degradado",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-ext",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-quarto",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-quarto-split",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-sala",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-inf-sala-split",
+      "previsto": "bom",
+      "razao_prevista": 0.8697,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "marcelo-quarto-split",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "bom",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "marcelo-sala-estar",
+      "previsto": "ruim",
+      "razao_prevista": 0.0892,
+      "real": "ruim",
+      "site": "casa-marcelo"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "res-quarto",
+      "previsto": "degradado",
+      "razao_prevista": 0.329,
+      "real": "ruim",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": true,
+      "apto_real": true,
+      "pos": "res-sala",
+      "previsto": "bom",
+      "razao_prevista": 1.5597,
+      "real": "bom",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "res-suite",
+      "previsto": "degradado",
+      "razao_prevista": 0.329,
+      "real": "ruim",
+      "site": "residencia"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_esc_copa",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "villa_esc_estoque",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_esc_recepcao",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": false,
+      "pos": "villa_esc_sala1",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_esc_sala2",
+      "previsto": "bom",
+      "razao_prevista": 1.0003,
+      "real": "bom",
+      "site": "villa-escritorio"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_res_cozinha",
+      "previsto": "ruim",
+      "razao_prevista": 0.1926,
+      "real": "ruim",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_res_escritorio",
+      "previsto": "ruim",
+      "razao_prevista": 0.1926,
+      "real": "bom",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_res_quarto1",
+      "previsto": "ruim",
+      "razao_prevista": 0.1926,
+      "real": "bom",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_res_quarto2",
+      "previsto": "ruim",
+      "razao_prevista": 0.1926,
+      "real": "degradado",
+      "site": "villa-residencial"
+    },
+    {
+      "apto_previsto": false,
+      "apto_real": true,
+      "pos": "villa_res_sala",
+      "previsto": "ruim",
+      "razao_prevista": 0.1926,
+      "real": "bom",
+      "site": "villa-residencial"
+    }
+  ]
+}

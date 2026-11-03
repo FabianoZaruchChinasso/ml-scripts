@@ -1,0 +1,35 @@
+{
+  "nivel": "parcial",
+  "por_feature": {
+    "router_expected_throughput_mbps": "extensao",
+    "client_mode": "padrao",
+    "radio": "padrao",
+    "router_rx_rate_mbps": "padrao",
+    "router_snr": "derivavel",
+    "router_signal_dbm": "padrao",
+    "router_tx_rate_mbps": "padrao",
+    "channel_width": "padrao",
+    "eficiencia_espectral_tx": "extensao",
+    "perda_percurso_db": "extensao"
+  },
+  "lacunas": [
+    {
+      "feature": "router_expected_throughput_mbps",
+      "status": "extensao",
+      "caminho": null,
+      "nota": "estimativa do rate control (mac80211) (a confirmar com o ACS)"
+    },
+    {
+      "feature": "eficiencia_espectral_tx",
+      "status": "extensao",
+      "caminho": null,
+      "nota": null
+    },
+    {
+      "feature": "perda_percurso_db",
+      "status": "extensao",
+      "caminho": null,
+      "nota": null
+    }
+  ]
+}

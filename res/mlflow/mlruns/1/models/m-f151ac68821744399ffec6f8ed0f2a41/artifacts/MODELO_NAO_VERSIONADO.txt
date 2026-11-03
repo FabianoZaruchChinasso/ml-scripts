@@ -1,0 +1,6 @@
+O binario do modelo (model.skops, ~45 MB) nao e versionado neste snapshot.
+
+Para recria-lo, a partir da raiz do repositorio:
+  MODELO=<versao> ALVO=<alvo> venv/bin/python src/ml/regression_mlflow.py   (modelos de regressao)
+  MODELO=<versao> venv/bin/python src/ml/qoe_mlflow.py                      (modelo de QoE)
+  venv/bin/python src/ml/studio_mlflow.py                                   (avaliacao do Studio)

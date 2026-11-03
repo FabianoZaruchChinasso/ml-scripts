@@ -1,0 +1,28 @@
+{
+  "nivel": "proxy",
+  "por_feature": {
+    "client_mode": "padrao",
+    "radio": "padrao",
+    "router_rx_rate_mbps": "padrao",
+    "router_snr": "derivavel",
+    "router_signal_dbm": "padrao",
+    "router_tx_rate_mbps": "padrao",
+    "channel_width": "padrao",
+    "n_clients": "proxy",
+    "concorrentes_mesmo_radio": "proxy"
+  },
+  "lacunas": [
+    {
+      "feature": "n_clients",
+      "status": "proxy",
+      "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries",
+      "nota": "somado nos APs; no teste todos os clientes saturavam o enlace ao mesmo tempo; em produ\u00e7\u00e3o muitos associados ficam ociosos (a confirmar com o ACS)"
+    },
+    {
+      "feature": "concorrentes_mesmo_radio",
+      "status": "proxy",
+      "caminho": "Device.WiFi.AccessPoint.{i}.AssociatedDeviceNumberOfEntries",
+      "nota": "AP da esta\u00e7\u00e3o (mesmo bssid); no teste todos os clientes saturavam o enlace ao mesmo tempo; em produ\u00e7\u00e3o muitos associados ficam ociosos (a confirmar com o ACS)"
+    }
+  ]
+}

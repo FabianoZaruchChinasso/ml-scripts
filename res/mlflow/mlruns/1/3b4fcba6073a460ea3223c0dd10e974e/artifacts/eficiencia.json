@@ -1,0 +1,8 @@
+{
+  "alvo": "speedtest_down_mbps",
+  "denominador": "router_tx_rate_mbps",
+  "radio": "5ghz",
+  "mediana_imputacao": 175.6,
+  "den_minimo": 1.0,
+  "uso": "radio == '5ghz': mbps = <modelo>_eficiencia.predict(X) * denominador (vazio ou abaixo de den_minimo: mediana_imputacao); demais linhas: mbps = <modelo>_absoluto.predict(X)"
+}

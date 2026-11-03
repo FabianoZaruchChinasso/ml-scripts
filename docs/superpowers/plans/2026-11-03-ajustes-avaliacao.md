@@ -1,4 +1,4 @@
-# Ajustes antes da avaliação externa do modelo (2026-11-03)
+# Ajustes da revisão do modelo (2026-11-03)
 
 Executar no Sonnet, nesta ordem. Não commitar nem dar push (o usuário faz). Não editar
 `regression_benchmark.py` nem `classification_benchmark.py` (acordo com o Fabiano).
