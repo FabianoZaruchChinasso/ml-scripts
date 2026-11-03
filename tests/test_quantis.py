@@ -66,8 +66,8 @@ class TestPrevisoes(unittest.TestCase):
   def test_folds_por_predio_e_colunas(self):
     conj = conjunto()
     prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
-    self.assertEqual(list(prev.columns), ['_linha', 'y', 'q50', 'q90', 'cruzado', 'correcao', 'sem_correcao',
-                                          '_site', '_pos'])
+    self.assertEqual(list(prev.columns), ['_linha', 'y', 'q50', 'q90', 'q90_bruto', 'cruzado', 'correcao',
+                                          'sem_correcao', '_site', '_pos'])
     self.assertEqual(sorted(prev['_site'].unique()), ['coworking', 'hotmilk', 'residencia'])
     self.assertEqual(sorted(prev['_linha']), sorted(conj.df['_linha']))
     self.assertTrue((prev['q90'] >= prev['q50']).all())
@@ -105,6 +105,26 @@ class TestPrevisoes(unittest.TestCase):
     self.assertTrue((prev['correcao'] > 0).all())
     self.assertFalse(prev['sem_correcao'].any())
     np.testing.assert_allclose(prev['q90'], np.maximum(np.expm1(prev['correcao']), prev['q50']))
+
+  def test_q90_bruto_e_o_p90_antes_da_correcao(self):
+    conj = conjunto()
+    est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(np.log1p(20.0))}
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    self.assertTrue((prev['correcao'] > 0).all())
+    np.testing.assert_allclose(prev['q90_bruto'], 20.0)
+    self.assertTrue((prev['q90_bruto'] < prev['q90']).all())
+    self.assertTrue((prev['q90_bruto'] >= prev['q50']).all())
+
+  def test_q90_bruto_sem_conformal_vale_o_q90(self):
+    conj = conjunto()
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], conformal=False)
+    np.testing.assert_allclose(prev['q90_bruto'], prev['q90'])
+
+  def test_q90_bruto_tambem_nao_cruza_o_q50(self):
+    conj = conjunto()
+    est = {0.5: Constante(np.log1p(5.0)), 0.9: Constante(-10.0)}
+    prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimadores=est)
+    np.testing.assert_allclose(prev['q90_bruto'], prev['q50'])
 
   def test_correcao_do_fold_vem_so_dos_predios_de_treino(self):
     from ml.core.features import matriz

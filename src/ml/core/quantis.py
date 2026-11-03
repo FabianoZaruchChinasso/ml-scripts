@@ -22,7 +22,8 @@ ALVOS_QUANTILICOS = ('latency_ms', 'jitter_ms')
 # Faixa aceita para a cobertura pooled do p90 num prédio novo.
 FAIXA_COBERTURA = (0.80, 0.95)
 
-_COLUNAS = ['_linha', 'y', 'q50', 'q90', 'cruzado', 'correcao', 'sem_correcao', '_site', '_pos']
+_COLUNAS = ['_linha', 'y', 'q50', 'q90', 'q90_bruto', 'cruzado', 'correcao', 'sem_correcao', '_site',
+           '_pos']
 
 
 def coluna(q: float) -> str:
@@ -85,8 +86,9 @@ def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
   escala log) a correção de `correcao_conformal`, calculada só com os prédios de treino do
   fold; sem pelo menos 2 deles, a correção é 0 e a linha fica com `sem_correcao`. Se o p90
   sair abaixo do p50 (quantis cruzados), o p90 passa a valer o p50 e a linha fica com
-  `cruzado`. `estimadores` ({quantil: estimador}) troca os modelos; são clonados a cada fold.
-  Devolve _linha, y (em ms), q50, q90, cruzado, correcao, sem_correcao, _site, _pos,
+  `cruzado`. `q90_bruto` é o p90 antes da correção conformal (também cortado em 0 e sem passar
+  abaixo do p50). `estimadores` ({quantil: estimador}) troca os modelos; são clonados a cada fold.
+  Devolve _linha, y (em ms), q50, q90, q90_bruto, cruzado, correcao, sem_correcao, _site, _pos,
   indexados como `df`.
   """
   assert_sem_vazamento(colunas, vazadas)
@@ -111,13 +113,16 @@ def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
     if conformal:
       correcao = correcao_conformal(fold.X_train, fold.y_train, fold.train_site_ids, 0.9, estimadores.get(0.9))
     termo = 0.0 if correcao is None else correcao
-    em_log[0.9] = em_log[0.9] + termo
+    bruto = em_log[0.9]
+    em_log[0.9] = bruto + termo
     previstos = {q: np.clip(np.expm1(v), 0, None) for q, v in em_log.items()}
     cruzado = previstos[0.9] < previstos[0.5]
     previstos[0.9] = np.maximum(previstos[0.9], previstos[0.5])
+    q90_bruto = np.maximum(np.clip(np.expm1(bruto), 0, None), previstos[0.5])
     indice = fold.X_test.index
     partes.append(pd.DataFrame({'_linha': linha.loc[indice].to_numpy(), 'y': y.loc[indice].to_numpy(),
-                                'q50': previstos[0.5], 'q90': previstos[0.9], 'cruzado': cruzado,
+                                'q50': previstos[0.5], 'q90': previstos[0.9], 'q90_bruto': q90_bruto,
+                                'cruzado': cruzado,
                                 'correcao': termo, 'sem_correcao': conformal and correcao is None,
                                 '_site': fold.test_site, '_pos': posicao.loc[indice].to_numpy()},
                                index=indice))
