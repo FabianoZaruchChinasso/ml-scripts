@@ -246,6 +246,9 @@
         "status": "padrao"
       }
     },
+    "router_site_survey_ap": {
+      "classe": "identificador"
+    },
     "router_snr": {
       "classe": "tr069",
       "tr181": {
