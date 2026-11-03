@@ -29,7 +29,8 @@ class TestAvaliacaoCompleta(unittest.TestCase):
       'fatores': mock.patch.object(api.core_limiar, 'fatores_producao', return_value={}),
       'completo': mock.patch.object(api.core_quantis, 'atende_completo', return_value={}),
       'aplicacoes': mock.patch.object(api.core_aplicacoes, 'carregar_perfil', return_value={}),
-      'qoe': mock.patch.object(api.core_qoe, 'avaliar', return_value={'modelo': {'nota': 0.7}}),
+      'de_previsoes': mock.patch.object(api.core_comodo, 'de_previsoes', return_value='prev4'),
+      'comodo': mock.patch.object(api, '_bloco_comodo', return_value={'nota': 0.7}),
     }
     m = {k: p.start() for k, p in patches.items()}
     self.addCleanup(lambda: [p.stop() for p in patches.values()])
@@ -49,17 +50,19 @@ class TestAvaliacaoCompleta(unittest.TestCase):
   def test_progresso_tem_as_seis_etapas_em_ordem(self):
     eventos = []
     self.rodar(['router_snr'], eventos.append)
-    self.assertEqual([e['etapa'] for e in eventos], ['download', 'upload', 'latência', 'jitter', 'atende', 'QoE'])
+    self.assertEqual([e['etapa'] for e in eventos], ['download', 'upload', 'latência', 'jitter', 'atende', 'cômodo'])
     self.assertEqual([e['passo'] for e in eventos], [0, 1, 2, 3, 4, 5])
     self.assertTrue(all(e['passos'] == 6 for e in eventos))
 
-  def test_qoe_com_o_perfil_da_versao_e_sem_vazamento(self):
+  def test_comodo_com_as_previsoes_ja_calculadas_e_sem_qoe(self):
     saida, m = self.rodar(['router_snr', 'router_tx_retries'])
     m['aplicacoes'].assert_called_with('norma')
-    conjs, feats, vazadas, perfil = m['qoe'].call_args.args
+    self.assertEqual(m['de_previsoes'].call_args.args[1:], ('prev', 'prev', 'q', 'q'))
+    conjs, prev, ambiente = m['comodo'].call_args.args
     self.assertEqual(sorted(conjs), sorted(api.core_qoe.ALVOS))
-    self.assertEqual((feats, vazadas, perfil), (['router_snr'], ['router_tx_retries'], 'norma'))
-    self.assertEqual(saida['qoe'], {'modelo': {'nota': 0.7}})
+    self.assertEqual((prev, ambiente), ('prev4', ''))
+    self.assertEqual(saida['comodo'], {'nota': 0.7})
+    self.assertNotIn('qoe', saida)
     self.assertEqual(saida['perfil'], 'norma')
 
   def test_sem_vazamento_nada_e_removido(self):

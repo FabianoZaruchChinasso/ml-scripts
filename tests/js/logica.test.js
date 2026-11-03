@@ -97,50 +97,38 @@ test('diffRascunho separa o que entrou do que saiu, em ordem alfabética', () =>
 });
 
 const AVAL = (extra = {}) => Object.assign({ cobertura: { nivel: '100%', lacunas: [] } }, extra);
-const QOE = (resultado, contra = []) => ({ promocao_qoe: { resultado, motivo: 'm', predios_contra: contra } });
+const COMODO = (resultado) => ({ resultado, nota: 0.7, nota_base: 0.6, diferenca: 0.1 });
 
-test('podeAtivar segue o veredito de QoE, sem prédio contra e com cobertura implantável', () => {
-  assert.deepEqual(L.podeAtivar(AVAL(), true, QOE('melhor')), { ok: true, motivo: '' });
-  assert.equal(L.podeAtivar(AVAL(), false, QOE('melhor')).ok, false);
-  assert.equal(L.podeAtivar(null, true, QOE('melhor')).ok, false);
-  assert.match(L.podeAtivar(AVAL(), true, null).motivo, /QoE/);
-  assert.match(L.podeAtivar(AVAL(), true, { modelo: {} }).motivo, /QoE/);
-  assert.match(L.podeAtivar(AVAL(), true, QOE('empate')).motivo, /QoE não diz "melhor"/);
-  assert.match(L.podeAtivar(AVAL(), true, QOE('pior')).motivo, /QoE não diz "melhor"/);
-  assert.match(L.podeAtivar(AVAL(), true, QOE('melhor', ['casa'])).motivo, /piora em casa/);
+test('podeAtivar segue o veredito por cômodo e exige cobertura implantável', () => {
+  assert.deepEqual(L.podeAtivar(AVAL(), true, COMODO('melhor')), { ok: true, motivo: '' });
+  assert.equal(L.podeAtivar(AVAL(), false, COMODO('melhor')).ok, false);
+  assert.equal(L.podeAtivar(null, true, COMODO('melhor')).ok, false);
+  assert.match(L.podeAtivar(AVAL(), true, null).motivo, /^Sem veredito por cômodo contra a versão ativa/);
+  assert.match(L.podeAtivar(AVAL(), true, {}).motivo, /^Sem veredito por cômodo contra a versão ativa/);
+  assert.match(L.podeAtivar(AVAL(), true, COMODO('empate')).motivo, /por cômodo não diz "melhor"/);
+  assert.match(L.podeAtivar(AVAL(), true, COMODO('pior')).motivo, /por cômodo não diz "melhor"/);
   const parcial = AVAL({ cobertura: { nivel: 'parcial', lacunas: [{ feature: 'client_mode' }] } });
-  assert.match(L.podeAtivar(parcial, true, QOE('melhor')).motivo, /TR-069 parcial" \(client_mode\)/);
-  assert.equal(L.podeAtivar(AVAL({ cobertura: { nivel: 'proxy', lacunas: [] } }), true, QOE('melhor')).ok, true);
+  assert.match(L.podeAtivar(parcial, true, COMODO('melhor')).motivo, /TR-069 parcial" \(client_mode\)/);
+  assert.equal(L.podeAtivar(AVAL({ cobertura: { nivel: 'proxy', lacunas: [] } }), true, COMODO('melhor')).ok, true);
 });
 
-test('podeAtivar: sem promocao_qoe dá a mensagem específica; predios_contra ausente não trava', () => {
-  assert.match(L.podeAtivar(AVAL(), true, { promocao_qoe: null }).motivo, /^Sem veredito de QoE contra a versão ativa/);
-  assert.match(L.podeAtivar(AVAL(), true, { modelo: {} }).motivo, /^Sem veredito de QoE contra a versão ativa/);
-  assert.equal(L.podeAtivar(AVAL(), true, { promocao_qoe: { resultado: 'melhor', motivo: 'm' } }).ok, true);
+test('notaCartao usa a régua por cômodo, trata 0 como valor e sem ela pede reavaliação', () => {
+  const com = { avaliacao: { comodo: { nota: 0.722, contra_piso: { diferenca: 0.27 } }, atende_completo: { media: 0.65 } } };
+  assert.deepEqual(L.notaCartao(com), { valor: 0.722, rotulo: 'cômodo', secundario: 0.27 });
+  const zero = { avaliacao: { comodo: { nota: 0, contra_piso: { diferenca: 0 } } } };
+  assert.deepEqual(L.notaCartao(zero), { valor: 0, rotulo: 'cômodo', secundario: 0 });
+  const soQoe = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: 0.66 } }, atende_completo: { media: 0.64 } } };
+  assert.deepEqual(L.notaCartao(soQoe), { valor: 0.64, rotulo: 'reavaliar', secundario: null });
+  assert.deepEqual(L.notaCartao({}), { valor: null, rotulo: 'reavaliar', secundario: null });
 });
 
-test('notaCartao trata 0 como valor e nota nula como ausente', () => {
-  const zero = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: 0 } }, atende_completo: { media: 0 } } };
-  assert.deepEqual(L.notaCartao(zero), { valor: 0, rotulo: 'QoE (norma)', secundario: 0 });
-  const nula = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: null } }, atende_completo: { media: 0.5 } } };
-  assert.deepEqual(L.notaCartao(nula), { valor: 0.5, rotulo: 'atende', secundario: null });
-});
-
-test('precisaPedirQoe: pede quando a chave mudou, mesmo com a anterior em voo; não repete a mesma', () => {
-  const base = { temSel: true, igualAtiva: false, qoeKey: 'A', chaveQoe: 'A' };
-  assert.equal(L.precisaPedirQoe(base), false);
-  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B' }), true);
-  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: null }), true);
-  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B', igualAtiva: true }), false);
-  assert.equal(L.precisaPedirQoe({ ...base, qoeKey: 'B', temSel: false }), false);
-});
-
-test('notaCartao usa o QoE quando existe e cai para o atende completo', () => {
-  const comQoe = { avaliacao: { qoe: { perfil: 'norma', modelo: { nota: 0.705 } }, atende_completo: { media: 0.65 } } };
-  assert.deepEqual(L.notaCartao(comQoe), { valor: 0.705, rotulo: 'QoE (norma)', secundario: 0.65 });
-  const semQoe = { avaliacao: { atende_completo: { media: 0.64 } } };
-  assert.deepEqual(L.notaCartao(semQoe), { valor: 0.64, rotulo: 'atende', secundario: null });
-  assert.deepEqual(L.notaCartao({}), { valor: null, rotulo: 'atende', secundario: null });
+test('precisaPedirComodo: pede quando a chave mudou, mesmo com a anterior em voo; não repete a mesma', () => {
+  const base = { temSel: true, igualAtiva: false, comodoKey: 'A', chaveComodo: 'A' };
+  assert.equal(L.precisaPedirComodo(base), false);
+  assert.equal(L.precisaPedirComodo({ ...base, comodoKey: 'B' }), true);
+  assert.equal(L.precisaPedirComodo({ ...base, comodoKey: null }), true);
+  assert.equal(L.precisaPedirComodo({ ...base, comodoKey: 'B', igualAtiva: true }), false);
+  assert.equal(L.precisaPedirComodo({ ...base, comodoKey: 'B', temSel: false }), false);
 });
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));

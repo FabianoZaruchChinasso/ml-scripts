@@ -23,6 +23,7 @@ from starlette.concurrency import run_in_threadpool
 from ml.core import aplicacoes as core_aplicacoes
 from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
+from ml.core import comodo as core_comodo
 from ml.core import features as core_features
 from ml.core import limiar as core_limiar
 from ml.core import formulas as core_formulas
@@ -65,6 +66,9 @@ async def _so_post_local(request: Request, call_next):
 _cache = {}
 _ajustes = {}
 _modelos_cache = {}
+# Tabela por posição do piso da régua por cômodo (só radio): igual para todas as versões, uma por
+# (datasets, ambiente, VERSAO_COMODO).
+_piso_comodo_cache = {}
 
 
 def _payload() -> dict:
@@ -327,44 +331,67 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
   return _modelos_cache[chave]
 
 
-@app.get('/api/modelos/avaliar_qoe')
-def modelos_avaliar_qoe(features: str, ds: str = '', ambiente: str = '', contra: str = '',
-                        perfil: str = 'norma'):
-  """QoE do rascunho (classificador por aplicação, nota por prédio) e o veredito contra `contra`.
+@app.get('/api/modelos/avaliar_comodo')
+def modelos_avaliar_comodo(features: str, contra: str, ds: str = '', ambiente: str = '', base: str = ''):
+  """Régua por cômodo do rascunho e o veredito contra a avaliação guardada de `contra` (core/comodo.py).
 
-  Separado de /api/modelos/avaliar, que é por alvo: o QoE junta os quatro alvos. As duas
-  versões são medidas com o perfil pedido, nas mesmas linhas.
-
-  A chamada é síncrona e leva cerca de 40 s nos dados reais (um acerto de cache é instantâneo):
-  o front chama uma vez por mudança do rascunho.
+  Só o rascunho é previsto (quatro alvos, cerca de 1 min sem cache); `contra` entra pela tabela por
+  posição guardada na avaliação dele. O denominador é o da `base` (ou da ativa), como no salvar.
+  409 quando `contra` não tem o bloco `comodo` ou foi avaliada com outra régua, outros datasets ou
+  outro ambiente: é preciso reavaliar `contra` antes.
   """
   feats = _lista(features)
   if not feats:
     raise HTTPException(422, 'escolha pelo menos uma feature')
-  if perfil not in core_aplicacoes.PERFIS:
-    raise HTTPException(422, f'perfil {perfil!r} desconhecido; '
-                             f'use um de {list(core_aplicacoes.PERFIS)}')
   registro, _ = _registro()
-  if contra and contra not in registro['versoes']:
-    raise HTTPException(404, f'versão {contra!r} não existe')
-  chave = (('avaliar_qoe', tuple(sorted(_lista(ds))), _ambiente(ambiente), tuple(feats), contra, perfil)
+  for nome in (contra, base):
+    if nome and nome not in registro['versoes']:
+      raise HTTPException(404, f'versão {nome!r} não existe')
+  chave = (('avaliar_comodo', tuple(sorted(_lista(ds))), _ambiente(ambiente), tuple(feats), contra, base)
            + _chave_versoes())
   if chave not in _modelos_cache:
+    guardado = (registro['versoes'][contra].get('avaliacao') or {}).get('comodo')
+    if not guardado:
+      raise HTTPException(409, f'{contra} não foi avaliada pela régua por cômodo: reavalie {contra} antes de comparar')
+    denominador = registro['versoes'][base or registro['ativo']].get('denominador') or None
     conjs = {alvo: _conjunto(ds, alvo, ambiente)[0] for alvo in core_qoe.ALVOS}
-    vazadas = studio_features.vazadas_do_conjunto(conjs[core_qoe.ALVOS[0]])
-    base = registro['versoes'][contra]['features'] if contra else None
+    vazadas = {alvo: studio_features.vazadas_do_conjunto(c) for alvo, c in conjs.items()}
     try:
-      _modelos_cache[chave] = core_qoe.avaliar(conjs, feats, vazadas, perfil, features_base=base)
+      novo = _bloco_comodo(conjs, core_comodo.prever(conjs, feats, vazadas, denominador), ambiente)
     except (ValueError, AssertionError) as erro:
       raise HTTPException(422, str(erro))
+    try:
+      comp = core_comodo.comparar_blocos(novo, guardado)
+    except ValueError as erro:
+      raise HTTPException(409, f'{erro}: reavalie {contra} antes de comparar')
+    _modelos_cache[chave] = {'nota': novo['nota'], 'intervalo': novo['intervalo'], 'piso': novo['piso'],
+                             'contra_piso': novo['contra_piso'], 'por_predio': novo['por_predio'],
+                             'jogo': novo['jogo'], 'jogo_base': guardado.get('jogo'),
+                             'nota_base': comp['nota_base'], 'diferenca': comp['diferenca'],
+                             'intervalo_diferenca': comp['intervalo'], 'resultado': comp['resultado']}
   return _modelos_cache[chave]
 
 
 # Rótulo de cada etapa da avaliação completa, na ordem em que roda (progresso do salvar e do reavaliar).
 ETAPAS = {'speedtest_down_mbps': 'download', 'speedtest_up_mbps': 'upload',
           'latency_ms': 'latência', 'jitter_ms': 'jitter'}
-# Depois dos quatro alvos: o "atende" da regressão e o QoE do classificador.
+# Depois dos quatro alvos: o "atende" da regressão e a régua por cômodo.
 N_ETAPAS = len(ETAPAS) + 2
+
+
+def _bloco_comodo(conjs: dict, prev, ambiente: str) -> dict:
+  """Bloco `comodo` da avaliação (core/comodo.py), com o piso (só radio) em cache por conjunto.
+
+  `prev`: previsões dos quatro alvos (comodo.prever ou comodo.de_previsoes). A régua usa sempre o perfil de norma.
+  """
+  limiares = core_aplicacoes.carregar_perfil('norma')
+  df = core_qoe.conjunto_qoe(conjs)
+  meta = {'datasets': list(conjs[core_comodo.DN].datasets), 'ambiente': _ambiente(ambiente) or 'todos'}
+  chave = (tuple(meta['datasets']), meta['ambiente'], core_comodo.VERSAO_COMODO)
+  if chave not in _piso_comodo_cache:
+    vazadas = {alvo: studio_features.vazadas_do_conjunto(c) for alvo, c in conjs.items()}
+    _piso_comodo_cache[chave] = core_comodo.tabela_posicoes(df, core_comodo.prever(conjs, ['radio'], vazadas), limiares)
+  return core_comodo.bloco(core_comodo.tabela_posicoes(df, prev, limiares), _piso_comodo_cache[chave], meta)
 
 
 def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None, progresso=None,
@@ -374,7 +401,7 @@ def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict
   Latência e jitter levam também o resumo quantílico (p50 e p90). Colunas hoje marcadas como
   vazamento saem da conta e ficam em `removidas_por_vazamento` (a versão salva antes da marcação
   continua avaliável, como no benchmark). `progresso(evento)` recebe {'etapa', 'passo', 'passos'}
-  antes de cada uma das seis etapas (a última é o QoE, medido com o perfil `perfil_qoe`).
+  antes de cada uma das seis etapas (a última é a régua por cômodo; `perfil_qoe` define os limiares do "atende").
   """
   avisar = progresso or (lambda evento: None)
   saida, previsoes, quantis = {}, {}, {}
@@ -412,8 +439,10 @@ def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict
   saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
                                                           previsoes['speedtest_up_mbps'],
                                                           quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)
-  avisar({'etapa': 'QoE', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
-  saida['qoe'] = core_qoe.avaliar(conjs, usadas, sorted(removidas), perfil_qoe)
+  avisar({'etapa': 'cômodo', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
+  prev = core_comodo.de_previsoes(conjs['speedtest_down_mbps'].df, previsoes['speedtest_down_mbps'],
+                                  previsoes['speedtest_up_mbps'], quantis['latency_ms'], quantis['jitter_ms'])
+  saida['comodo'] = _bloco_comodo(conjs, prev, ambiente)
   saida['perfil'] = perfil_qoe
   saida['removidas_por_vazamento'] = sorted(removidas)
   return saida
@@ -491,6 +520,7 @@ def _dados_mudaram() -> None:
   _cache.clear()
   _ajustes.clear()
   _modelos_cache.clear()
+  _piso_comodo_cache.clear()
   with _desenhos_lock:
     for job_id in [j for j, job in _desenhos.items() if job['status'] != 'rodando']:
       del _desenhos[job_id]

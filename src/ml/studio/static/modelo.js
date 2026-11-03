@@ -21,7 +21,7 @@
   const st = {
     ctx: null, alvo: 'speedtest_down_mbps',
     reg: null, regErro: null, regAviso: null, msg: null, erro: null, menu: null, vereditos: {}, pendente: null, reav: null,
-    perfil: 'norma', qoe: null, qoeKey: null, qoeErro: null,
+    comodo: null, comodoKey: null, comodoErro: null,
     cols: null, colsKey: null, colsErro: null,
     sug: null, sugKey: null, sugTimer: null,
     base: null, sel: new Set(), desenho: null,
@@ -52,12 +52,12 @@
   const chaveAval = () => [chaveConj(), selLista().join(','), st.base, st.reg.ativo].join('|');
   const avalAtual = () => !!st.aval && st.avalKey === chaveAval();
   const promocao = (a) => (a.promocao ? a.promocao.veredito : a.veredito);
-  // O QoE não depende do alvo da tela: a chave é a do rascunho mais o perfil.
-  const chaveQoe = () => [dsIds().join(','), st.ctx.ambiente, selLista().join(','), st.reg.ativo, st.perfil].join('|');
-  const qoeAtual = () => (st.qoe && st.qoeKey === chaveQoe() ? st.qoe : null);
-  // Último veredito de QoE de cada versão (para o "Tornar ativa" do cartão); independe do alvo.
+  // O cômodo não depende do alvo da tela: a chave é a do rascunho, da base (denominador) e da ativa.
+  const chaveComodo = () => [dsIds().join(','), st.ctx.ambiente, selLista().join(','), st.base, st.reg.ativo].join('|');
+  const comodoAtual = () => (st.comodo && st.comodoKey === chaveComodo() ? st.comodo : null);
+  // Último veredito por cômodo de cada versão (para o "Tornar ativa" do cartão); independe do alvo.
   // Inclui a ativa: "melhor contra a ativa antiga" não vale depois que outra versão é ativada.
-  const chaveVered = (nome) => [nome, 'qoe', dsIds().join(','), st.ctx.ambiente, st.perfil, st.reg.ativo].join('|');
+  const chaveVered = (nome) => [nome, 'comodo', dsIds().join(','), st.ctx.ambiente, st.reg.ativo].join('|');
   const chaveCmp = () => chaveConj() + '|' + st.reg.ativo + '|' + st.reg.versoes.map((v) => v.nome).join(',');
 
   /* ---------------- carregamento ---------------- */
@@ -129,30 +129,30 @@
       '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo);
   }
 
-  function urlQoe() {
-    return 'api/modelos/avaliar_qoe?ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
+  function urlComodo() {
+    return 'api/modelos/avaliar_comodo?ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
       '&ambiente=' + encodeURIComponent(st.ctx.ambiente) + '&features=' + encodeURIComponent(selLista().join(',')) +
-      '&contra=' + encodeURIComponent(st.reg.ativo) + '&perfil=' + encodeURIComponent(st.perfil);
+      '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo);
   }
 
-  // Síncrono no servidor (cerca de 40 s sem cache). Resposta de chave velha é descartada.
-  function avaliarQoe() {
+  // Síncrono no servidor (cerca de 1 min sem cache). Resposta de chave velha é descartada.
+  function avaliarComodo() {
     if (!pronto()) return Promise.resolve();
-    const k = chaveQoe();
-    if (!L.precisaPedirQoe({ temSel: st.sel.size > 0, igualAtiva: igualAtiva(), qoeKey: st.qoeKey, chaveQoe: k })) return Promise.resolve();
+    const k = chaveComodo();
+    if (!L.precisaPedirComodo({ temSel: st.sel.size > 0, igualAtiva: igualAtiva(), comodoKey: st.comodoKey, chaveComodo: k })) return Promise.resolve();
     const base = st.base;
-    st.qoeKey = k; st.qoe = null; st.qoeErro = null;
-    return U.pedir(urlQoe()).then((q) => {
-      if (st.qoeKey !== k) return;                     // resposta de rascunho/perfil antigo
-      st.qoe = q; st.qoeErro = null;
-      if (base === st.base && !sujo()) st.vereditos[chaveVered(base)] = q.promocao_qoe ? q.promocao_qoe.resultado : null;
-    }).catch((e) => { if (st.qoeKey === k) st.qoeErro = e.message; }).finally(desenhar);
+    st.comodoKey = k; st.comodo = null; st.comodoErro = null;
+    return U.pedir(urlComodo()).then((c) => {
+      if (st.comodoKey !== k) return;                  // resposta de rascunho antigo
+      st.comodo = c; st.comodoErro = null;
+      if (base === st.base && !sujo()) st.vereditos[chaveVered(base)] = c.resultado;
+    }).catch((e) => { if (st.comodoKey === k) st.comodoErro = e.message; }).finally(desenhar);
   }
 
   function avaliarAgora(k) {
     if (!pronto() || k !== chaveAval()) return Promise.resolve();   // o rascunho já mudou: o próximo voo cuida
     st.avalErro = null;
-    avaliarQoe();
+    avaliarComodo();
     return U.pedir(urlAvaliar(st.alvo)).then((a) => {
       if (k !== chaveAval()) return;                                   // resposta velha
       st.aval = a; st.avalKey = k; st.avaliando = false;
@@ -168,7 +168,7 @@
   function agendar() {
     if (!pronto() || !st.sel.size || igualAtiva()) { st.avaliando = false; voo.cancelar(); return; }
     const k = chaveAval();
-    if (st.avalKey === k || st.avalErroKey === k) { st.avaliando = false; avaliarQoe(); return; }   // regressão em cache: o QoE pode ter ficado para trás
+    if (st.avalKey === k || st.avalErroKey === k) { st.avaliando = false; avaliarComodo(); return; }   // regressão em cache: o cômodo pode ter ficado para trás
     if (!st.avaliando) st.inicio = Date.now();
     st.avaliando = true;
     voo.pedir(k);
@@ -226,11 +226,11 @@
     // O vínculo com o desenho automático só vale se o rascunho for exatamente o conjunto escolhido.
     const desenho = st.desenho && L.mesmasFeatures(st.desenho.features, selLista()) ? st.desenho.id : null;
     const nome = f.nome;
-    const qPub = qoeAtual();   // o veredito de QoE do que está sendo salvo, para lembrar na versão nova
-    const verPub = qPub && qPub.promocao_qoe ? qPub.promocao_qoe.resultado : null;
+    const cPub = comodoAtual();   // o veredito por cômodo do que está sendo salvo, para lembrar na versão nova
+    const verPub = cPub ? cPub.resultado : null;
     st.salvando = true; st.salvarEtapa = null; desenhar();
     U.post('api/modelos', { nome, descricao: f.desc, features: selLista(), ds: st.ctx.enabledIds.join(','),
-                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar, perfil_qoe: st.perfil })
+                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar })
       .then((r) => acompanharSalvar(r.id, nome, verPub))
       .catch((e) => { st.salvando = false; st.salvarErro = e.message; desenhar(); });
   }
@@ -261,8 +261,8 @@
     const conhecido = st.vereditos[chaveVered(nome)];
     if (conhecido !== 'melhor') {
       const txt = conhecido
-        ? `O último veredito de QoE de ${nome} contra ${st.reg.ativo} foi "${VEREDITO[conhecido].rotulo}".`
-        : `Não há veredito de QoE de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
+        ? `O último veredito por cômodo de ${nome} contra ${st.reg.ativo} foi "${VEREDITO[conhecido].rotulo}".`
+        : `Não há veredito por cômodo de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
       if (!window.confirm(`${txt}\n\nTornar ${nome} a versão ativa mesmo assim?`)) { desenhar(); return; }
     }
     st.msg = null; st.erro = null;
@@ -416,15 +416,13 @@
     const selos = [U.tagNivel(v.cobertura),
       (v.vazadas || []).length ? `<span class="tag leak" title="${esc(v.vazadas.join(', '))}">${v.vazadas.length} c/ vazamento</span>` : '',
       seloEficiencia(v),
-      ((v.avaliacao || {}).qoe || {}).perfil ? `<span class="tag" title="limiares do QoE desta versão">${v.avaliacao.qoe.perfil === 'norma' ? 'norma' : 'perfil atual'}</span>` : '',
-      (((v.avaliacao || {}).qoe || {}).supera_piso === false) ? '<span class="tag leak" title="não supera o classificador só com radio">abaixo do piso</span>' : '',
       motivo ? `<span class="tag lab" title="${esc(motivo)}">desatualizada</span>` : '',
       `<span class="tag">${v.features.length} feat.</span>`].join(' ');
     return `<div class="ver${editando ? ' base' : ''}">
       <button class="ver-corpo" data-acao="base" data-nome="${esc(v.nome)}" data-k="ver-${esc(v.nome)}" aria-pressed="${editando}"
         title="${esc(v.descricao || '')}">
         <span class="ver-nome"><code>${esc(v.nome)}</code>${v.ativo ? ' <span class="tag ativa">ativa</span>' : ''}${editando ? ' <span class="tag editando">editando</span>' : ''}</span>
-        <span class="ver-num">${media == null ? '–' : num(media, 2)} <small>${esc(nota.rotulo)}</small>${nota.secundario == null ? '' : ` <small class="gate-msg">atende ${num(nota.secundario, 2)}</small>`}</span>
+        <span class="ver-num">${media == null ? '–' : num(media, 2)} <small>${esc(nota.rotulo)}</small>${nota.secundario == null ? '' : ` <small class="gate-msg" title="diferença contra o piso (só radio)">vs piso ${nota.secundario > 0 ? '+' : ''}${num(nota.secundario, 2)}</small>`}</span>
         <span class="ver-barra"><i style="width:${media == null ? 0 : Math.round(media * 100)}%"></i></span>
         <span class="ver-selos">${selos}</span>
       </button>
@@ -635,48 +633,32 @@
     </div>`;
   }
 
-  const PERFIS = [['norma', 'Norma'], ['atual', 'Atual']];
-
-  function seletorPerfil() {
-    return `<div class="seg" role="group" aria-label="Limiares do QoE">${PERFIS.map(([p, r]) =>
-      `<button data-acao="perfil" data-p="${p}" data-k="perfil-${p}" aria-pressed="${st.perfil === p}"${st.salvando ? ' disabled' : ''}>${r}</button>`).join('')}</div>`;
-  }
-
-  function tabelaLimiares(q) {
-    const chaves = [['dn', 'Download', 'Mbps'], ['up', 'Upload', 'Mbps'], ['lat', 'Latência', 'ms'], ['jit', 'Jitter', 'ms']];
-    const linhas = Object.keys(q.limiares).map((app) => `<tr><td>${esc(app)}</td>${chaves.map(([c, , u]) => {
-      const f = ((q.fontes || {})[app] || {})[c];
-      const titulo = f ? [f.fonte, f.nota].filter(Boolean).join(' · ') : 'perfil atual (aplicacoes.json)';
-      const valor = `${num(q.limiares[app][c], 1)} ${u}`;
-      const link = f && typeof f.url === 'string' && /^https?:\/\//.test(f.url);
-      return `<td class="num" title="${esc(titulo)}">${link ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${valor}</a>` : valor}</td>`;
-    }).join('')}</tr>`).join('');
-    return `<table><thead><tr><th>Aplicação</th>${chaves.map(([, r]) => `<th class="num">${r}</th>`).join('')}</tr></thead><tbody>${linhas}</tbody></table>`;
-  }
-
-  function blocoQoe() {
-    const q = qoeAtual();
-    if (st.qoeErro && st.qoeKey === chaveQoe()) return U.gate('critical', 'Não foi possível avaliar o QoE', `${esc(st.qoeErro)} Tente de novo; se persistir, mude o rascunho ou o perfil.
-      <button class="btn" data-acao="qoe-repetir" data-k="qoe-repetir">Tentar de novo</button>`);
-    if (!q) return '<p class="hint" role="status">Avaliando QoE (classificador por aplicação, cerca de 1 min)…</p>';
-    const v = q.promocao_qoe;
+  function blocoComodo() {
+    const c = comodoAtual();
+    if (st.comodoErro && st.comodoKey === chaveComodo()) return U.gate('critical', 'Não foi possível avaliar por cômodo', `${esc(st.comodoErro)} Se a mensagem pede para reavaliar, use o menu do cartão da versão.
+      <button class="btn" data-acao="comodo-repetir" data-k="comodo-repetir">Tentar de novo</button>`);
+    if (!c) return '<p class="hint" role="status">Avaliando por cômodo (quatro alvos, cerca de 1 min)…</p>';
     const faixa = (iv) => (iv ? ` <em>${num(iv[0], 3)} a ${num(iv[1], 3)}</em>` : '');
-    const kpis = [['QoE rascunho', num(q.modelo.nota, 3), faixa(q.modelo.intervalo)],
-                  ['QoE ativa', v ? num(v.nota_base, 3) : '–', ''],
-                  ['RF referência', num(q.referencia.nota, 3), ''],
-                  ['Piso (só radio)', q.piso ? num(q.piso.nota, 3) : '–', '']];
-    const alarmes = Object.entries(q.modelo.por_predio).flatMap(([s, apps]) => Object.entries(apps)
-      .filter(([, x]) => x.classes === 1).map(([app, x]) => `${esc(s)} · ${esc(app)}: ${num(x.erro * 100, 1)}% ${x.atende ? 'alarme falso' : 'perda'}`));
+    const kpis = [['Cômodo rascunho', num(c.nota, 3), faixa(c.intervalo)],
+                  [`Cômodo ${esc(st.reg.ativo)}`, num(c.nota_base, 3), ''],
+                  ['Piso (só radio)', num(c.piso.nota, 3), faixa(c.piso.intervalo)]];
+    // Resposta em cache de antes do "apto para jogo" não traz `jogo`.
+    const jogo = c.jogo ? `<div class="kpis">${[['Apto para jogo, rascunho', num(c.jogo.nota, 3), faixa(c.jogo.intervalo)],
+      [`Apto para jogo, ${esc(st.reg.ativo)}`, c.jogo_base ? num(c.jogo_base.nota, 3) : '–', ''],
+      ['Apto para jogo, piso', num(c.jogo.piso.nota, 3), faixa(c.jogo.piso.intervalo)]]
+      .map(([t, b, e]) => `<div><span>${t}</span><b>${b}</b>${e}</div>`).join('')}</div>
+      <p class="gate-msg">Acurácia balanceada de apto para jogo por posição: informativo, não entra na ativação.</p>` : '';
+    const predios = Object.entries(c.por_predio).map(([s, [a, n]]) => `${esc(s)} ${a}/${n}`).join(', ');
+    const dif = `Diferença contra ${st.reg.ativo}: ${num(c.diferenca, 3)}` +
+      (c.intervalo_diferenca ? ` (90%: ${num(c.intervalo_diferenca[0], 3)} a ${num(c.intervalo_diferenca[1], 3)}).` : '.');
     return `<div class="qoe">
-      ${v ? `<div class="veredito ${v.resultado}">${icone(VEREDITO[v.resultado].icone)}
-        <div><b>QoE: ${esc(VEREDITO[v.resultado].frase(st.reg.ativo))}</b> <span class="gate-msg">(decide a ativação)</span>
-          <div class="gate-msg">${esc(v.motivo)}</div></div></div>` : ''}
-      ${q.supera_piso === false ? U.gate('warning', 'Não supera o piso', 'O rascunho não decide melhor que um classificador que só sabe a banda (radio).') : ''}
+      <div class="veredito ${c.resultado}">${icone(VEREDITO[c.resultado].icone)}
+        <div><b>Cômodo: ${esc(VEREDITO[c.resultado].frase(st.reg.ativo))}</b> <span class="gate-msg">(decide a ativação)</span>
+          <div class="gate-msg">${esc(dif)}</div></div></div>
       <div class="kpis">${kpis.map(([t, b, e]) => `<div><span>${t}</span><b>${b}</b>${e}</div>`).join('')}</div>
-      <p class="gate-msg">Nota: média por prédio da acurácia balanceada, nos ${q.modelo.predios_na_nota.length} prédios com as duas classes
-        (${q.modelo.n_posicoes} posições). Fora da nota: ${q.modelo.predios_fora_da_nota.map(esc).join(', ') || 'nenhum'}.</p>
-      ${alarmes.length ? `<details class="fold" data-k="qoe-alarmes"><summary>Prédios de uma classe só</summary><div class="inner">${alarmes.join('<br>')}</div></details>` : ''}
-      <details class="fold" data-k="qoe-limiares"><summary>Limiares do perfil ${esc(q.perfil)}</summary><div class="inner" style="overflow-x:auto">${tabelaLimiares(q)}</div></details>
+      ${jogo}
+      <p class="gate-msg">Nota: acurácia balanceada das classes bom, degradado e ruim, por posição, com a capacidade
+        relativa à melhor posição do prédio. Acertos por prédio: ${predios}.</p>
     </div>`;
   }
 
@@ -689,7 +671,7 @@
     const vivo = st.avaliando ? `<div class="ao-vivo"><span class="giro" aria-hidden="true"></span>
       <span role="status">Reavaliando com a última mudança…</span>
       <span id="mRelogio" aria-hidden="true">${Math.round((Date.now() - st.inicio) / 1000)} s</span></div>` : '';
-    const bq = blocoQoe();   // o QoE decide a ativação: aparece mesmo sem o resultado da regressão
+    const bq = blocoComodo();   // o cômodo decide a ativação: aparece mesmo sem o resultado da regressão
     if (st.avalErro && !st.avaliando) return bq + U.gate('critical', 'Não foi possível avaliar', esc(st.avalErro));
     if (!st.aval) return vivo + bq + (vivo ? '' : '<p class="hint">Preparando a avaliação…</p>');
     return vivo + bq + cartaoVeredito(st.aval, avalAtual());
@@ -698,7 +680,6 @@
   function secaoRascunho() {
     const criticos = L.avisosConjunto(st.ctx.data, st.ctx.rows, st.ctx.enabled, st.ctx.ambiente).filter((a) => a.sev === 'critical');
     return `<div class="secao"><div class="secao-cab"><h2>Rascunho a partir de <code>${esc(st.base)}</code></h2>
-        ${seletorPerfil()}
         ${st.desenho ? '<span class="tag current" title="ao salvar, a versão guarda a nota aninhada e os passos da seleção">do desenho automático</span>' : ''}</div>
       ${st.avisoVaz ? U.gate('warning', `${st.avisoVaz.length} ${st.avisoVaz.length === 1 ? 'coluna' : 'colunas'} com vazamento fora do rascunho`,
         `<code>${st.avisoVaz.map(esc).join('</code>, <code>')}</code> estão em ${esc(st.base)}, mas hoje são marcadas como vazamento
@@ -722,10 +703,11 @@
         <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? textoSalvando() : f.ativar ? 'Salvar e tornar ativa' : 'Salvar versão'}</button></div></div>`;
   }
 
-  // Por que "Salvar e tornar ativa" está desabilitado: o QoE ainda roda, falhou, ou a trava diz.
-  function motivoDock(q, pode) {
-    if (!q && st.sel.size && !igualAtiva()) {
-      return st.qoeErro && st.qoeKey === chaveQoe() ? `QoE falhou: ${st.qoeErro} (use "Tentar de novo" no painel)` : 'Avaliando QoE…';
+  // Por que "Salvar e tornar ativa" está desabilitado: a avaliação por cômodo ainda roda, falhou, ou a trava diz.
+  function motivoDock(c, pode) {
+    if (!c && st.sel.size && !igualAtiva()) {
+      return st.comodoErro && st.comodoKey === chaveComodo()
+        ? `Avaliação por cômodo falhou: ${st.comodoErro} (use "Tentar de novo" no painel)` : 'Avaliando por cômodo…';
     }
     return st.avaliando ? 'Reavaliando o rascunho…' : pode.motivo;
   }
@@ -737,11 +719,10 @@
     if (!mostrar) { el.innerHTML = ''; return; }
     const d = diff();
     const atual = avalAtual();
-    const q = qoeAtual();
-    const v = q && q.promocao_qoe ? q.promocao_qoe : null;
-    const pode = L.podeAtivar(st.aval, atual, q);
+    const c = comodoAtual();
+    const pode = L.podeAtivar(st.aval, atual, c);
     const estado = st.avaliando ? '<span class="dock-ver">avaliando…</span>'
-      : v ? `<span class="dock-ver ${v.resultado}">${icone(VEREDITO[v.resultado].icone)} ${VEREDITO[v.resultado].rotulo}</span>` : '';
+      : c ? `<span class="dock-ver ${c.resultado}">${icone(VEREDITO[c.resultado].icone)} ${VEREDITO[c.resultado].rotulo}</span>` : '';
     U.redesenhar(el, `<div class="dock-linha">
         <span><b>Rascunho</b> <span class="dock-sub">de ${esc(st.base)}</span></span>
         <span class="dock-mais" title="${esc(d.mais.join(', '))}">+${d.mais.length}</span>
@@ -751,7 +732,7 @@
           <button class="btn" data-acao="abrir-salvar" data-k="abrir-salvar"${st.sel.size ? '' : ' disabled'}>Salvar…</button>
           <button class="btn-pri" data-acao="abrir-ativar" data-k="abrir-ativar"${pode.ok ? '' : ' disabled'} aria-describedby="mDockMotivo">Salvar e tornar ativa</button>
         </span></div>
-      ${pode.ok ? '' : `<p class="dock-motivo" id="mDockMotivo" role="status">${esc(motivoDock(q, pode))}</p>`}
+      ${pode.ok ? '' : `<p class="dock-motivo" id="mDockMotivo" role="status">${esc(motivoDock(c, pode))}</p>`}
       ${st.form ? formSalvar() : ''}`);
   }
 
@@ -818,8 +799,7 @@
     const col = b.dataset.col;
     switch (b.dataset.acao) {
       case 'conjunto': V.conjunto.abrir(); break;
-      case 'qoe-repetir': st.qoeKey = null; avaliarQoe(); desenhar(); break;
-      case 'perfil': st.perfil = b.dataset.p; avaliarQoe(); desenhar(); break;
+      case 'comodo-repetir': st.comodoKey = null; avaliarComodo(); desenhar(); break;
       case 'base': escolherBase(b.dataset.nome); break;
       case 'menu': st.menu = st.menu === b.dataset.nome ? null : b.dataset.nome; desenhar(); break;
       case 'ativar': ativarManual(b.dataset.nome); break;

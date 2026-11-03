@@ -196,7 +196,7 @@ def _media_texto(valor) -> str:
 
 
 def nota_reavaliacao(antiga: Optional[dict], nova: dict, hoje: str) -> str:
-  """Linha do histórico: o que mudou de datasets e ambiente, e o atende completo antes e depois."""
+  """Linha do histórico: o que mudou de datasets e ambiente, e o atende completo, o QoE e a nota por cômodo antes e depois."""
   ref_antiga = (antiga or {}).get(ALVO_DA_NOTA) or {}
   ref_nova = nova.get(ALVO_DA_NOTA) or {}
   ds_antes, ds_depois = set(ref_antiga.get('datasets') or []), set(ref_nova.get('datasets') or [])
@@ -211,6 +211,10 @@ def nota_reavaliacao(antiga: Optional[dict], nova: dict, hoje: str) -> str:
   qoe_depois = ((nova.get('qoe') or {}).get('modelo') or {}).get('nota')
   if qoe_antes is not None or qoe_depois is not None:
     partes.append(f'QoE {_media_texto(qoe_antes)} → {_media_texto(qoe_depois)}')
+  comodo_antes = ((antiga or {}).get('comodo') or {}).get('nota')
+  comodo_depois = (nova.get('comodo') or {}).get('nota')
+  if comodo_antes is not None or comodo_depois is not None:
+    partes.append(f'cômodo {_media_texto(comodo_antes)} → {_media_texto(comodo_depois)}')
   return '; '.join(partes)
 
 

@@ -3,7 +3,7 @@
 Verdade: por posição, só com as linhas em que o cliente está sozinho no rádio, a capacidade
 (mediana de download e upload) como fração da melhor posição do prédio (V0 provisório) e a
 interatividade (p90 de latência e jitter) contra o perfil de norma, em bom / degradado / ruim.
-Previsão: as grandezas físicas fora do fold (régua de regressão e p90 com CQR), classificadas
+Previsão: as grandezas físicas fora do fold (régua de regressão e p90 sem a correção conformal), classificadas
 com a mesma referência. Spec: docs/superpowers/specs/2026-10-29-regua-comodo-design.md.
 """
 
@@ -14,7 +14,7 @@ from ml.core import avaliacao, quantis
 from ml.core.percepcao import acuracia_balanceada, diferenca, por_predio, resumir
 
 # Muda quando cortes, referência, filtro de linhas ou regras mudam.
-VERSAO_COMODO = '2026-10-29.1'
+VERSAO_COMODO = '2026-11-03.1'
 CLASSES = ('bom', 'degradado', 'ruim')
 # Fração da capacidade da casa: abaixo de CORTE_RUIM é ruim, abaixo de CORTE_BOM é degradado.
 CORTE_RUIM = 0.25
@@ -79,32 +79,42 @@ def verdade(df: pd.DataFrame, limiares: dict) -> tuple:
   return classificar(est, ref, limiares), ref
 
 
+def de_previsoes(base_df: pd.DataFrame, prev_dn: pd.DataFrame, prev_up: pd.DataFrame, q_lat: pd.DataFrame,
+                 q_jit: pd.DataFrame) -> pd.DataFrame:
+  """Junta por `_linha` as previsões fora do fold: `yhat` de download e upload (régua de regressão)
+  e `q90_bruto` de latência e jitter: o p90 sem a correção conformal, porque a CQR é um limite
+  conservador por linha e deixava toda posição fora do apto para jogo. Linha sem previsão em algum alvo sai; `_site` e
+  `_pos` vêm de `base_df`. Devolve _linha, _site, _pos, dn, up, lat, jit."""
+  saida = pd.concat({'dn': prev_dn.set_index('_linha')['yhat'], 'up': prev_up.set_index('_linha')['yhat'],
+                     'lat': q_lat.set_index('_linha')['q90_bruto'],
+                     'jit': q_jit.set_index('_linha')['q90_bruto']},
+                    axis=1, join='inner')
+  base = base_df.set_index('_linha')
+  saida = saida.assign(_site=base['_site'].reindex(saida.index).to_numpy(),
+                       _pos=base['_pos'].reindex(saida.index).to_numpy())
+  return saida.rename_axis('_linha').reset_index()
+
+
 def prever(conjs: dict, features, vazadas: dict, denominador: dict = None) -> pd.DataFrame:
   """Previsões fora do fold (LOGO por prédio) dos quatro alvos, casadas por `_linha`.
 
   `conjs`: {alvo: objeto com `.df`} (o Conjunto da carga); `vazadas`: {alvo: colunas com
   vazamento}; `denominador`: {alvo: valor do registro} para download e upload. Feature
   ausente ou com vazamento num alvo fica fora só dele. Linha sem previsão em algum alvo sai.
-  Devolve _linha, _site, _pos, dn, up (previsão pontual), lat, jit (p90 com CQR).
+  Devolve _linha, _site, _pos, dn, up (previsão pontual), lat, jit (p90 sem a correção conformal).
   """
-  partes = {}
-  for alvo, nome in ((DN, 'dn'), (UP, 'up'), (LAT, 'lat'), (JIT, 'jit')):
+  previsto = {}
+  for alvo in (DN, UP, LAT, JIT):
     df = conjs[alvo].df
     colunas = [f for f in features if f in df.columns and f not in vazadas[alvo]]
     if not colunas:
       raise ValueError(f'nenhuma feature utilizável para {alvo}')
     if alvo in (LAT, JIT):
-      p = quantis.prever_quantis_fora_do_fold(df, colunas, alvo, vazadas[alvo])
-      partes[nome] = p.set_index('_linha')['q90']
+      previsto[alvo] = quantis.prever_quantis_fora_do_fold(df, colunas, alvo, vazadas[alvo])
     else:
-      p = avaliacao.prever_fora_do_fold(df, colunas, alvo, vazadas[alvo],
-                                        denominador=(denominador or {}).get(alvo))
-      partes[nome] = p.set_index('_linha')['yhat']
-  saida = pd.concat(partes, axis=1, join='inner')
-  base = conjs[DN].df.set_index('_linha')
-  saida = saida.assign(_site=base['_site'].reindex(saida.index).to_numpy(),
-                       _pos=base['_pos'].reindex(saida.index).to_numpy())
-  return saida.rename_axis('_linha').reset_index()
+      previsto[alvo] = avaliacao.prever_fora_do_fold(df, colunas, alvo, vazadas[alvo],
+                                                     denominador=(denominador or {}).get(alvo))
+  return de_previsoes(conjs[DN].df, previsto[DN], previsto[UP], previsto[LAT], previsto[JIT])
 
 
 def classe_prevista(prev: pd.DataFrame, ref: pd.DataFrame, limiares: dict) -> pd.DataFrame:
@@ -164,3 +174,81 @@ def contra_rotulo(real: pd.DataFrame, niveis: dict) -> tuple:
                          'previsto': real.loc[comuns, 'classe'].to_numpy()}, index=comuns)
   m, _ = confusao(pos_df)
   return acuracia_balanceada(pos_df['real'], pos_df['previsto']), m
+
+
+def tabela_posicoes(df: pd.DataFrame, prev: pd.DataFrame, limiares: dict) -> pd.DataFrame:
+  """Verdade e classe prevista por posição, só com as linhas sozinhas no rádio (índice `_pos`).
+
+  `prev`: saída de `prever` ou `de_previsoes`. Colunas `_site`, `real`, `previsto`,
+  `razao_prevista`, `apto_real`, `apto_previsto`.
+  """
+  real, ref = verdade(df, limiares)
+  linhas = set(sozinhas(df)['_linha'])
+  previsto = classe_prevista(prev[prev['_linha'].isin(linhas)], ref, limiares)
+  comuns = real.index.intersection(previsto.index).sort_values()
+  return pd.DataFrame({'_site': real.loc[comuns, '_site'], 'real': real.loc[comuns, 'classe'],
+                       'previsto': previsto.loc[comuns, 'classe'], 'razao_prevista': previsto.loc[comuns, 'razao'],
+                       'apto_real': real.loc[comuns, 'apto_jogo'], 'apto_previsto': previsto.loc[comuns, 'apto_jogo']})
+
+
+def amostras_posicoes(tabela: pd.DataFrame) -> list:
+  """Reamostras de posições estratificadas por prédio, com a semente fixa da régua: duas tabelas
+  com as mesmas posições dão as mesmas reamostras."""
+  return avaliacao.reamostras(tabela.index, tabela['_site'])
+
+
+def _lista(tabela: pd.DataFrame) -> list:
+  """Tabela por posição em tipos nativos do Python (vai para o modelos.json)."""
+  return [{'pos': str(p), 'site': str(l['_site']), 'real': str(l['real']), 'previsto': str(l['previsto']),
+           'razao_prevista': round(float(l['razao_prevista']), 4), 'apto_real': bool(l['apto_real']),
+           'apto_previsto': bool(l['apto_previsto'])} for p, l in tabela.iterrows()]
+
+
+def _tabela(lista: list) -> pd.DataFrame:
+  return pd.DataFrame(lista).set_index('pos').rename(columns={'site': '_site'})
+
+
+_APTO = {True: 'apto', False: 'nao_apto'}
+
+
+def bloco(tabela: pd.DataFrame, piso: pd.DataFrame, meta: dict) -> dict:
+  """Bloco `comodo` guardado na avaliação de uma versão. `meta`: {'datasets', 'ambiente'}.
+
+  `jogo`: acurácia balanceada de "apto para jogo" por posição (versão e piso), com o intervalo
+  de 90% nas mesmas reamostras da nota. É informativa: não entra na ativação.
+  """
+  if not tabela.index.equals(piso.index):
+    raise ValueError('a versão e o piso precisam das mesmas posições, na mesma ordem')
+  amostras = amostras_posicoes(tabela)
+  r, rp = nota(tabela, amostras), nota(piso, amostras)
+  c = comparar(tabela, piso, amostras)
+  jogo, jogo_piso = (resumir(pd.DataFrame({'real': t['apto_real'].map(_APTO), 'previsto': t['apto_previsto'].map(_APTO)}),
+                             amostras) for t in (tabela, piso))
+  m, graves = confusao(tabela)
+  return {'versao_comodo': VERSAO_COMODO, 'datasets': list(meta['datasets']), 'ambiente': meta['ambiente'],
+          'nota': r['nota'], 'intervalo': r['intervalo'], 'piso': {'nota': rp['nota'], 'intervalo': rp['intervalo']},
+          'contra_piso': {'diferenca': c['diferenca'], 'intervalo': c['intervalo'], 'resultado': c['resultado']},
+          'jogo': {'nota': jogo['nota'], 'intervalo': jogo['intervalo'],
+                   'piso': {'nota': jogo_piso['nota'], 'intervalo': jogo_piso['intervalo']}},
+          'por_predio': {s: [a, n] for s, (a, n) in por_predio(tabela).items()},
+          'confusao': m.values.tolist(), 'graves': graves,
+          'posicoes': _lista(tabela), 'piso_posicoes': _lista(piso)}
+
+
+def comparar_blocos(nova: dict, base: dict) -> dict:
+  """Diferença pareada de nota (nova - base) a partir das tabelas guardadas, e o resultado.
+
+  Levanta ValueError se as duas avaliações não são comparáveis: outra régua, outros datasets,
+  outro ambiente, outras posições ou outra verdade.
+  """
+  for campo in ('versao_comodo', 'datasets', 'ambiente'):
+    if nova.get(campo) != base.get(campo):
+      raise ValueError(f'{campo} diferente: {nova.get(campo)!r} contra {base.get(campo)!r}')
+  tn, tb = _tabela(nova['posicoes']), _tabela(base['posicoes'])
+  if not tn.index.equals(tb.index):
+    raise ValueError('as duas avaliações não têm as mesmas posições')
+  if not (tn['real'] == tb['real']).all():
+    raise ValueError('a verdade das duas avaliações difere')
+  c = comparar(tn, tb, amostras_posicoes(tn))
+  return {'diferenca': c['diferenca'], 'intervalo': c['intervalo'], 'resultado': c['resultado'],
+          'nota': nova['nota'], 'nota_base': base['nota']}

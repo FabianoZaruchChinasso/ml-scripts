@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 import sys
 import types
@@ -189,6 +190,98 @@ class TestMetricas(unittest.TestCase):
     self.assertAlmostEqual(acuracia, 1.0)
     self.assertEqual(int(m.loc['bom', 'bom']), 2)
     self.assertEqual(int(m.values.sum()), 5)
+
+
+def df_e_prev():
+  """2 prédios x 2 posições, 10 linhas sozinhas cada, mais 10 linhas com concorrência em s1-a.
+
+  Verdade: s1-a bom, s1-b ruim (razão 0,2), s2-a bom, s2-b degradado (0,6). A previsão copia
+  os valores reais, menos s2-b, que sai com download 100 (bom).
+  """
+  partes = []
+  for s, dn_b in (('s1', 20.0), ('s2', 60.0)):
+    partes.append(linhas(f'{s}-a', 10, 100, 100, site=s))
+    partes.append(linhas(f'{s}-b', 10, dn_b, 100, site=s))
+  partes.append(linhas('s1-a', 10, 1, 1, conc=2.0, site='s1'))
+  df = juntas(*partes)
+  df['_linha'] = [f'd:{i}' for i in range(len(df))]
+  prev = pd.DataFrame({'_linha': df['_linha'], '_site': df['_site'], '_pos': df['_pos'], 'dn': df[C.DN],
+                       'up': df[C.UP], 'lat': df[C.LAT], 'jit': df[C.JIT]})
+  prev.loc[prev['_pos'] == 's2-b', 'dn'] = 100.0
+  return df, prev
+
+
+META = {'datasets': ['a.csv'], 'ambiente': 'todos'}
+
+
+class TestBloco(unittest.TestCase):
+  def test_de_previsoes_casa_por_linha(self):
+    base = pd.DataFrame({'_linha': ['a', 'b', 'c'], '_site': ['s1'] * 3, '_pos': ['p', 'p', 'q']})
+    pdn = pd.DataFrame({'_linha': ['a', 'b', 'c'], 'yhat': [1.0, 2.0, 3.0]})
+    pup = pd.DataFrame({'_linha': ['c', 'b', 'a'], 'yhat': [30.0, 20.0, 10.0]})
+    qlat = pd.DataFrame({'_linha': ['a', 'b'], 'q90': [50.0, 60.0], 'q90_bruto': [5.0, 6.0]})
+    qjit = pd.DataFrame({'_linha': ['a', 'b', 'c'], 'q90': [70.0, 80.0, 90.0], 'q90_bruto': [7.0, 8.0, 9.0]})
+    p = C.de_previsoes(base, pdn, pup, qlat, qjit).set_index('_linha')
+    self.assertEqual(sorted(p.index), ['a', 'b'])
+    self.assertEqual(p.loc['b', ['dn', 'up', 'lat', 'jit']].tolist(), [2.0, 20.0, 6.0, 8.0])
+    self.assertEqual(p.loc['a', '_pos'], 'p')
+
+  def test_tabela_posicoes_usa_so_linhas_sozinhas(self):
+    df, prev = df_e_prev()
+    tab = C.tabela_posicoes(df, prev, LIM)
+    self.assertEqual(tab.index.tolist(), ['s1-a', 's1-b', 's2-a', 's2-b'])
+    self.assertEqual(tab['real'].tolist(), ['bom', 'ruim', 'bom', 'degradado'])
+    # Sem o filtro, as 10 linhas com concorrência puxariam a mediana prevista de s1-a para 50,5.
+    self.assertEqual(tab['previsto'].tolist(), ['bom', 'ruim', 'bom', 'bom'])
+    self.assertAlmostEqual(tab.loc['s2-b', 'razao_prevista'], 1.0)
+    self.assertEqual(set(tab.columns), {'_site', 'real', 'previsto', 'razao_prevista', 'apto_real', 'apto_previsto'})
+
+  def test_bloco_tem_os_campos_e_e_serializavel(self):
+    df, prev = df_e_prev()
+    tab = C.tabela_posicoes(df, prev, LIM)
+    b = C.bloco(tab, tab.assign(previsto='bom', apto_previsto=False), META)
+    self.assertEqual(set(b), {'versao_comodo', 'datasets', 'ambiente', 'nota', 'intervalo', 'piso', 'contra_piso',
+                              'jogo', 'por_predio', 'confusao', 'graves', 'posicoes', 'piso_posicoes'})
+    json.dumps(b)
+    self.assertEqual(set(b['jogo']), {'nota', 'intervalo', 'piso'})
+    self.assertEqual(set(b['jogo']['piso']), {'nota', 'intervalo'})
+    # Todas as posições são aptas na verdade e na previsão; o piso nunca prevê apto.
+    self.assertEqual(b['jogo']['nota'], 1.0)
+    self.assertEqual(b['jogo']['piso']['nota'], 0.0)
+    self.assertEqual(b['versao_comodo'], C.VERSAO_COMODO)
+    self.assertAlmostEqual(b['nota'], 0.6667)
+    self.assertAlmostEqual(b['piso']['nota'], 0.3333)
+    self.assertEqual(b['posicoes'][3], {'pos': 's2-b', 'site': 's2', 'real': 'degradado', 'previsto': 'bom',
+                                        'razao_prevista': 1.0, 'apto_real': True, 'apto_previsto': True})
+    self.assertEqual(b['por_predio'], {'s1': [2, 2], 's2': [1, 2]})
+    self.assertEqual(b['confusao'], [[2, 0, 0], [1, 0, 0], [0, 0, 1]])
+
+  def test_bloco_recusa_piso_com_outras_posicoes(self):
+    df, prev = df_e_prev()
+    tab = C.tabela_posicoes(df, prev, LIM)
+    with self.assertRaisesRegex(ValueError, 'posições'):
+      C.bloco(tab, tab.iloc[:3], META)
+
+  def test_comparar_blocos_igual_a_comparar_as_tabelas(self):
+    df, prev = df_e_prev()
+    tab = C.tabela_posicoes(df, prev, LIM)
+    piso = tab.assign(previsto='bom')
+    nova, base = C.bloco(tab, piso, META), C.bloco(piso, piso, META)
+    r = C.comparar_blocos(nova, base)
+    direto = C.comparar(tab, piso, C.amostras_posicoes(tab))
+    self.assertEqual((r['diferenca'], r['intervalo'], r['resultado']),
+                     (direto['diferenca'], direto['intervalo'], direto['resultado']))
+    self.assertEqual((r['nota'], r['nota_base']), (nova['nota'], base['nota']))
+
+  def test_comparar_blocos_recusa_avaliacoes_incompativeis(self):
+    df, prev = df_e_prev()
+    tab = C.tabela_posicoes(df, prev, LIM)
+    b = C.bloco(tab, tab, META)
+    for campo, valor in (('versao_comodo', 'velha'), ('datasets', ['b.csv']), ('ambiente', 'domestico')):
+      with self.assertRaisesRegex(ValueError, campo):
+        C.comparar_blocos(b, dict(b, **{campo: valor}))
+    with self.assertRaisesRegex(ValueError, 'posições'):
+      C.comparar_blocos(b, dict(b, posicoes=b['posicoes'][:3]))
 
 
 if __name__ == '__main__':
