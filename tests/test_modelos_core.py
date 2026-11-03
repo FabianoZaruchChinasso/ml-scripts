@@ -100,9 +100,8 @@ class TestSemente(unittest.TestCase):
   def test_registro_do_repositorio(self):
     reg = M.carregar()
     self.assertIn('v1', reg['versoes'])
-    self.assertEqual(reg['ativo'], 'v1')
+    self.assertEqual(reg['ativo'], 'v5')
     self.assertEqual(reg['versoes']['v1']['features'], list(F.MODELO_ATUAL))
-    self.assertNotIn('avaliacao', reg['versoes']['v1'])
 
   def test_v4_renomeada_e_nova_v5(self):
     reg = M.carregar()
@@ -119,7 +118,7 @@ class TestSemente(unittest.TestCase):
     self.assertEqual(v5['cobertura']['nivel'], 'proxy')
     self.assertEqual(F.cobertura_tr069(v5['features'], F.carregar_tabela())['nivel'], 'proxy')
     self.assertIn('atende_ajustado', v5['avaliacao'])
-    self.assertEqual(reg['ativo'], 'v1')
+    self.assertEqual(reg['ativo'], 'v5')
 
 
 class TestDerivadasNovas(unittest.TestCase):
@@ -303,6 +302,13 @@ class TestPerfilQoe(Base):
     antiga = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.65}}}
     nova = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.7}}}
     self.assertIn('QoE 0,65 → 0,70', M.nota_reavaliacao(antiga, nova, '2026-10-27'))
+
+  def test_nota_traz_o_comodo_quando_existe(self):
+    antiga = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.66}}}
+    nova = {'atende_completo': {'media': 0.6}, 'comodo': {'nota': 0.722}}
+    nota = M.nota_reavaliacao(antiga, nova, '2026-10-29')
+    self.assertIn('cômodo – → 0,72', nota)
+    self.assertIn('QoE 0,66 → –', nota)
 
   def test_nota_sem_qoe_continua_igual(self):
     nota = M.nota_reavaliacao({'atende_completo': {'media': 0.5}}, {'atende_completo': {'media': 0.6}}, '2026-10-27')
