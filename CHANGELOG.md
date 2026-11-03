@@ -1,3 +1,100 @@
+# Changelog — Ajustes antes da avaliação externa: apto para jogo, v5 ativa, testes
+
+**Data:** 2026-11-03
+
+## Por quê
+
+Uma avaliadora externa (aluna de mestrado) vai avaliar o modelo completo. O "apto para jogo" ficava em 0,500 em
+todas as versões: a régua comparava a mediana do p90 por linha com correção CQR (um limite conservador por
+linha; o jitter previsto nunca ficava abaixo do limite de 10 ms) com o p90 da posição na verdade. Plano:
+`docs/superpowers/plans/2026-11-03-ajustes-avaliacao.md`.
+
+## Mudanças
+
+- `core/quantis.py`: `prever_quantis_fora_do_fold` devolve também `q90_bruto` (p90 sem a correção conformal).
+- `core/comodo.py`: todas as comparações de latência e jitter (Navegação, Chamada, Jogo) usam `q90_bruto`; `VERSAO_COMODO` passa a `2026-11-03.1`; o `bloco` ganha o campo `jogo` (acurácia balanceada de "apto para jogo" por posição, com intervalo, para a versão e para o piso).
+- Studio: o Assistente mostra "Apto para jogo" (rascunho, ativa e piso) só como informação, sem entrar na ativação. `_dados_mudaram` agora limpa `_piso_comodo_cache`.
+- v5 é a versão ativa (cobertura "proxy"). `definir_ativo` não grava histórico. `regression_benchmark.py`, `classification_benchmark.py`, `compare_protocols.py`, `regression_mlflow.py`, `qoe_mlflow.py` e `comodo_benchmark.py` usam a versão ativa por padrão: depois do push passam a rodar a v5 sem argumento.
+- `router_site_survey_ap` classificada como `identificador` em `column_provenance.json` (JSON bruto do site survey, sem caminho TR-181).
+- Teste `test_registro_do_repositorio` atualizado (as versões têm avaliação guardada desde 2026-10-23; a ativa é a v5).
+
+## Efeito medido
+
+Reavaliação de v1 a v5 pelo Studio (mesmo código de `modelos_reavaliar`, 7 datasets, 27 posições). A nota por cômodo (3 classes) não mudou; o "apto para jogo" saiu de 0,500 em todas:
+
+| Versão | Nota por cômodo (IC 90%) | Apto para jogo antes | Apto para jogo depois (IC 90%) |
+|---|---|---|---|
+| piso (só rádio) | 0,45 (0,35 a 0,55) | 0,500 | 0,55 (0,50 a 0,61) |
+| v1 | 0,64 (0,55 a 0,76) | 0,500 | 0,78 (0,67 a 0,92) |
+| v2-tr069 | 0,64 (0,56 a 0,75) | 0,500 | 0,59 (0,44 a 0,74) |
+| v3-tr069 | 0,72 (0,63 a 0,83) | 0,500 | 0,64 (0,50 a 0,78) |
+| v4 | 0,72 (0,63 a 0,83) | 0,500 | 0,64 (0,50 a 0,78) |
+| v5 | 0,72 (0,63 a 0,83) | 0,500 | 0,67 (0,53 a 0,82) |
+
+Rascunho da v1 contra a v5 ativa: diferença na nota por cômodo -0,079 (IC 90% de -0,170 a 0,000), "empate". Rascunho da v5 contra ela mesma: diferença 0,0, "empate", mesma nota de jogo da avaliação guardada (0,6735).
+
+## Verificação
+
+- As cinco versões têm `versao_comodo == '2026-11-03.1'`, os mesmos 7 datasets, as mesmas 27 posições, `piso` e `jogo.piso` idênticos e o campo `jogo`.
+- Nota de 3 classes igual à de antes (0,6429; 0,6429; 0,7222; 0,7222; 0,7222; piso 0,4524). Apto para jogo bate com a medição prévia (piso ~0,55; v1 ~0,78; v2 ~0,59; v3/v4 ~0,64; v5 ~0,67).
+- Caminho do rascunho consistente com o guardado (v5 contra v5: diferença 0,0, empate, mesma nota de jogo).
+- Suíte Python completa: 663 testes, 0 falhas, 0 erros. `node --test tests/js/logica.test.js`: 24 testes, 0 falhas.
+
+## Limites
+
+- O estimador (p90 por linha sem CQR) foi escolhido depois de olhar estas mesmas 27 posições; a checagem prévia mediu CQR, sem CQR e q50.
+- Só 10 das 27 posições são realmente aptas e os intervalos são largos: só v1 (0,67) e v5 (0,53) têm o limite inferior acima de 0,5; v3/v4 ficam exatamente em 0,50 e v2 abaixo. Fora a v1, nenhuma versão se separa do piso (IC do piso 0,50 a 0,61) por este critério.
+- A previsão aponta 12 a 14 posições aptas (v1 12, v2 13, v3 e v4 14, v5 13) contra 10 verdadeiras: tende a prever apto demais.
+- A previsão é a mediana dos p90 por linha, não o p90 da posição como na verdade: são estatísticas diferentes, mesmo sem CQR.
+- A própria verdade é instável: 8 das 27 posições mudam de apto em mais de 10% das reamostragens de linhas (investigação de 2026-10-29).
+- A classe ainda usa a referência VERDADEIRA da casa (a melhor posição medida), que não existe para uma casa nova em produção.
+
+# Changelog — Studio: régua por cômodo como nota principal e critério de ativação
+
+**Data:** 2026-10-29
+
+## Por quê
+
+O Studio mostrava a nota de QoE (cerca de 0,66 em todas as versões, presa pelos dois prédios do Villa) e
+ativava versões pelo veredito dela. A régua por cômodo responde à pergunta do produto e separa as versões do
+piso. Spec: `docs/superpowers/specs/2026-10-29-studio-comodo-design.md`; plano:
+`docs/superpowers/plans/2026-10-29-studio-comodo.md`.
+
+## Mudanças
+
+- `core/comodo.py`: `de_previsoes` (as previsões que o Studio já calcula), `tabela_posicoes`, `bloco` (guardado na avaliação, com a tabela por posição da versão e do piso) e `comparar_blocos` (comparação entre avaliações guardadas).
+- `studio/api.py`: a etapa "QoE" da avaliação vira "cômodo" (sem treino adicional; piso em cache por conjunto); `GET /api/modelos/avaliar_comodo` prevê só o rascunho e compara com a avaliação guardada da ativa (409 pedindo reavaliação quando ela não é comparável); `GET /api/modelos/avaliar_qoe` saiu.
+- Front: o cartão mostra a nota por cômodo e a diferença contra o piso; o Assistente mostra o bloco "Cômodo" e a ativação segue o veredito dele (só "melhor" libera); o seletor de perfil de QoE saiu. "Apto para jogo" é guardado e não exibido.
+- `core/modelos.nota_reavaliacao`: o histórico registra a nota por cômodo.
+- `core/qoe.py`, `qoe_mlflow.py`, a régua de regressão e as métricas de "atende" não mudaram.
+
+## Efeito medido
+
+Reavaliação de v1 a v5 pelo Studio (conjunto padrão, 7 datasets, 27 posições), idêntica ao `comodo_benchmark.py`:
+
+| Versão | Nota por cômodo | vs piso |
+|---|---|---|
+| v1 | 0,64 | +0,19 |
+| v2-tr069 | 0,64 | +0,19 |
+| v3-tr069 | 0,72 | +0,27 |
+| v4 | 0,72 | +0,27 |
+| v5 | 0,72 | +0,27 |
+
+O piso (só rádio) tem 0,45. Rascunho da v5 contra a v1 ativa: "Empate" (diferença +0,079, IC 90% de 0,000 a 0,170); o botão "Salvar e tornar ativa" fica desabilitado, com a mensagem de que só "melhor" libera. A reavaliação substitui a avaliação inteira da versão, então o bloco `qoe` antigo some do `modelos.json` das cinco versões (o histórico registra "QoE 0,66 → –").
+
+## Verificação
+
+- Suíte Python: 658 testes; só as 2 falhas antigas (`test_tabela_tr181_do_repositorio`, `test_registro_do_repositorio`) e 3 erros em `test_studio_assistente` (a tabela sintética não tem `concorrentes_mesmo_radio`), corrigidos mockando `_bloco_comodo` na classe. Depois da correção rodei `TestRotasAssistente` (17 testes, OK); em 2026-11-03 rodei a suíte inteira (658 testes) e restaram só as 2 falhas antigas, ambas corrigidas na entrada acima desta.
+- `node --test tests/js/logica.test.js`: 24 testes, 0 falhas.
+- Navegador (Playwright): reavaliação de v1 a v5 pelo menu dos cartões, cartões com "cômodo" e "vs piso", bloco "Cômodo" do rascunho; console só com o 404 do favicon e o 409 esperado da primeira carga, quando a v1 ainda não tinha o bloco.
+
+## Limites
+
+- Toda versão empata com a v1 pela régua por cômodo: na prática o botão de ativar fica travado até haver dados que separem as versões.
+- Avaliar um rascunho leva de 1 a vários minutos (quatro alvos); com duas avaliações em paralelo no servidor passou de 10 minutos.
+- Depois de reavaliar a ativa, o aviso de 409 no Assistente não some sozinho: é preciso recarregar a página ou usar "Tentar de novo".
+- A régua por cômodo é provisória (V0 aproximado, cortes semânticos); quando `VERSAO_COMODO` subir, todas as versões precisam ser reavaliadas antes de comparar.
+
 # Changelog — Régua por cômodo (experiência relativa à casa)
 
 **Data:** 2026-10-29
