@@ -354,7 +354,9 @@ window.VENKO = window.VENKO || {};
     // o tooltip continua mostrando o valor real.
     const floor = spec.floor;
     if (floor != null) lo = Math.max(lo, floor);
-    const pad = Math.max(0.02, (hi - lo) * 0.08);
+    // `range` fixa a escala (ex.: acerto de 0 a 1, com folga para a bolinha de 1,00 não cortar).
+    if (spec.range) { lo = spec.range[0]; hi = spec.range[1]; }
+    const pad = spec.range ? 0 : Math.max(0.02, (hi - lo) * 0.08);
     hi += pad;
     if (floor == null) lo -= pad;
     const x = (v) => {
@@ -434,7 +436,7 @@ window.VENKO = window.VENKO || {};
         ctx.beginPath(); ctx.arc(p.X, Y, 7, 0, Math.PI * 2); ctx.fillStyle = css('--surface-1'); ctx.fill();
         ctx.beginPath(); ctx.arc(p.X, Y, 5.5, 0, Math.PI * 2); ctx.fillStyle = p.color; ctx.fill();
         if (floor != null && p.v < floor) desenharCorte(p.X, Y, p.color);
-        hits.push({ x: p.X, y: Y, r: 9, label: r.label, value: p.v, at: p.key, color: p.color });
+        hits.push({ x: p.X, y: Y, r: 9, label: r.label, value: p.v, at: p.key, color: p.color, detail: p.detail });
       });
     });
     return hits;

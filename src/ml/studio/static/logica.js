@@ -273,8 +273,38 @@
   // O rascunho começa sem as colunas com vazamento da base: tirá-las não é mudança do usuário.
   const diffContraBase = (base, vazadas, sel) => diffRascunho(semVazamento(base, vazadas).features, sel);
 
+  // Acerto por prédio da régua por cômodo guardada em cada versão: as mesmas previsões fora do
+  // fold (cada prédio fica de fora) que dão a nota do cartão. `ds`: ids ligados; `ambiente`: o ativo.
+  function acertosPorPredio(posicoes) {
+    const saida = {};
+    (posicoes || []).forEach((q) => {
+      const s = saida[q.site] || (saida[q.site] = { acertos: 0, n: 0, itens: [] });
+      s.n += 1;
+      if (q.real === q.previsto) s.acertos += 1;
+      s.itens.push({ pos: q.pos, real: q.real, previsto: q.previsto });
+    });
+    Object.values(saida).forEach((s) => s.itens.sort((a, b) => (a.pos < b.pos ? -1 : a.pos > b.pos ? 1 : 0)));
+    return saida;
+  }
+
+  function linhasComodo(versoes, ds, ambiente) {
+    const alvoDs = [...ds].sort().join(',');
+    const linhas = versoes.map((v) => {
+      const c = (v.avaliacao || {}).comodo;
+      if (!c) return { nome: v.nome, sem: true };
+      const motivos = [];
+      if ([...(c.datasets || [])].sort().join(',') !== alvoDs) motivos.push('datasets diferentes');
+      if ((c.ambiente || 'todos') !== ambiente) motivos.push('ambiente diferente');
+      return { nome: v.nome, nota: c.nota, intervalo: c.intervalo, predios: acertosPorPredio(c.posicoes),
+               desatualizada: motivos.join(', ') };
+    });
+    const ref = versoes.map((v) => (v.avaliacao || {}).comodo).find((c) => c && c.piso);
+    const piso = ref ? { nota: ref.piso.nota, intervalo: ref.piso.intervalo, predios: acertosPorPredio(ref.piso_posicoes) } : null;
+    return { linhas, piso };
+  }
+
   return { METRICAS, MIN_AMOSTRAS, FOLGA_PCT, reprova, atende, mediana, chavePos, posicoes, daPosicao,
            reprovacao, gargalo, celulas, semContagem, contencao, piores, avisosConjunto,
            diffRascunho, mesmasFeatures, podeAtivar, notaCartao, precisaPedirComodo, vooUnico, corTr181, agruparColunas,
-           sugerirNome, descricaoRascunho, semVazamento, diffContraBase };
+           sugerirNome, descricaoRascunho, semVazamento, diffContraBase, acertosPorPredio, linhasComodo };
 });

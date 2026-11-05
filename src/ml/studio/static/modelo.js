@@ -455,10 +455,15 @@
         <div class="controls" style="margin-bottom:8px">
           <button class="toggle" data-acao="metrica" data-m="r2" aria-pressed="${st.metrica === 'r2'}"><span class="dot"></span> R² por local</button>
           <button class="toggle" data-acao="metrica" data-m="mae" aria-pressed="${st.metrica === 'mae'}"><span class="dot"></span> MAE por local (${u})</button>
+          <button class="toggle" data-acao="metrica" data-m="comodo" aria-pressed="${st.metrica === 'comodo'}"><span class="dot"></span> Cômodos certos (bom / degradado / ruim)</button>
         </div>
         <div class="chartwrap"><canvas id="mCmp"></canvas><div class="tooltip" id="mCmpTip"></div></div>
         <div class="serieskey">${st.cmp.locais.map((p, i) => `<span><i style="background:var(--s${i % 5 + 1})"></i>${esc(p)}</span>`).join('')}</div>
-        <p class="hint" style="margin-top:10px">${st.metrica === 'r2'
+        <p class="hint" style="margin-top:10px">${st.metrica === 'comodo'
+          ? 'Mesmos folds dos outros modos (cada prédio fica de fora), mas a pergunta é a do cartão: o modelo acerta se o cômodo é bom, degradado ou ruim? ' +
+            'Cada bolinha é a fração de cômodos certos do prédio (poucos cômodos por prédio: um erro mexe muito). A barra é a nota do cartão, a acurácia balanceada das três classes com todos os cômodos juntos, e por isso não fica no meio das bolinhas. ' +
+            'Não depende do alvo escolhido acima. TR-069 completo e Tudo não têm esta régua. Passe o mouse numa bolinha para ver cada cômodo, real → previsto.'
+          : st.metrica === 'r2'
           ? 'A barra vertical é a média dos R² por local. Um local com pouca variância no alvo puxa o R² dele muito para baixo; o MAE não tem esse problema.'
           : `MAE em ${u}: menor é melhor. A barra vertical é o MAE de todas as previsões fora do fold juntas.`}</p>
         ${st.cmp.avisos.map((a) => `<p class="gate-msg">${esc(a)}</p>`).join('')}</div>`;
@@ -474,6 +479,7 @@
     const canvas = $('#mCmp');
     if (!canvas || !st.cmp) return;
     const c = st.cmp;
+    if (st.metrica === 'comodo') { desenharComodos(canvas, c); return; }
     const r2 = st.metrica === 'r2';
     const linha = (rotulo, sub, res) => ({
       label: rotulo, sub, mean: r2 ? res.media : res.mae,
@@ -489,6 +495,33 @@
       floor: r2 ? -1 : null });
     V.attachTooltip(canvas, $('#mCmpTip'), () => st.cmpHits,
       (h) => `<b>${esc(h.label)}</b>${esc(h.at)}: ${r2 ? 'R² ' + num(h.value, 3) : 'MAE ' + num(h.value, 1) + ' ' + U.ALVO[c.alvo].unidade}`);
+  }
+
+  // Régua por cômodo: a nota do cartão (barra) e o acerto de cada prédio fora do treino (bolinhas).
+  function desenharComodos(canvas, c) {
+    const { linhas, piso } = L.linhasComodo(st.reg.versoes, dsIds(), st.ctx.ambiente);
+    const pct = (a, n) => `${a}/${n}`;
+    const montar = (rotulo, sub, nota, predios) => ({
+      label: rotulo, sub, mean: nota,
+      points: c.locais.map((p, i) => ({ key: p, v: predios && predios[p] ? predios[p].acertos / predios[p].n : null,
+                                         color: U.cssv('--s' + (i % 5 + 1)), detail: predios && predios[p] ? predios[p] : null }))
+        .filter((p) => p.v != null),
+    });
+    const rows = linhas.map((l) => {
+      const rotulo = l.nome + (l.nome === st.reg.ativo ? ' (ativa)' : '');
+      if (l.sem) return montar(rotulo, 'sem avaliação por cômodo: reavalie a versão', null, null);
+      const total = Object.values(l.predios).reduce((t, p) => [t[0] + p.acertos, t[1] + p.n], [0, 0]);
+      return montar(rotulo, `${pct(total[0], total[1])} cômodos certos` + (l.desatualizada ? ` · desatualizada: ${l.desatualizada}` : ''),
+                    l.nota, l.predios);
+    });
+    if (piso) rows.push(montar('Piso (referência)', 'modelo só com a feature radio', piso.nota, piso.predios));
+    st.cmpHits = V.drawDotRows(canvas, { rows, fmt: (v) => num(v, 2), fmtMean: (v) => num(v, 2), range: [-0.05, 1.05] });
+    V.attachTooltip(canvas, $('#mCmpTip'), () => st.cmpHits, (h) => {
+      if (!h.detail) return `<b>${esc(h.label)}</b>nota do cartão ${num(h.value, 2)}`;
+      const marca = (i) => (i.real === i.previsto ? '' : ' (erro)');
+      return `<b>${esc(h.label)}</b>${esc(h.at)}: ${h.detail.acertos}/${h.detail.n} certos<br>` +
+        h.detail.itens.map((i) => `${esc(i.pos)}: ${esc(i.real)} → ${esc(i.previsto)}${marca(i)}`).join('<br>');
+    });
   }
 
   /* ---------------- rascunho ---------------- */

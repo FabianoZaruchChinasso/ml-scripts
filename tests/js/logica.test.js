@@ -220,3 +220,26 @@ test('diffContraBase: colunas com vazamento tiradas da base não contam como mud
     { mais: ['router_power_dbm'], menos: ['router_noise'] });
   assert.deepEqual(L.diffContraBase(base, undefined, ['router_snr']), { mais: [], menos: ['router_noise', 'router_tx_retries'] });
 });
+
+test('linhasComodo: acerto por prédio, nota do cartão e piso vêm da régua guardada', () => {
+  const pos = (site, pos, real, previsto) => ({ site, pos, real, previsto });
+  const versoes = [
+    { nome: 'v1', avaliacao: { comodo: { datasets: ['b', 'a'], ambiente: 'todos', nota: 0.7222, intervalo: [0.5, 0.9],
+      piso: { nota: 0.45, intervalo: [0.3, 0.6] },
+      posicoes: [pos('x', 'p2', 'bom', 'ruim'), pos('x', 'p1', 'bom', 'bom'), pos('y', 'q1', 'ruim', 'ruim')],
+      piso_posicoes: [pos('x', 'p1', 'bom', 'ruim'), pos('y', 'q1', 'ruim', 'ruim')] } } },
+    { nome: 'v2', avaliacao: {} },
+    { nome: 'v3', avaliacao: { comodo: { datasets: ['a'], ambiente: 'domestico', nota: 0.5, intervalo: null,
+      piso: { nota: 0.45, intervalo: null }, posicoes: [pos('x', 'p1', 'bom', 'bom')], piso_posicoes: [] } } },
+  ];
+  const r = L.linhasComodo(versoes, ['a', 'b'], 'todos');
+  assert.equal(r.linhas[0].nota, 0.7222);
+  assert.equal(r.linhas[0].desatualizada, '');
+  assert.deepEqual([r.linhas[0].predios.x.acertos, r.linhas[0].predios.x.n], [1, 2]);
+  assert.deepEqual(r.linhas[0].predios.x.itens.map((i) => i.pos), ['p1', 'p2']);   // ordenado por posição
+  assert.deepEqual([r.linhas[0].predios.y.acertos, r.linhas[0].predios.y.n], [1, 1]);
+  assert.equal(r.linhas[1].sem, true);
+  assert.equal(r.linhas[2].desatualizada, 'datasets diferentes, ambiente diferente');
+  assert.equal(r.piso.nota, 0.45);
+  assert.equal(r.piso.predios.x.acertos, 0);
+});
