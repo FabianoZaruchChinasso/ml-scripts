@@ -1,3 +1,282 @@
+# Changelog — Régua por cômodo: modelo de razão, rodada justa (experimento, não aprovado)
+
+**Data:** 2026-11-05
+
+## Por quê
+
+A revisão da entrada anterior (modelo de razão com features relativas, `v5-rel`) achou uma assimetria de
+desenho: a v5 corta a previsão no teto de WAN do prédio de teste e tira do treino as linhas limitadas pela
+WAN (139 das 159 são do `villa-escritorio`); o modelo de razão não fazia nenhuma das duas coisas. A
+referência das features também misturava bandas e celulares (172 linhas com PHY acima do dobro da
+referência da casa). Esta rodada corrige as três coisas de uma vez.
+
+**Declaração:** esta rodada foi desenhada **depois** de ver o resultado da `v5-rel`. A justificativa é que a
+assimetria é um defeito de desenho achado na revisão, não um ajuste para melhorar a nota; as três mudanças
+foram fixadas no plano antes de rodar (`docs/superpowers/plans/2026-11-05-features-relativas-justo.md`), junto
+com a regra de decisão e a regra de que não haveria outra variante do modelo de razão nestes 27 cômodos.
+
+## Mudanças
+
+- `core/avaliacao.py`: `prever_fora_do_fold(..., excluir_limitados=False)` tira do treino as linhas
+  `_limitado_wan` também para alvos sem teto. O padrão não muda nada (os 46 testes de `test_avaliacao.py`
+  passam, e `v5-rel` e `v5-razao-abs` repetiram exatamente 0,770 e 0,556). Com denominador por banda o
+  argumento levanta `ValueError`, em vez de ser ignorado. Os benchmarks congelados importam este módulo.
+- `core/comodo.py`: `por_banda` em `referencia_features`, `relativizar` e `prever_razao` (referência por
+  prédio e `radio`); `excluir_wan` em `prever_razao`; `saturar_wan` em `classe_prevista_razao` (a linha cuja
+  previsão absoluta chega a `LIMIAR_TETO` x teto de WAN do prédio fica com razão pelo menos 1). Testes em
+  `tests/test_comodo.py` (`TestRazaoJusta`).
+- `comodo_benchmark.py`: linha `<ativa>-rel-justo` com a regra dela; run `v5-rel-justo-todas` em "MLflow
+  Wifi Experimentos".
+- A régua padrão, `VERSAO_COMODO`, o Studio e o `modelos.json` não mudaram.
+
+## Efeito medido
+
+Mesmas 27 posições e mesma verdade (referência real), v5 ativa, treino com todas as linhas. Intervalos de 90%.
+
+| Linha | Nota (90%) | vs v5 | vs piso | Graves | Acertos |
+|---|---|---|---|---|---|
+| piso (`radio`) | 0,452 (0,35 a 0,55) | -0,270 pior | 0 | 5 | 14/27 |
+| v5 (hoje) | 0,722 (0,63 a 0,83) | 0 | +0,270 melhor | 2 | 18/27 |
+| v5-razao-abs | 0,556 (0,43 a 0,68) | -0,167 pior | +0,103 empate | 1 | 16/27 |
+| v5-rel (assimétrica) | 0,770 (0,63 a 0,90) | +0,048 empate | +0,318 melhor | 0 | 21/27 |
+| **v5-rel-justo** | **0,579** (0,46 a 0,69) | **-0,143** (-0,29 a -0,007) **pior** | +0,127 (-0,03 a +0,28) empate | 2 | 17/27 |
+
+Acertos por prédio de `v5-rel-justo`: casa-marcelo 4/9, coworking 2/2, hotmilk 0/3, residencia 3/3,
+villa-escritorio 5/5, villa-residencial 3/5. Na `v5-rel`: casa-marcelo 9/9, hotmilk 2/3, villa-escritorio 2/5.
+
+Regra de decisão (rodada justa):
+
+1. v5-rel-justo contra v5: -0,143 (-0,286 a -0,007), **pior**. Não passa.
+2. v5-rel-justo contra o piso: +0,127 (-0,028 a +0,278), empate. Não passa.
+
+Veredito: candidato **não aprovado**; a régua e a v5 ficam como estão. Pela regra, o modelo de razão está
+encerrado nestes 27 cômodos.
+
+O que o experimento mostra e o que não mostra:
+
+- O `villa-escritorio` volta a 5 de 5 (era 2 de 5 na `v5-rel`). Isso é coerente com a assimetria do teto de
+  WAN ter sido a causa, mas as três mudanças entraram juntas: não dá para dizer qual delas (exclusão do
+  treino, saturação ou referência por banda) recuperou o prédio.
+- A versão justa ficou **pior** que a assimétrica (-0,191, intervalo -0,31 a -0,05): `casa-marcelo` cai de 9
+  de 9 para 4 de 9, com dois erros graves (`marcelo-inf-sala` e `marcelo-quarto-split`, "bom" previstos
+  "ruim"), e `hotmilk` de 2 de 3 para 0 de 3. Também não dá para atribuir esta queda a uma das três
+  mudanças. A referência por banda é a suspeita mais óbvia (a `casa-marcelo` tem 2,4 GHz e 5 GHz com
+  referências de tx e rx muito diferentes), mas isto é hipótese, não medida.
+- O que as duas rodadas juntas mostram é sensibilidade: duas escolhas de desenho defensáveis do mesmo
+  modelo deram 0,770 e 0,579 nas mesmas 27 posições, e a primeira parecia empatar com a v5. Com tão poucas
+  posições, nenhuma das duas leituras é evidência de que o modelo de razão é melhor ou pior que a v5; só
+  que ele é frágil a decisões de desenho.
+- O descritivo `v5-rel` contra `v5-razao-abs` (+0,214) da entrada anterior continua válido (as duas
+  tinham a mesma assimetria), mas não sustenta mais a conclusão de que relativizar as features basta.
+
+## Próximo passo
+
+Modelo de razão encerrado nestes dados, pela regra fixada antes. Qualquer retomada precisa de mais prédios
+(a régua tem 27 posições em 6 prédios) e de uma regra nova fixada antes. Uma ablação das três mudanças
+(uma por vez) atribuiria a queda, mas seria uma variante nova nestes mesmos cômodos, o que a regra
+desta rodada exclui: fica para quando houver dados novos.
+
+# Changelog — Régua por cômodo: modelo de razão com features relativas (experimento, não aprovado)
+
+**Data:** 2026-11-05
+
+## Por quê
+
+Os erros da v5 vêm de subestimar a capacidade: a mesma taxa PHY rende throughput diferente em cada
+prédio, e com o prédio de teste fora do treino o modelo erra o nível da casa inteira. Em 2026-10-29 foi
+testado treinar a razão (fração do melhor cômodo da casa) com features absolutas, e a nota caiu (v3 de
+0,722 para 0,579): com valores absolutos a razão é inaprendível, porque 500 Mbps de PHY é o melhor cômodo
+de uma casa e o pior de outra. A hipótese deste experimento: com as features de nível também relativas à
+casa, a razão passa a ser aprendível. A referência prevista (entrada anterior) atacou o mesmo erro por
+outro lado e não passou na regra para a v5.
+
+## Mudanças
+
+- `core/comodo.py`: `RELATIVAS` (taxas PHY de tx e rx como razão do maior valor da casa; sinal e SNR como
+  diferença para o maior valor da casa; as quatro fixadas antes de medir), `RAZAO_DN` e `RAZAO_UP`,
+  `referencia_features`, `relativizar`, `alvos_razao`, `prever_razao` (LOGO por prédio, o mesmo
+  RandomForest da régua), `classe_prevista_razao`; `classificar` aceita `razao=` e mantém o piso absoluto.
+  Testes em `tests/test_comodo.py` (`TestFeaturesRelativas` e `TestRazaoPrevista`).
+- `comodo_benchmark.py`: `RELATIVAS=1` acrescenta `<ativa>-rel` e `<ativa>-razao-abs` e imprime a regra de
+  decisão; runs `v5-rel-todas` e `v5-razao-abs-todas` em "MLflow Wifi Experimentos".
+- A régua padrão, `VERSAO_COMODO`, o Studio e o `modelos.json` não mudaram.
+
+## Efeito medido
+
+Mesmas 27 posições e mesma verdade (referência real), v5 ativa, treino com todas as linhas. Intervalos de
+90% pelas reamostras da régua.
+
+| Linha | Nota (90%) | vs v5 | vs piso | Graves | Acertos |
+|---|---|---|---|---|---|
+| piso (`radio`) | 0,452 (0,35 a 0,55) | -0,270 pior | 0 | 5 | 14/27 |
+| v5 (hoje) | 0,722 (0,63 a 0,83) | 0 | +0,270 melhor | 2 | 18/27 |
+| v5-razao-abs (razão, features absolutas) | 0,556 (0,43 a 0,68) | -0,167 (-0,33 a -0,03) pior | +0,103 empate | 1 | 16/27 |
+| v5-rel (razão, features relativas) | 0,770 (0,63 a 0,90) | +0,048 (-0,16 a +0,23) empate | +0,318 (+0,13 a +0,50) melhor | 0 | 21/27 |
+
+Regra de decisão (fixada antes de rodar, em `docs/superpowers/plans/2026-11-05-features-relativas.md`):
+
+1. v5-rel contra v5: +0,048 (-0,164 a +0,233), empate. **Não passa**: o limite inferior não fica acima de zero.
+2. v5-rel contra o piso: +0,318 (+0,127 a +0,499), melhor. Passa, mas a regra exige as duas.
+
+Veredito: candidato **não aprovado**; a régua e a v5 ficam como estão.
+
+O que o experimento mostra e o que não mostra:
+
+- Descritivo, fora da regra: v5-rel contra v5-razao-abs é +0,214 (+0,071 a +0,344), melhor. Com a mesma
+  razão como alvo, relativizar as features leva a nota de 0,556 para 0,770. É evidência a favor do
+  mecanismo (a razão só é aprendível quando as features também são relativas), e a v5-razao-abs repete o
+  resultado de 2026-10-29 (0,556 contra 0,579 da v3).
+- v5-rel não passa a v5 com segurança: a diferença de +0,048 tem intervalo de -0,16 a +0,23 em 27
+  posições. Os cinco erros que a v5 tinha em `casa-marcelo` somem (9 de 9; antes 4 de 9), entre eles os dois
+  graves, e os erros graves vão a zero, mas outros aparecem.
+- A perda de v5-rel está concentrada em `villa-escritorio` (2 de 5, antes 5 de 5): três cômodos "bom"
+  previstos "degradado". Revisão posterior: a comparação não era justa. A v5 corta a previsão no teto de WAN
+  do prédio de teste (93,1 / 100,2 Mbps no `villa-escritorio`) e tira do treino as linhas limitadas pela WAN;
+  o modelo de razão não fazia nenhuma das duas coisas. Das 159 linhas limitadas pela WAN, 139 são do
+  `villa-escritorio`: entraram no treino da razão com razão ~1 e PHY relativa baixa. O descritivo v5-rel
+  contra v5-razao-abs continua válido (as duas linhas têm a mesma assimetria); o veredito contra a v5 está
+  contaminado. A referência das features também mistura bandas e celulares (172 linhas com PHY acima do dobro
+  da referência da casa). Rodada justa: entrada "rodada justa" acima.
+- Já foram avaliadas mais de 20 variantes nestas 27 posições; o resultado aponta uma direção, não é
+  evidência suficiente para mudar a régua.
+
+## Próximo passo
+
+Régua e v5 mantidas. Se a equipe quiser seguir, o caminho é com mais prédios, em que o efeito do cabo do
+`villa-escritorio` não domine, e com a hipótese acima testada antes (por exemplo, a mesma nota sem
+`villa-escritorio`), em plano próprio. Não acrescentar features relativas depois de olhar este resultado
+sem uma regra nova fixada antes.
+
+# Changelog — Régua por cômodo: referência prevista (experimento, não adotada)
+
+**Data:** 2026-11-05
+
+## Por quê
+
+Os 9 erros da v5 na régua por cômodo vêm de subestimar a capacidade: a mesma taxa PHY rende throughput
+diferente em cada prédio (eficiência de upload de 0,15 a 0,73) e nenhuma feature explica isso. Com o prédio
+de teste fora do treino o modelo erra o nível da casa inteira, mas tende a acertar a proporção entre
+cômodos. Hoje a classe prevista é `previsto ÷ melhor cômodo REAL`, então o erro de nível vira erro de classe.
+Comparar com o melhor cômodo PREVISTO cancela o erro de nível, e é a única forma que funciona numa casa
+nova, onde o melhor cômodo real não é conhecido. O rascunho de 2026-10-30 (fora do repositório) sugeria
+v1 em 0,889; este experimento refaz a conta no código do repositório e decide por regra fixada antes.
+
+## Mudanças
+
+- `core/comodo.py`: `estatisticas_previstas`, `referencia_prevista` (maior mediana prevista de download
+  e de upload entre posições com pelo menos 10 linhas, a mesma regra da referência real) e `classe_prevista`
+  passa a usar `estatisticas_previstas`. Testes em `tests/test_comodo.py` (`TestReferenciaPrevista`).
+- `comodo_benchmark.py`: `REF=prevista` calcula a nota com a referência prevista e imprime a regra de decisão;
+  runs `<linha>-<treino>-refprevista` em "MLflow Wifi Experimentos" com o parâmetro `referencia`.
+- A régua padrão, `VERSAO_COMODO`, o Studio e o `modelos.json` não mudaram.
+
+## Efeito medido
+
+Mesmas 27 posições e mesma verdade (referência real); a coluna "ref prevista" usa o melhor cômodo previsto.
+Intervalos de 90% pelas reamostras da régua; "vs ref real" é a diferença pareada da mesma linha.
+
+| Linha | Ref real (hoje) | Ref prevista (90%) | vs ref real | vs piso previsto | Graves |
+|---|---|---|---|---|---|
+| piso (`radio`) | 0,452 | 0,603 (0,48 a 0,71) | +0,151 (0,00 a +0,30) empate | 0 | 3 |
+| v1 | 0,643 | 0,889 (0,80 a 0,96) | +0,246 (+0,06 a +0,41) melhor | +0,286 melhor | 0 |
+| v2-tr069 | 0,643 | 0,841 (0,72 a 0,95) | +0,198 (+0,03 a +0,33) melhor | +0,238 melhor | 0 |
+| v3-tr069 | 0,722 | 0,762 (0,67 a 0,86) | +0,040 (-0,11 a +0,17) empate | +0,159 melhor | 0 |
+| v4 | 0,722 | 0,818 (0,70 a 0,93) | +0,095 (-0,05 a +0,21) empate | +0,214 melhor | 0 |
+| v5 | 0,722 | 0,762 (0,66 a 0,88) | +0,040 (-0,07 a +0,12) empate | +0,159 melhor | 1 |
+
+Regra de decisão (fixada antes de rodar, em `docs/superpowers/plans/2026-11-05-referencia-prevista.md`):
+
+1. v5 prevista contra v5 real: +0,040 (-0,065 a +0,119), empate. **Não passa**: o limite inferior não fica acima de zero.
+2. v5 prevista contra o piso previsto: +0,159 (+0,033 a +0,295), melhor. Passa, mas a regra exige as duas.
+3. v1 prevista contra v5 prevista: +0,127 (-0,032 a +0,262), empate. **Mantém a v5**.
+
+Veredito: referência prevista **não adotada**; a régua continua com a referência real e a v5 continua ativa.
+
+O que o experimento mostra e o que não mostra:
+
+- Reproduziu o rascunho de 2026-10-30 (piso 0,603, v1 0,889, v3 e v5 0,762), então a conta está certa.
+- A referência prevista ajuda de fato as versões com menos features (v1 e v2, intervalo contra a ref real
+  acima de zero) e o piso sobe 0,15. Mas esses ganhos são em linhas que não eram o alvo da regra, e foram
+  vistos depois de olhar os números: não servem para trocar a versão ativa.
+- A v5, a versão ativa, ganha só +0,040 e o intervalo inclui zero. Para ela, o erro de nível não era o
+  principal problema; a v5 ainda erra `casa-marcelo` (5 de 9) mesmo com a referência prevista.
+- v1 prevista (0,889) contra v5 prevista (0,762) é empate (-0,032 a +0,262). Com 27 posições a diferença
+  de 0,127 não se distingue de ruído.
+- O piso sobe junto (0,452 para 0,603): parte do ganho de todas as linhas é a própria régua ficar mais
+  fácil, não o modelo melhorar. Por isso a comparação que importa é contra o piso previsto, e nela v5 e v1
+  continuam acima.
+
+## Próximo passo
+
+Referência real mantida. Se a equipe quiser testar de novo, o caminho é com mais prédios (a régua tem 27
+posições em 6 prédios, e já foram avaliadas mais de 20 variantes nesses dados): o resultado atual aponta a
+referência prevista como promissora para v1 e v2, mas não é evidência suficiente para mudar a régua padrão.
+O candidato seguinte (modelo com features relativas à casa, por exemplo taxa PHY ÷ maior taxa PHY da casa)
+segue em aberto.
+
+# Changelog — Piso absoluto na régua por cômodo e experimentos "um dispositivo" e "só cliente"
+
+**Data:** 2026-11-05
+
+## Por quê
+
+Na reunião de 2026-11-04 o Marcos Otani apontou que a régua relativa ao melhor cômodo falha se o melhor
+cômodo da casa já for ruim: tudo passaria por "bom". Também ficou combinado medir quanto o modelo perde
+sem as variáveis do roteador (coleta pelo celular, projeto V2) e treinando só com um dispositivo.
+
+## Mudanças
+
+- `core/comodo.py`: `classificar` passa a comparar download e upload com os mínimos absolutos do perfil
+  `norma`, além da razão contra o melhor cômodo. Abaixo do mínimo de Navegação (2 / 0,5 Mbps) é ruim;
+  abaixo do de Chamada de vídeo (3,0 / 3,8 Mbps) é degradado. "Apto para jogo" não muda (só latência e
+  jitter). `VERSAO_COMODO` 2026-11-03.1 -> 2026-11-05.1. Testes em `tests/test_comodo.py`.
+- `core/comodo.py`: `conjuntos_sozinhos` devolve os conjuntos só com as linhas sozinhas no rádio.
+- `comodo_benchmark.py`: `TREINO=sozinhas`, `EXPERIMENTO=f1,f2,...`, `EXPERIMENTO_DENOMINADOR=<coluna>` (a linha
+  `experimento` prevê download e upload como eficiência no 5 GHz, como a v5) e `MLFLOW=1` (experimento
+  "MLflow Wifi Experimentos"; com `EXPERIMENTO`, só a linha do experimento vira run). Testes em `tests/test_comodo_benchmark.py`.
+- `studio/static/modelo.js`: a Comparação por prédio abre em "Cômodos certos".
+- `core/modelos.json`: v1 a v5 reavaliadas na régua nova (muda `versao_comodo`; o benchmark do Fabiano
+  também lê este arquivo). Runs "Studio" do MLflow atualizados com `studio_mlflow.py`.
+
+## Efeito medido
+
+- Piso absoluto: nenhuma das 27 posições mudou de classe (14 bom, 6 degradado, 7 ruim nas duas réguas) e
+  as notas de v1 a v5 não mudaram (v1 e v2 0,643; v3, v4 e v5 0,722). Nestes dados o piso não tem como
+  acionar: a menor referência de casa é 47 Mbps (upload da residência), então só um cômodo com razão abaixo
+  de ~0,08 cairia sob 3,8 Mbps, e esse já é ruim pela razão. O piso protege a casa de internet lenta; não
+  responde ao caso da cozinha do Vila (cômodo que mede bem, mas cai), que fica em "Pendente para a coleta".
+- Experimentos contra a v5 (0,722, 90%: 0,63 a 0,83) e o piso `radio` (0,45 a 0,46), 27 posições:
+
+| Cenário | Nota (90%) | vs v5 | vs piso |
+|---|---|---|---|
+| Um dispositivo (v5, treino só com linhas sozinhas) | 0,722 (0,63 a 0,83) | 0,000 | +0,262 melhor |
+| Só cliente, sem denominador | 0,556 (0,43 a 0,69) | -0,167 pior | +0,103 empate |
+| Só cliente, denominador `link_speed_mbps` | 0,532 (0,40 a 0,67) | -0,191 pior | +0,079 empate |
+| Só cliente e um dispositivo, sem denominador | 0,532 (0,40 a 0,66) | -0,191 pior | +0,071 empate |
+| Só cliente e um dispositivo, denominador `link_speed_mbps` | 0,587 (0,44 a 0,72) | -0,135 pior | +0,127 empate |
+
+As features "só cliente" são RSSI, link_speed_mbps, channel_width, client_mode, radio,
+site_survey_same_channel_aps e site_survey_total_aps (todas presentes nos seis prédios, nenhuma com
+vazamento). A v5 normaliza download e upload pela taxa negociada do roteador no 5 GHz; a comparação justa
+para o celular é a linha com `link_speed_mbps`, a taxa negociada vista pelo cliente. Com 27 posições os
+intervalos são largos: as linhas mostram se há perda, não o tamanho exato dela. Treinar só com um
+dispositivo não mudou a nota da v5 (18 de 27 nos dois casos).
+
+- Sem as variáveis do roteador, mesmo normalizado pela taxa do cliente, o modelo fica 0,14 a 0,19 abaixo da
+  v5 e não se distingue do piso: o intervalo contra o piso inclui zero nos quatro cenários "só cliente". O
+  denominador mexeu a nota em -0,02 e +0,06, dentro do ruído; não explica a perda.
+
+## Pendente para a coleta (V2)
+
+- Cômodo que mede bem, mas cai (cozinha do Vila): as quedas nunca viraram linha no dataset
+  (`villa_res_cozinha` tem 0 linhas de falha em 43), então nenhuma régua feita sobre estes dados as vê.
+  O coletor precisa gravar cada tentativa, inclusive a que desconecta ou não devolve resultado, com
+  posição e horário. Com isso a régua pode tratar "fração de tentativas que falharam" como falha de
+  Navegação, que é a resposta ao ponto do Otani.
+- "Sem enlace" (stats do roteador vazias) não serve como sinal de falha: é 41% do melhor cômodo do
+  hotmilk (`hotmilk-copa`) e 100% de `marcelo-quarto`, o que indica falha na coleta das stats, não Wi-Fi
+  ruim. Vale checar com o Marcelo e o Fabiano por que o roteador não responde nessas coletas.
+
 # Changelog — MLflow versionado: v1 a v5 e as notas do Studio
 
 **Data:** 2026-11-03
