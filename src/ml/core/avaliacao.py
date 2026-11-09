@@ -54,7 +54,7 @@ def assert_sem_vazamento(colunas, vazadas) -> None:
 
 def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores: int = None,
                         min_teste: int = 1, min_treino: int = 1, estimador=None,
-                        ao_ajustar=None, denominador=None) -> pd.DataFrame:
+                        ao_ajustar=None, denominador=None, excluir_limitados: bool = False) -> pd.DataFrame:
   """Previsão de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
   Para download e upload, linhas `_limitado_wan` saem do treino e a previsão é
@@ -64,6 +64,8 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   previsão volta para a unidade do alvo multiplicando por `den`; `den` vazio ou menor
   que DEN_MINIMO vira a mediana das linhas de treino do fold, e a linha fica com
   `den_imputado`. O teto de WAN é aplicado depois da multiplicação.
+  Com `excluir_limitados`, as linhas `_limitado_wan` saem do treino também para alvos sem teto
+  (ex.: a razão de capacidade); o corte no teto continua só para download e upload.
   `denominador` também pode ser {'coluna': ..., 'radio': ...}: dois modelos por fold
   (eficiência e absoluto, mesmas linhas de treino), e cada linha de teste recebe a
   eficiência se `radio` for igual ao valor indicado, e o absoluto nos demais casos
@@ -72,6 +74,8 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   """
   assert_sem_vazamento(colunas, vazadas)
   if isinstance(denominador, dict):
+    if excluir_limitados:
+      raise ValueError('excluir_limitados não é suportado com denominador por banda')
     return _prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
                              ao_ajustar, denominador)
   if not colunas:
@@ -86,7 +90,7 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   y = sub[y_col].astype(float)
   com_teto = y_col in ALVOS_COM_TETO
   limitado = pd.Series(False, index=sub.index)
-  if com_teto and '_limitado_wan' in sub.columns:
+  if (com_teto or excluir_limitados) and '_limitado_wan' in sub.columns:
     limitado = sub['_limitado_wan'].astype(bool)
   linha = sub['_linha'] if '_linha' in sub.columns else pd.Series(sub.index.astype(str), index=sub.index)
   posicao = sub['_pos'] if '_pos' in sub.columns else sub['_site']

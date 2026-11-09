@@ -4,6 +4,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -93,6 +94,110 @@ class TestClassificar(unittest.TestCase):
     with self.assertRaisesRegex(ValueError, 's2'):
       C.classificar(est(100, site='s2'), REF, LIM)
 
+  def test_piso_absoluto_quando_o_melhor_comodo_e_fraco(self):
+    # Casa cujo melhor cômodo tem 4 Mbps: pela razão tudo seria bom.
+    ref_fraca = pd.DataFrame({'dn': [4.0], 'up': [4.0]}, index=pd.Index(['s1'], name='_site'))
+
+    def c(dn, up):
+      return C.classificar(est(dn, up), ref_fraca, LIM)['classe'].iloc[0]
+    self.assertEqual(c(4.0, 4.0), 'bom')          # acima dos mínimos de Chamada (3,0 / 3,8)
+    self.assertEqual(c(3.5, 3.5), 'degradado')    # razão 0,875 (seria bom), mas up < 3,8 (Chamada)
+    self.assertEqual(c(1.9, 4.0), 'ruim')         # razão 0,475 (seria degradado), mas dn < 2 (Navegação)
+
+  def test_piso_absoluto_inclui_o_limite(self):
+    ref = pd.DataFrame({'dn': [3.8], 'up': [3.8]}, index=pd.Index(['s1'], name='_site'))
+    self.assertEqual(C.classificar(est(3.0, 3.8), ref, LIM)['classe'].iloc[0], 'bom')
+
+  def test_apto_jogo_nao_usa_capacidade(self):
+    ref = pd.DataFrame({'dn': [4.0], 'up': [4.0]}, index=pd.Index(['s1'], name='_site'))
+    t = C.classificar(est(4.0, 4.0, lat=10.0, jit=2.0), ref, LIM)
+    self.assertTrue(bool(t['apto_jogo'].iloc[0]))  # dn 4 < 15 do Jogo, mas jogo é só lat/jit
+
+
+class TestConjuntosSozinhos(unittest.TestCase):
+  def test_filtra_cada_alvo_e_preserva_o_resto(self):
+    df = juntas(linhas('a', 3, 10, 10), linhas('a', 2, 10, 10, conc=2.0), linhas('b', 1, 10, 10, conc=np.nan))
+    conj = types.SimpleNamespace(df=df, datasets=['d.zip'], classes={'x': None})
+    out = C.conjuntos_sozinhos({C.DN: conj, C.UP: conj})
+    self.assertEqual(len(out[C.DN].df), 3)
+    self.assertTrue((out[C.UP].df['concorrentes_mesmo_radio'] == 1).all())
+    self.assertEqual(out[C.DN].datasets, ['d.zip'])
+    self.assertEqual(len(conj.df), 6)  # o original não muda
+
+
+def prev_linhas(pos, n, dn, up, lat=10.0, jit=2.0, site='s1'):
+  """Previsões no formato de C.prever: uma linha por _linha."""
+  return pd.DataFrame({'_linha': [f'{pos}:{i}' for i in range(n)], '_site': [site] * n, '_pos': [pos] * n,
+                       'dn': [float(dn)] * n, 'up': [float(up)] * n, 'lat': [lat] * n, 'jit': [jit] * n})
+
+
+class TestReferenciaPrevista(unittest.TestCase):
+  def test_maior_mediana_prevista_por_predio(self):
+    prev = juntas(prev_linhas('sala', 10, 400, 380), prev_linhas('quarto', 10, 300, 390),
+                  prev_linhas('x', 10, 50, 50, site='s2'))
+    ref = C.referencia_prevista(prev)
+    self.assertEqual((ref.loc['s1', 'dn'], ref.loc['s1', 'up']), (400.0, 390.0))
+    self.assertEqual(ref.loc['s2', 'dn'], 50.0)
+
+  def test_ignora_posicao_com_poucas_linhas(self):
+    prev = juntas(prev_linhas('sala', 10, 400, 400), prev_linhas('canto', 9, 900, 900))
+    self.assertEqual(C.referencia_prevista(prev).loc['s1', 'dn'], 400.0)
+
+  def test_erro_de_nivel_se_cancela(self):
+    # Real: sala 600, quarto 450 (razão 0,75, bom). O modelo previu tudo 1/3 abaixo.
+    prev = juntas(prev_linhas('sala', 10, 400, 400), prev_linhas('quarto', 10, 300, 300))
+    ref_real = pd.DataFrame({'dn': [600.0], 'up': [600.0]}, index=pd.Index(['s1'], name='_site'))
+    com_real = C.classe_prevista(prev, ref_real, LIM)
+    com_prevista = C.classe_prevista(prev, C.referencia_prevista(prev), LIM)
+    self.assertEqual(com_real.loc['quarto', 'classe'], 'degradado')   # 300 / 600 = 0,50
+    self.assertEqual(com_prevista.loc['quarto', 'classe'], 'bom')     # 300 / 400 = 0,75
+    self.assertEqual(com_prevista.loc['sala', 'classe'], 'bom')
+
+  def test_estatisticas_previstas_formato(self):
+    est = C.estatisticas_previstas(prev_linhas('sala', 4, 100, 50, lat=20.0, jit=3.0))
+    self.assertEqual(list(est.columns), ['_site', 'n', 'dn', 'up', 'lat', 'jit'])
+    self.assertEqual(est.loc['sala', 'n'], 4)
+
+
+def linhas_feat(pos, n, tx, sinal, site='s1', conc=1.0, dn=100.0, up=100.0):
+  return pd.DataFrame({'_pos': [pos] * n, '_site': [site] * n, 'router_tx_rate_mbps': [float(tx)] * n,
+                       'router_signal_dbm': [float(sinal)] * n, 'concorrentes_mesmo_radio': [conc] * n,
+                       C.DN: [dn] * n, C.UP: [up] * n})
+
+
+class TestFeaturesRelativas(unittest.TestCase):
+  def test_referencia_e_o_maior_valor_entre_posicoes(self):
+    df = juntas(linhas_feat('sala', 10, 800, -45), linhas_feat('quarto', 10, 400, -70),
+                linhas_feat('canto', 9, 1200, -30),             # poucas linhas: fora
+                linhas_feat('sala', 5, 2000, -10, conc=2.0))    # não sozinha: fora
+    ref = C.referencia_features(df, ['router_tx_rate_mbps', 'router_signal_dbm'])
+    self.assertEqual(ref.loc['s1', 'router_tx_rate_mbps'], 800.0)
+    self.assertEqual(ref.loc['s1', 'router_signal_dbm'], -45.0)
+
+  def test_razao_para_taxa_e_diferenca_para_db(self):
+    df = juntas(linhas_feat('sala', 10, 800, -45), linhas_feat('quarto', 10, 400, -70))
+    ref = C.referencia_features(df, ['router_tx_rate_mbps', 'router_signal_dbm'])
+    rel = C.relativizar(df, ref)
+    quarto = rel[rel['_pos'] == 'quarto'].iloc[0]
+    self.assertAlmostEqual(quarto['router_tx_rate_mbps_rel'], 0.5)
+    self.assertAlmostEqual(quarto['router_signal_dbm_rel'], -25.0)
+    self.assertNotIn('router_snr_rel', rel.columns)   # coluna ausente no df: não cria
+
+  def test_mesma_fracao_em_casas_de_nivel_diferente(self):
+    # Casa rica e casa pobre: o cômodo com metade da PHY tem o mesmo valor relativo.
+    df = juntas(linhas_feat('a1', 10, 1200, -40, site='s1'), linhas_feat('a2', 10, 600, -60, site='s1'),
+                linhas_feat('b1', 10, 300, -40, site='s2'), linhas_feat('b2', 10, 150, -60, site='s2'))
+    rel = C.relativizar(df, C.referencia_features(df, ['router_tx_rate_mbps', 'router_signal_dbm']))
+    por_pos = rel.groupby('_pos')['router_tx_rate_mbps_rel'].first()
+    self.assertAlmostEqual(por_pos['a2'], por_pos['b2'])
+
+  def test_alvos_razao(self):
+    df = linhas_feat('quarto', 2, 400, -70, dn=50.0, up=20.0)
+    ref = pd.DataFrame({'dn': [100.0], 'up': [80.0]}, index=pd.Index(['s1'], name='_site'))
+    out = C.alvos_razao(df, ref)
+    self.assertAlmostEqual(out[C.RAZAO_DN].iloc[0], 0.5)
+    self.assertAlmostEqual(out[C.RAZAO_UP].iloc[0], 0.25)
+
 
 def conjs_sinteticos():
   """3 prédios, 2 posições, 15 linhas cada; uma feature `x` que move os quatro alvos."""
@@ -137,6 +242,92 @@ class TestPrevisao(unittest.TestCase):
     vazadas[C.DN] = ['x']
     with self.assertRaisesRegex(ValueError, C.DN):
       C.prever(conjs, ['x'], vazadas)
+
+
+class TestRazaoPrevista(unittest.TestCase):
+  def test_classificar_com_razao_dada_ignora_a_referencia(self):
+    t = C.classificar(est(100), None, LIM, razao=pd.Series([0.5], index=pd.Index(['p'], name='_pos')))
+    self.assertAlmostEqual(t.loc['p', 'razao'], 0.5)
+    self.assertEqual(t.loc['p', 'classe'], 'degradado')
+
+  def test_classificar_com_razao_mantem_o_piso_absoluto(self):
+    # Razão alta, mas 1,5 Mbps de download previsto: abaixo do mínimo de Navegação.
+    t = C.classificar(est(1.5, up=1.5), None, LIM, razao=pd.Series([0.95], index=pd.Index(['p'], name='_pos')))
+    self.assertEqual(t.loc['p', 'classe'], 'ruim')
+
+  def test_classe_prevista_razao_usa_o_menor_entre_download_e_upload(self):
+    prev = pd.DataFrame({'_linha': ['l1', 'l2'], '_pos': ['a', 'a'], '_site': ['s1', 's1'],
+                         'dn': [50.0, 50.0], 'up': [50.0, 50.0], 'lat': [10.0, 10.0], 'jit': [2.0, 2.0]})
+    pr = pd.DataFrame({'_linha': ['l1', 'l2'], C.RAZAO_DN: [0.9, 0.9], C.RAZAO_UP: [0.6, 0.6]})
+    t = C.classe_prevista_razao(prev, pr, LIM)
+    self.assertAlmostEqual(t.loc['a', 'razao'], 0.6)
+    self.assertEqual(t.loc['a', 'classe'], 'degradado')
+
+  def test_prever_razao_fora_do_fold(self):
+    conjs, _ = conjs_sinteticos()
+    ref = pd.DataFrame({'dn': [100.0] * 3, 'up': [55.0] * 3}, index=pd.Index(['s1', 's2', 's3'], name='_site'))
+    ref_feat = pd.DataFrame(index=pd.Index(['s1', 's2', 's3'], name='_site'))
+    vaz = {a: [] for a in conjs}
+    pr = C.prever_razao(conjs, ['x'], vaz, ref, ref_feat)
+    self.assertEqual(list(pr.columns), ['_linha', C.RAZAO_DN, C.RAZAO_UP])
+    self.assertEqual(len(pr), 90)
+    self.assertTrue(pr[C.RAZAO_DN].between(0, 1.2).all())
+
+
+def linhas_banda(pos, n, tx, radio, site='s1'):
+  return pd.DataFrame({'_pos': [pos] * n, '_site': [site] * n, 'radio': [radio] * n,
+                       'router_tx_rate_mbps': [float(tx)] * n, 'concorrentes_mesmo_radio': [1.0] * n})
+
+
+class TestRazaoJusta(unittest.TestCase):
+  def test_referencia_por_banda(self):
+    df = juntas(linhas_banda('sala', 10, 800, '5ghz'), linhas_banda('sala', 10, 150, '2.4ghz'),
+                linhas_banda('quarto', 10, 400, '5ghz'), linhas_banda('quarto', 10, 60, '2.4ghz'))
+    ref = C.referencia_features(df, ['router_tx_rate_mbps'], por_banda=True)
+    self.assertEqual(ref.loc[('s1', '5ghz'), 'router_tx_rate_mbps'], 800.0)
+    self.assertEqual(ref.loc[('s1', '2.4ghz'), 'router_tx_rate_mbps'], 150.0)
+
+  def test_relativizar_por_banda(self):
+    df = juntas(linhas_banda('sala', 10, 800, '5ghz'), linhas_banda('sala', 10, 150, '2.4ghz'),
+                linhas_banda('quarto', 10, 60, '2.4ghz'))
+    ref = C.referencia_features(df, ['router_tx_rate_mbps'], por_banda=True)
+    rel = C.relativizar(df, ref, por_banda=True)
+    q = rel[(rel['_pos'] == 'quarto')].iloc[0]
+    self.assertAlmostEqual(q['router_tx_rate_mbps_rel'], 0.4)   # 60 / 150, não 60 / 800
+
+  def test_referencia_sem_banda_continua_igual(self):
+    df = juntas(linhas_banda('sala', 10, 800, '5ghz'), linhas_banda('quarto', 10, 60, '2.4ghz'))
+    self.assertEqual(C.referencia_features(df, ['router_tx_rate_mbps']).loc['s1', 'router_tx_rate_mbps'], 800.0)
+
+  def _prev(self, dn):
+    return pd.DataFrame({'_linha': ['l1', 'l2'], '_pos': ['a', 'a'], '_site': ['casa', 'casa'],
+                         'dn': [dn, dn], 'up': [90.0, 90.0], 'lat': [10.0, 10.0], 'jit': [2.0, 2.0]})
+
+  def test_saturar_wan_leva_a_razao_a_1(self):
+    pr = pd.DataFrame({'_linha': ['l1', 'l2'], C.RAZAO_DN: [0.5, 0.5], C.RAZAO_UP: [0.9, 0.9]})
+    with mock.patch.object(C, 'teto_wan', lambda s, a: 100.0):
+      t = C.classe_prevista_razao(self._prev(90.0), pr, LIM, saturar_wan=True)   # 90 >= 0,85 x 100
+    self.assertEqual(t.loc['a', 'classe'], 'bom')
+    self.assertAlmostEqual(t.loc['a', 'razao'], 1.0)   # dn (90) e up (90) chegam a 85% do teto: os dois viram 1
+
+  def test_saturar_wan_nao_mexe_abaixo_do_limiar_nem_sem_teto(self):
+    pr = pd.DataFrame({'_linha': ['l1', 'l2'], C.RAZAO_DN: [0.5, 0.5], C.RAZAO_UP: [0.9, 0.9]})
+    with mock.patch.object(C, 'teto_wan', lambda s, a: 100.0):
+      abaixo = C.classe_prevista_razao(self._prev(80.0), pr, LIM, saturar_wan=True)
+    with mock.patch.object(C, 'teto_wan', lambda s, a: None):
+      sem_teto = C.classe_prevista_razao(self._prev(90.0), pr, LIM, saturar_wan=True)
+    self.assertAlmostEqual(abaixo.loc['a', 'razao'], 0.5)
+    self.assertAlmostEqual(sem_teto.loc['a', 'razao'], 0.5)
+
+  def test_prever_razao_aceita_por_banda_e_excluir_wan(self):
+    conjs, _ = conjs_sinteticos()
+    for c in conjs.values():
+      c.df['_limitado_wan'] = False
+      c.df['radio'] = '5ghz'
+    ref = pd.DataFrame({'dn': [100.0] * 3, 'up': [55.0] * 3}, index=pd.Index(['s1', 's2', 's3'], name='_site'))
+    ref_feat = pd.DataFrame(index=pd.MultiIndex.from_tuples([], names=['_site', 'radio']))
+    pr = C.prever_razao(conjs, ['x'], {a: [] for a in conjs}, ref, ref_feat, por_banda=True, excluir_wan=True)
+    self.assertEqual(len(pr), 90)
 
 
 def posicoes(real, previsto, site=None):

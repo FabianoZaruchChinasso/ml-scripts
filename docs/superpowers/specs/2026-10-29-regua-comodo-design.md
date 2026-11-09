@@ -78,7 +78,7 @@ Linhas: as do `qoe.conjunto_qoe` (presentes nos quatro alvos) com `concorrentes_
    - senão, `bom`.
 5. **Apto para jogo:** latência p90 `<=` limiar de Jogo em nuvem e jitter p90 `<=` limiar de Jogo em nuvem.
 
-Limiares de latência e jitter: `aplicacoes.carregar_perfil('norma')`, chaves `lat` e `jit` de Navegação, Chamada de vídeo e Jogo em nuvem. Nenhum limiar é copiado no código. Cortes de capacidade: constantes `CORTE_RUIM = 0.25` e `CORTE_BOM = 0.75`. Versão: `VERSAO_COMODO = '2026-10-29.1'`; sobe quando cortes, referência, filtro de linhas ou regras mudam.
+Limiares: `aplicacoes.carregar_perfil('norma')`. Latência e jitter (`lat`, `jit`) de Navegação, Chamada de vídeo e Jogo em nuvem; desde 2026-11-05 também os mínimos de capacidade (`dn`, `up`) de Navegação (abaixo: ruim) e Chamada de vídeo (abaixo: degradado), para a casa cujo melhor cômodo já é fraco. "Apto para jogo" continua só latência e jitter. Nenhum limiar é copiado no código. Cortes de capacidade relativa: constantes `CORTE_RUIM = 0.25` e `CORTE_BOM = 0.75`. Versão: `VERSAO_COMODO` (atual `2026-11-05.1`); sobe quando cortes, referência, filtro de linhas ou regras mudam.
 
 ### 4.2 Previsão e nota de uma versão
 

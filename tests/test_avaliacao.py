@@ -384,5 +384,35 @@ class TestDenominadorPorBanda(Base):
       A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], denominador=self.DEN)
 
 
+class TestExcluirLimitados(unittest.TestCase):
+  def _df(self):
+    rng = np.random.default_rng(1)
+    partes = []
+    for s in ('s1', 's2', 's3'):
+      x = rng.uniform(0, 1, 30)
+      partes.append(pd.DataFrame({'_site': s, '_pos': f'{s}-a', 'x': x, 'alvo_livre': x, '_limitado_wan': False}))
+    df = pd.concat(partes, ignore_index=True)
+    # Linhas limitadas no s1 com alvo absurdo: se entrarem no treino, puxam a previsão dos outros prédios.
+    df.loc[df['_site'] == 's1', 'alvo_livre'] = 1000.0
+    df.loc[df['_site'] == 's1', '_limitado_wan'] = True
+    df['_linha'] = [f'd:{i}' for i in range(len(df))]
+    return df
+
+  def test_padrao_nao_exclui_para_alvo_sem_teto(self):
+    p = A.prever_fora_do_fold(self._df(), ['x'], 'alvo_livre', [])
+    self.assertGreater(p[p['_site'] == 's2']['yhat'].max(), 100)
+
+  def test_excluir_limitados_tira_do_treino_e_mantem_no_teste(self):
+    p = A.prever_fora_do_fold(self._df(), ['x'], 'alvo_livre', [], excluir_limitados=True)
+    self.assertLess(p[p['_site'] == 's2']['yhat'].max(), 2)
+    self.assertEqual(int((p['_site'] == 's1').sum()), 30)   # o prédio limitado continua sendo previsto
+
+  def test_denominador_por_banda_nao_aceita(self):
+    df = self._df().assign(radio='5ghz', den=10.0)
+    with self.assertRaisesRegex(ValueError, 'excluir_limitados'):
+      A.prever_fora_do_fold(df, ['x'], 'alvo_livre', [], denominador={'coluna': 'den', 'radio': '5ghz'},
+                            excluir_limitados=True)
+
+
 if __name__ == '__main__':
   unittest.main()
