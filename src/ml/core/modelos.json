@@ -667,7 +667,7 @@
               "site": "villa-residencial"
             }
           ],
-          "versao_comodo": "2026-11-03.1"
+          "versao_comodo": "2026-11-05.1"
         },
         "jitter_ms": {
           "ambiente": "todos",
@@ -1239,7 +1239,8 @@
         "2026-10-28: reavaliada; datasets +villa-esc-20261026.csv; atende completo 0,63 → 0,66; QoE 0,70 → 0,66",
         "2026-10-28: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → 0,66",
         "2026-10-29: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → –; cômodo – → 0,64",
-        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,64 → 0,64"
+        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,64 → 0,64",
+        "2026-11-05: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,64 → 0,64"
       ],
       "origem": "MODELO_ATUAL"
     },
@@ -1909,7 +1910,7 @@
               "site": "villa-residencial"
             }
           ],
-          "versao_comodo": "2026-11-03.1"
+          "versao_comodo": "2026-11-05.1"
         },
         "jitter_ms": {
           "ambiente": "todos",
@@ -2424,7 +2425,8 @@
         "2026-10-28: reavaliada; datasets +villa-esc-20261026.csv; atende completo 0,66 → 0,66; QoE 0,68 → 0,67",
         "2026-10-28: reavaliada; mesmos datasets; atende completo 0,66 → 0,65; QoE 0,67 → 0,66",
         "2026-10-29: reavaliada; mesmos datasets; atende completo 0,65 → 0,65; QoE 0,66 → –; cômodo – → 0,64",
-        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,65 → 0,65; cômodo 0,64 → 0,64"
+        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,65 → 0,65; cômodo 0,64 → 0,64",
+        "2026-11-05: reavaliada; mesmos datasets; atende completo 0,65 → 0,65; cômodo 0,64 → 0,64"
       ],
       "origem": "studio"
     },
@@ -3094,7 +3096,7 @@
               "site": "villa-residencial"
             }
           ],
-          "versao_comodo": "2026-11-03.1"
+          "versao_comodo": "2026-11-05.1"
         },
         "jitter_ms": {
           "ambiente": "todos",
@@ -3625,7 +3627,8 @@
         "2026-10-28: reavaliada; datasets +villa-esc-20261026.csv; atende completo 0,64 → 0,66; QoE 0,69 → 0,66",
         "2026-10-28: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → 0,66",
         "2026-10-29: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → –; cômodo – → 0,72",
-        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72"
+        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72",
+        "2026-11-05: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72"
       ],
       "origem": "studio"
     },
@@ -4295,7 +4298,7 @@
               "site": "villa-residencial"
             }
           ],
-          "versao_comodo": "2026-11-03.1"
+          "versao_comodo": "2026-11-05.1"
         },
         "jitter_ms": {
           "ambiente": "todos",
@@ -4844,7 +4847,8 @@
         "2026-10-28: reavaliada; datasets +villa-esc-20261026.csv; atende completo 0,65 → 0,66; QoE 0,69 → 0,66",
         "2026-10-28: reavaliada; mesmos datasets; atende completo 0,66 → 0,67; QoE 0,66 → 0,66",
         "2026-10-29: reavaliada; mesmos datasets; atende completo 0,67 → 0,67; QoE 0,66 → –; cômodo – → 0,72",
-        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,67 → 0,67; cômodo 0,72 → 0,72"
+        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,67 → 0,67; cômodo 0,72 → 0,72",
+        "2026-11-05: reavaliada; mesmos datasets; atende completo 0,67 → 0,67; cômodo 0,72 → 0,72"
       ],
       "origem": "studio"
     },
@@ -5514,7 +5518,7 @@
               "site": "villa-residencial"
             }
           ],
-          "versao_comodo": "2026-11-03.1"
+          "versao_comodo": "2026-11-05.1"
         },
         "jitter_ms": {
           "ambiente": "todos",
@@ -6037,7 +6041,8 @@
         "2026-10-28: reavaliada; datasets +villa-esc-20261026.csv; atende completo 0,65 → 0,66; QoE 0,70 → 0,66",
         "2026-10-28: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → 0,66",
         "2026-10-29: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; QoE 0,66 → –; cômodo – → 0,72",
-        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72"
+        "2026-11-03: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72",
+        "2026-11-05: reavaliada; mesmos datasets; atende completo 0,66 → 0,66; cômodo 0,72 → 0,72"
       ],
       "origem": "studio"
     }
