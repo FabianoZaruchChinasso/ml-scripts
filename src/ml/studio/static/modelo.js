@@ -28,7 +28,7 @@
     busca: '', aberto: false, lab: false, destaque: 0, itens: [],
     aval: null, avalKey: null, avalErro: null, avalErroKey: null, avaliando: false, inicio: 0, relogio: null,
     outros: null, outrosKey: null, outrosCarregando: false,
-    cmp: null, cmpKey: null, cmpErro: null, comparando: false, cmpAberto: false, metrica: 'r2', cmpHits: null,
+    cmp: null, cmpKey: null, cmpErro: null, comparando: false, cmpAberto: false, metrica: 'comodo', cmpHits: null,
     form: null, salvando: false, salvarErro: null, salvarEtapa: null, avisoVaz: null,
     receitas: null, recAberto: false,
     rec: { id: 'razao', colunas: [], montada: null, nome: '', ocupado: false, erro: null, resultado: null, montarKey: null },
