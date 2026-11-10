@@ -134,6 +134,11 @@ def _tags_git() -> dict:
   return {'mlflow.source.git.commit': commit, 'git_arvore': 'suja' if mudancas else 'limpa'}
 
 
+def tags_git() -> dict:
+  """As tags do git de um run (commit e git_arvore), para os outros registros no MLflow."""
+  return _tags_git()
+
+
 @_exclusivo
 def registrar_avaliacao(nome: str, versao: dict, evento: str, ativo: bool) -> str:
   """Cria o run '<nome>-studio' da avaliação guardada em `versao` e devolve o run_id.

@@ -256,6 +256,12 @@ class TestRegistroComGit(Base):
     self.assertEqual(tags['git_arvore'], 'suja')
 
 
+class TestTagsGitPublica(unittest.TestCase):
+  def test_devolve_o_mesmo_que_a_interna(self):
+    with mock.patch.object(R, '_tags_git', return_value={'git_arvore': 'limpa'}):
+      self.assertEqual(R.tags_git(), {'git_arvore': 'limpa'})
+
+
 class TestIsolamentoDosTestes(unittest.TestCase):
   def test_testes_que_salvam_reavaliam_ou_ativam_trocam_o_mlflow_por_mock(self):
     """Sem o mock, um teste que passa por salvar/reavaliar/ativar grava no mlflow.db da raiz."""
@@ -267,6 +273,20 @@ class TestIsolamentoDosTestes(unittest.TestCase):
       with open(os.path.join(pasta, arq), encoding='utf-8') as f:
         texto = f.read()
       if re.search(r'modelos_(salvar|reavaliar|ativo)\(', texto) and 'core_registro_mlflow' not in texto:
+        faltam.append(arq)
+    self.assertEqual(faltam, [])
+
+  def test_testes_do_pipeline_usam_banco_temporario(self):
+    """Os testes de pacote_mlflow e versao_mlflow gravam runs de verdade: sem MLFLOW_TRACKING_URI
+    temporário, eles iriam para o mlflow.db da raiz."""
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    faltam = []
+    for arq in sorted(os.listdir(pasta)):
+      if not arq.endswith('.py') or arq == os.path.basename(__file__):
+        continue
+      with open(os.path.join(pasta, arq), encoding='utf-8') as f:
+        texto = f.read()
+      if re.search(r'pacote_mlflow|versao_mlflow', texto) and 'MLFLOW_TRACKING_URI' not in texto:
         faltam.append(arq)
     self.assertEqual(faltam, [])
 
