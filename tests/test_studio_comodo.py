@@ -113,7 +113,7 @@ class TestBlocoComodo(unittest.TestCase):
   def test_piso_calculado_uma_vez_por_conjunto(self):
     conjs = {a: conj(a) for a in api.core_qoe.ALVOS}
     with mock.patch.object(api.core_qoe, 'conjunto_qoe', return_value='df'), \
-         mock.patch.object(api.studio_features, 'vazadas_do_conjunto', return_value=[]), \
+         mock.patch.object(api.core_completa, '_vazadas', return_value=[]), \
          mock.patch.object(api.core_comodo, 'prever', return_value='prev_piso') as prever, \
          mock.patch.object(api.core_comodo, 'tabela_posicoes', side_effect=lambda df, prev, lim: 'tab:' + prev), \
          mock.patch.object(api.core_comodo, 'bloco', return_value={'nota': 0.7}) as bloco:
@@ -131,6 +131,13 @@ class TestDadosMudaram(unittest.TestCase):
          mock.patch.object(api.studio_data, 'limpar_cache_predios'):
       api._dados_mudaram()
     self.assertEqual(api._piso_comodo_cache, {})
+
+  def test_dados_novos_esvaziam_o_cache_que_a_avaliacao_completa_usa(self):
+    api.core_completa._piso_cache[('a.csv', 'todos', 'v')] = 'tabela'
+    with mock.patch.object(api.core_carga, 'esquecer_descobertos'), \
+         mock.patch.object(api.studio_data, 'limpar_cache_predios'):
+      api._dados_mudaram()
+    self.assertEqual(api.core_completa._piso_cache, {})
 
 
 if __name__ == '__main__':

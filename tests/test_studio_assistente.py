@@ -242,7 +242,7 @@ class TestRotasAssistente(Base):
     self.patches = [mock.patch.object(api, '_conjunto', return_value=(conj, None)),
                     mock.patch.object(api, '_registro', return_value=(REGISTRO, None)),
                     mock.patch.object(api, '_colunas_conhecidas', return_value={'router_snr'}),
-                    mock.patch.object(api, '_bloco_comodo', return_value={'nota': 0.5})]
+                    mock.patch.object(api.core_completa, 'bloco_comodo', return_value={'nota': 0.5})]
     for p in self.patches:
       p.start()
     api._modelos_cache.clear()

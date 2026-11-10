@@ -19,9 +19,9 @@ class TestAvaliacaoCompleta(unittest.TestCase):
   def rodar(self, features, progresso=None):
     patches = {
       'conjunto': mock.patch.object(api, '_conjunto', side_effect=lambda ds, alvo, amb='': (conj(alvo), None)),
-      'vazadas': mock.patch.object(api.studio_features, 'vazadas_do_conjunto', return_value=['router_tx_retries']),
+      'vazadas': mock.patch.object(api.core_completa, '_vazadas', return_value=['router_tx_retries']),
       'avaliar': mock.patch.object(api.core_avaliacao, 'avaliar', return_value=({'n': 10}, 'prev')),
-      'quantis': mock.patch.object(api, '_prever_quantis', return_value='q'),
+      'quantis': mock.patch.object(api.core_completa, 'prever_quantis', return_value='q'),
       'resumir_quantis': mock.patch.object(api.core_quantis, 'resumir_quantis', return_value={}),
       'atende': mock.patch.object(api.core_avaliacao, 'atende', return_value={}),
       'decisoes': mock.patch.object(api.core_limiar, 'decisoes_atende', return_value={}),
@@ -30,7 +30,7 @@ class TestAvaliacaoCompleta(unittest.TestCase):
       'completo': mock.patch.object(api.core_quantis, 'atende_completo', return_value={}),
       'aplicacoes': mock.patch.object(api.core_aplicacoes, 'carregar_perfil', return_value={}),
       'de_previsoes': mock.patch.object(api.core_comodo, 'de_previsoes', return_value='prev4'),
-      'comodo': mock.patch.object(api, '_bloco_comodo', return_value={'nota': 0.7}),
+      'comodo': mock.patch.object(api.core_completa, 'bloco_comodo', return_value={'nota': 0.7}),
     }
     m = {k: p.start() for k, p in patches.items()}
     self.addCleanup(lambda: [p.stop() for p in patches.values()])

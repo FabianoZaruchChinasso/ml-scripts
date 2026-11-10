@@ -24,6 +24,7 @@ from ml.core import aplicacoes as core_aplicacoes
 from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import comodo as core_comodo
+from ml.core import completa as core_completa
 from ml.core import features as core_features
 from ml.core import limiar as core_limiar
 from ml.core import formulas as core_formulas
@@ -67,9 +68,9 @@ async def _so_post_local(request: Request, call_next):
 _cache = {}
 _ajustes = {}
 _modelos_cache = {}
-# Tabela por posição do piso da régua por cômodo (só radio): igual para todas as versões, uma por
-# (datasets, ambiente, VERSAO_COMODO).
-_piso_comodo_cache = {}
+# O cache do piso da régua por cômodo mora em core/completa.py; este é o mesmo dicionário, e é por
+# ele que _dados_mudaram esvazia o cache quando chega dataset ou prédio novo.
+_piso_comodo_cache = core_completa._piso_cache
 
 
 def _payload() -> dict:
@@ -240,8 +241,7 @@ def _lista(texto: str) -> list:
 
 
 def _presentes(c, lista):
-  vazadas = studio_features.vazadas_do_conjunto(c)
-  return [f for f in lista if f in c.df.columns and f not in vazadas], vazadas
+  return core_completa.presentes(c, lista)
 
 
 def _prever_pontual(c, lista, denominador: dict = None):
@@ -251,8 +251,7 @@ def _prever_pontual(c, lista, denominador: dict = None):
 
 
 def _prever_quantis(c, lista):
-  presentes, vazadas = _presentes(c, lista)
-  return core_quantis.prever_quantis_fora_do_fold(c.df, presentes, c.alvo, vazadas)
+  return core_completa.prever_quantis(c, lista)
 
 
 def _promocao(ds: str, ambiente: str, alvo: str, feats: list, feats_base: list, conj,
@@ -373,80 +372,16 @@ def modelos_avaliar_comodo(features: str, contra: str, ds: str = '', ambiente: s
   return _modelos_cache[chave]
 
 
-# Rótulo de cada etapa da avaliação completa, na ordem em que roda (progresso do salvar e do reavaliar).
-ETAPAS = {'speedtest_down_mbps': 'download', 'speedtest_up_mbps': 'upload',
-          'latency_ms': 'latência', 'jitter_ms': 'jitter'}
-# Depois dos quatro alvos: o "atende" da regressão e a régua por cômodo.
-N_ETAPAS = len(ETAPAS) + 2
-
-
 def _bloco_comodo(conjs: dict, prev, ambiente: str) -> dict:
-  """Bloco `comodo` da avaliação (core/comodo.py), com o piso (só radio) em cache por conjunto.
-
-  `prev`: previsões dos quatro alvos (comodo.prever ou comodo.de_previsoes). A régua usa sempre o perfil de norma.
-  """
-  limiares = core_aplicacoes.carregar_perfil('norma')
-  df = core_qoe.conjunto_qoe(conjs)
-  meta = {'datasets': list(conjs[core_comodo.DN].datasets), 'ambiente': _ambiente(ambiente) or 'todos'}
-  chave = (tuple(meta['datasets']), meta['ambiente'], core_comodo.VERSAO_COMODO)
-  if chave not in _piso_comodo_cache:
-    vazadas = {alvo: studio_features.vazadas_do_conjunto(c) for alvo, c in conjs.items()}
-    _piso_comodo_cache[chave] = core_comodo.tabela_posicoes(df, core_comodo.prever(conjs, ['radio'], vazadas), limiares)
-  return core_comodo.bloco(core_comodo.tabela_posicoes(df, prev, limiares), _piso_comodo_cache[chave], meta)
+  """Bloco `comodo` da avaliação, com o piso em cache (core/completa.py)."""
+  return core_completa.bloco_comodo(conjs, prev, ambiente)
 
 
 def avaliacao_completa(ds: str, ambiente: str, features: list, denominador: dict = None, progresso=None,
                        perfil_qoe: str = 'atual') -> dict:
-  """Avaliação dos quatro alvos, de "atende em throughput" e de "atende completo", guardada junto da versão.
-
-  Latência e jitter levam também o resumo quantílico (p50 e p90). Colunas hoje marcadas como
-  vazamento saem da conta e ficam em `removidas_por_vazamento` (a versão salva antes da marcação
-  continua avaliável, como no benchmark). `progresso(evento)` recebe {'etapa', 'passo', 'passos'}
-  antes de cada uma das seis etapas (a última é a régua por cômodo; `perfil_qoe` define os limiares do "atende").
-  """
-  avisar = progresso or (lambda evento: None)
-  saida, previsoes, quantis = {}, {}, {}
-  aplicacoes = core_aplicacoes.carregar_perfil(perfil_qoe)
-  conjs, removidas = {}, set()
-  for passo, alvo in enumerate(studio_features.TARGETS):
-    avisar({'etapa': ETAPAS[alvo], 'passo': passo, 'passos': N_ETAPAS})
-    conj, _ = _conjunto(ds, alvo, ambiente)
-    conjs[alvo] = conj
-    vazadas = studio_features.vazadas_do_conjunto(conj)
-    usadas = [f for f in features if f not in vazadas]
-    fora = [f for f in features if f in vazadas]
-    removidas.update(fora)
-    resumo, previsoes[alvo] = core_avaliacao.avaliar(conj, usadas, vazadas, com_previsoes=True,
-                                                     denominador=(denominador or {}).get(alvo))
-    saida[alvo] = dict(resumo, datasets=conj.datasets, ambiente=_ambiente(ambiente) or 'todos',
-                       versao_tabela=core_features.versao_tabela(),
-                       versao_catalogo=core_features.CATALOGO_VERSAO,
-                       removidas_por_vazamento=fora)
-    if alvo in core_quantis.ALVOS_QUANTILICOS:
-      quantis[alvo] = _prever_quantis(conj, usadas)
-      saida[alvo]['quantis'] = core_quantis.resumir_quantis(quantis[alvo], resumo['n'])
-  avisar({'etapa': 'atende', 'passo': N_ETAPAS - 2, 'passos': N_ETAPAS})
-  usadas = [f for f in features if f not in removidas]
-  saida['atende_throughput'] = core_avaliacao.atende(previsoes['speedtest_down_mbps'],
-                                                     previsoes['speedtest_up_mbps'], aplicacoes)
-  conj_dn, conj_up = conjs['speedtest_down_mbps'], conjs['speedtest_up_mbps']
-  den = denominador or {}
-  decisoes = core_limiar.decisoes_atende(conj_dn, conj_up, usadas, aplicacoes,
-                                         den.get(conj_dn.alvo), den.get(conj_up.alvo))
-  saida['atende_ajustado'] = dict(core_limiar.resumir_decisoes(decisoes),
-                                  fatores_producao=core_limiar.fatores_producao(
-                                    conj_dn, conj_up, usadas, aplicacoes, den.get(conj_dn.alvo),
-                                    den.get(conj_up.alvo)))
-  saida['atende_completo'] = core_quantis.atende_completo(previsoes['speedtest_down_mbps'],
-                                                          previsoes['speedtest_up_mbps'],
-                                                          quantis['latency_ms'], quantis['jitter_ms'], aplicacoes)
-  avisar({'etapa': 'cômodo', 'passo': N_ETAPAS - 1, 'passos': N_ETAPAS})
-  prev = core_comodo.de_previsoes(conjs['speedtest_down_mbps'].df, previsoes['speedtest_down_mbps'],
-                                  previsoes['speedtest_up_mbps'], quantis['latency_ms'], quantis['jitter_ms'])
-  saida['comodo'] = _bloco_comodo(conjs, prev, ambiente)
-  saida['perfil'] = perfil_qoe
-  saida['removidas_por_vazamento'] = sorted(removidas)
-  return saida
+  """A avaliação completa (core/completa.py) com os datasets e o ambiente escolhidos no Studio."""
+  return core_completa.avaliacao_completa(lambda alvo: _conjunto(ds, alvo, ambiente)[0], ambiente, features,
+                                          denominador, progresso=progresso, perfil_qoe=perfil_qoe)
 
 
 # Desenho automático e paralelos rodam em thread: levam minutos e a página
