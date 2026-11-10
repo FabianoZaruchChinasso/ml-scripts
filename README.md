@@ -136,7 +136,7 @@ venv/bin/python src/ml/studio.py --port 8100                       # Studio: htt
 venv/bin/python src/ml/comodo_benchmark.py                         # per-room ruler (MODELO=<v> restricts)
 MODELO=v5 ALVO=speedtest_down_mbps venv/bin/python src/ml/regression_mlflow.py
 MODELO=v5 venv/bin/python src/ml/qoe_mlflow.py
-venv/bin/python src/ml/studio_mlflow.py                            # logs the Studio evaluation
+venv/bin/python src/ml/studio_mlflow.py                            # re-logs the Studio evaluation (the Studio logs on its own)
 ```
 
 In the scripts, `MODELO` is the version (default: the active one), `ALVO` is the target of `regression_mlflow.py` (default: download; also `speedtest_up_mbps`, `latency_ms`, `jitter_ms`) and `DATASETS=a.zip,b.zip` changes the dataset set (default: the canonical one). Recreating the models of all versions takes about 50 min.
@@ -154,6 +154,8 @@ Then open http://127.0.0.1:5055 and switch the interface to "Model training".
 
 - Model binaries (`model.skops`, about 45 MB each) are not versioned; the folder's `README.md` explains how to recreate them.
 - The working MLflow at the root (`mlflow.db` and `mlruns/`) is in `.gitignore`.
+- The Studio logs to the working MLflow by itself ("MLflow Wifi Studio"): saving or re-evaluating a version creates a run `<version>-studio`, and activating a version only updates tags. Useful filters: `tags.atual = 'sim'` (latest run of each version) and `tags.ativo = 'sim'` (runs of the active version). If logging fails, the version is still saved and the Studio shows a warning; run `venv/bin/python src/ml/studio_mlflow.py` to log again. Set `MLFLOW_TRACKING_URI` to log somewhere else.
+- Runs logged before 2026-11-09 still carry an `ativo` parameter that may be stale (MLflow parameters cannot change); use the `ativo` tag. The `git_arvore` tag says whether tracked files had uncommitted changes when the run was logged: right after saving it is always `suja`, because the new version only exists in the uncommitted `modelos.json`.
 - Do not click "explore demo", "Detect Issues" or the assistant prompts: they write demo data into the open database. If that happens, run `git restore res/mlflow/mlflow.db`.
 
 ### Known limitations

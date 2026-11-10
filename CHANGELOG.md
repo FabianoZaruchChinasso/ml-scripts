@@ -1,3 +1,53 @@
+# Changelog — Studio registra no MLflow sozinho
+
+**Data:** 2026-11-09
+
+## Por quê
+
+Tarefa da reunião de 2026-11-04 ("migrar ou ajustar o Studio para o MLflow"). Até aqui o Studio gravava só
+em `core/modelos.json`, e o experimento "MLflow Wifi Studio" só recebia os números quando alguém rodava
+`studio_mlflow.py` à mão. Rodar duas vezes duplicava os runs (eram 10 para 5 versões) e o parâmetro `ativo`
+ficava errado depois de trocar a versão ativa, porque parâmetro do MLflow não muda depois de gravado.
+
+## Mudanças
+
+- `core/registro_mlflow.py` (novo): `registrar_avaliacao` cria o run `<nome>-studio` com tags `modelo`,
+  `evento` (salvar, reavaliar ou script), `atual`, `ativo`, `versao_comodo` e o commit do git;
+  `marcar_ativo` troca a tag `ativo` sem criar run. O destino é `MLFLOW_TRACKING_URI` ou o `mlflow.db` da
+  raiz com caminho absoluto. `ativo` deixou de ser parâmetro.
+- `studio/api.py`: salvar, reavaliar e ativar registram no MLflow. Uma falha do MLflow não impede gravar no
+  `modelos.json`; a resposta traz `aviso_mlflow` (ou `avisos_mlflow` no reavaliar) e a tela mostra o aviso.
+- `studio_mlflow.py`: virou a recuperação manual, sobre o mesmo módulo (`evento=script`).
+- Testes: `tests/test_registro_mlflow.py` (novo, com sqlite temporário e uma guarda que exige mock do MLflow
+  em todo teste que passa por salvar, reavaliar ou ativar); `test_studio_mlflow.py` reescrito; testes de
+  salvar, reavaliar e ativar com o MLflow em mock.
+- Benchmarks congelados, `modelos.json` e a régua não mudaram.
+
+## Correções da revisão
+
+Medido num banco temporário antes de corrigir:
+
+- Banco travado: o aviso vinha com a consulta SQL inteira (6 linhas). Agora leva só a primeira linha,
+  cortada em 200 caracteres. A espera de 20 s continua: o MLflow força `PRAGMA busy_timeout = 20000` em toda
+  sessão e um `timeout` na URI não muda isso. É o pior caso (outro processo segurando o banco).
+- Dois registros simultâneos da mesma versão deixavam os dois runs com `atual=sim`. Agora
+  `registrar_avaliacao` e `marcar_ativo` rodam sob uma trava do processo (não cobre outro processo ao
+  mesmo tempo).
+- Salvar e ativar com o registro falhando deixava a versão anterior com `ativo=sim`. Agora `marcar_ativo`
+  roda à parte e os dois avisos aparecem juntos.
+- Uma reavaliação que parava no meio perdia os avisos do MLflow das versões já gravadas. Agora a mensagem de
+  erro os inclui.
+- A tag `mlflow.source.git.commit` sugeria que o commit reproduzia o run, mas logo depois de salvar a versão
+  nova só existe no `modelos.json` não commitado. Agora o run também leva `git_arvore` (`limpa` ou `suja`).
+- Os runs antigos ainda têm o parâmetro `ativo` desatualizado (parâmetro não muda); vale a tag.
+
+## Como conferir
+
+No MLflow da raiz, experimento "MLflow Wifi Studio": filtro `tags.atual = 'sim'` mostra um run por versão;
+`tags.ativo = 'sim'` mostra só os runs da versão ativa. Os 10 runs antigos ficaram com `atual=nao` depois da
+rodada de `studio_mlflow.py` feita nesta entrega.
+
+
 # Changelog — Régua por cômodo: modelo de razão, rodada justa (experimento, não aprovado)
 
 **Data:** 2026-11-05
