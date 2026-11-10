@@ -151,7 +151,8 @@ Os 9 arquivos `tests/test_studio_*.py` e os testes de JS precisam ser migrados o
    em 2026-11-10: a avaliação da v5 deu resultado idêntico antes e depois, e o Studio continua
    funcionando.
 3. Criar o comando único de avaliação, que grava um run com modelo, avaliação, métricas por prédio
-   e versão do dado.
+   e versão do dado. Feito em 2026-11-10: `src/ml/versao_mlflow.py`
+   (spec em `docs/superpowers/specs/2026-11-10-versao-mlflow-design.md`).
 4. Registrar as versões v1 a v5 no Model Registry e criar o alias do modelo ativo.
 5. Criar o portão de promoção.
 6. Criar os comandos do Laboratório.

@@ -1,3 +1,56 @@
+# Changelog — Comando único: treina, avalia e grava uma versão no MLflow
+
+**Data:** 2026-11-10
+
+## Por quê
+
+Segundo passo da troca do Studio pelo MLflow (`docs/pipeline/2026-11-10-inventario-studio-mlflow.md`). Uma
+versão estava espalhada em três experimentos que não mediam nem guardavam a mesma coisa: a avaliação do Studio
+media com o modelo da régua e não guardava modelo; `regression_mlflow.py` guardava 6 modelos por alvo sem
+escolher um; nenhum run apontava para a versão do dado.
+
+## Decisões
+
+- O modelo do run é o modelo da régua, um por alvo: o que é medido é o que é entregue.
+- A métrica principal é o erro das quatro previsões. A régua por cômodo e os "atende" são secundárias, com a
+  versão de cada régua em tag. A pesquisa de 2026-11-09 não validou nenhuma das duas réguas, e o erro das
+  previsões não depende de régua.
+- O run guarda um pacote único por versão, com a receita de previsão em código.
+
+## Mudanças
+
+- `core/pacote.py` (novo): `treinar` ajusta os modelos finais pela mesma receita da avaliação e `prever`
+  devolve download, upload e p50, p90 e p90 bruto de latência e jitter. O pacote não corta no teto de WAN.
+- `core/pacote_mlflow.py` (novo): grava e carrega o pacote como modelo pyfunc, com `src/ml/core` embutido e sem
+  a assinatura do MLflow, que recusaria contador inteiro ausente.
+- `versao_mlflow.py` (novo): `MODELO=<versão> venv/bin/python src/ml/versao_mlflow.py` grava um run em
+  "MLflow Wifi Pipeline" com métricas por alvo e por prédio, o pacote, o dataset de entrada e quatro arquivos.
+- `core/registro_mlflow.py`: `tags_git()` público.
+- Testes: `test_pacote.py`, `test_pacote_mlflow.py` e `test_versao_mlflow.py` (25 testes), mais dois em
+  `test_registro_mlflow.py`. Nenhum grava no `mlflow.db` da raiz.
+- Não mudaram: `modelos.json`, o Studio, `regression_mlflow.py`, `qoe_mlflow.py` e os benchmarks.
+
+## Efeito medido
+
+- Run da v5 no conjunto canônico: `9b7a4ece25884f3bb164fd7f06986923`, 93 métricas. As 17 de referência (R²,
+  MAE, cobertura e pinball do p90, nota por cômodo, apto para jogo e os três "atende") são iguais às da
+  avaliação do Studio, até a nona casa.
+- O pacote carrega num processo novo, fora do repositório, com `ml.core` vindo de dentro do modelo, e prevê.
+- Tamanho: 19 MB em `mlruns/pipeline`, dos quais 480 KB são o código embutido.
+- Igualdade com a avaliação (pacote treinado sem um prédio contra a previsão da avaliação para ele, v5, seis
+  prédios): maior diferença de 3,4e-13 Mbps em download e upload e zero em latência e jitter. No
+  `villa-escritorio` todas as linhas de download e upload são cortadas no teto de WAN, e lá a vazão não tem
+  como ser comparada.
+- Tempo: cerca de 7 minutos por versão, quase todo na avaliação.
+- Suíte: 774 testes de Python e 26 de JS passando.
+
+## Como conferir
+
+No MLflow da raiz, experimento "MLflow Wifi Pipeline": um run `v5-pipeline` com o modelo `pacote` e o dataset
+`qoe-wifi`. Para carregar: `mlflow.pyfunc.load_model('runs:/9b7a4ece25884f3bb164fd7f06986923/pacote')`. A tag
+`git_arvore` do run diz `suja` porque ele foi gravado antes do commit do código novo.
+
+
 # Changelog — Avaliação completa sai do servidor do Studio
 
 **Data:** 2026-11-10

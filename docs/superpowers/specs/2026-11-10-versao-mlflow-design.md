@@ -64,7 +64,7 @@ Dois módulos novos e um ajuste pequeno:
 | `src/ml/core/pacote.py` (novo) | Treina os modelos finais e implementa a receita de previsão. Não importa o MLflow | `core/avaliacao`, `core/quantis`, `core/producao`, `core/features` |
 | `src/ml/core/pacote_mlflow.py` (novo) | Embrulha o pacote como modelo `pyfunc` do MLflow: grava e carrega | `core/pacote`, `mlflow`, `skops` |
 | `src/ml/versao_mlflow.py` (novo) | O comando: lê a versão, avalia, treina, monta o pacote e grava o run | `core/completa`, `core/pacote`, `core/pacote_mlflow`, `core/registro_mlflow` |
-| `src/ml/core/registro_mlflow.py` | Expõe `tags_git()` (hoje `_tags_git`; o nome antigo fica como alias) | |
+| `src/ml/core/registro_mlflow.py` | Ganha `tags_git()`, função pública que chama `_tags_git()` (os testes existentes trocam `_tags_git` por um dublê, então esse nome continua sendo o usado por dentro) | |
 
 Descartadas:
 
@@ -130,18 +130,21 @@ O pacote **não** corta a previsão no teto de WAN. A avaliação corta no teto 
 
 - `PacoteQoE(mlflow.pyfunc.PythonModel)`: `load_context` lê `receita.json` e os modelos (um arquivo skops
   por modelo); `predict(context, model_input)` devolve só o `DataFrame` de `pacote.prever`.
-- `gravar(pacote, exemplo) -> None`, dentro de um run ativo: grava os modelos em skops numa pasta temporária
+- `gravar(pacote, exemplo)`, dentro de um run ativo, devolve o `ModelInfo` do MLflow: grava os modelos em skops numa pasta temporária
   e chama `mlflow.pyfunc.log_model(name='pacote', ...)` com esses arquivos e `receita.json` como artefatos,
-  `input_example=exemplo` (5 linhas de treino só com as colunas de `entradas`) e o código de `ml/core`
-  embutido.
+  `input_example=exemplo` (5 linhas de treino só com as colunas de `entradas`), `signature=False` e o
+  código de `ml/core` embutido.
+- O modelo é gravado sem a assinatura do MLflow. Com a assinatura inferida do exemplo, o MLflow recusa um
+  inteiro ausente em coluna inteira e um inteiro em coluna decimal (medido em 2026-11-10), e os contadores
+  TR-181 chegam inteiros e às vezes faltam. Quem valida a entrada é `pacote.prever`.
 - `carregar(uri) -> Pacote`: o caminho inverso, para testes e para o item da API.
 - Os modelos da régua têm cerca de 45 MB cada em skops sem compressão. Os arquivos são gravados com
   compressão (`zipfile.ZIP_DEFLATED`).
 
-Como o código de `ml/core` entra no pacote é a única parte não verificada deste desenho. O candidato é
-`code_paths` apontando para `src/ml`; a alternativa é o modo "models from code" do MLflow. A primeira tarefa
-do plano prova uma das duas com um pacote de brinquedo carregado num processo novo, fora do repositório,
-antes do resto.
+O código de `ml/core` entra pelo `code_paths`, com uma cópia de `src/ml/core` dentro de uma pasta `ml`
+(`src/ml` não tem `__init__.py` e contém também o Studio e os scripts). Isso foi provado em 2026-11-10, antes
+do plano: o modelo carregou num processo novo, fora do repositório, com `ml.core` vindo da pasta do próprio
+modelo. O modo "models from code" do MLflow não foi necessário.
 
 ### 4.3 O modelo entregue é o modelo medido
 
@@ -156,8 +159,9 @@ Diferenças esperadas, e só estas:
 - quando o prédio de teste tem uma categoria que o treino não viu, a matriz da avaliação tem uma coluna a
   mais, toda zero no treino. As árvores não usam essa coluna, mas a ordem do sorteio interno do RandomForest
   pode mudar um desempate. Nos dados de teste, todas as categorias aparecem em todos os prédios e a igualdade
-  é exigida com `numpy.allclose`. Na rodada real, o plano mede a diferença máxima por prédio e registra o
-  valor no CHANGELOG.
+  é exigida com `numpy.allclose`. Medido em 2026-11-10 com a v5 e os seis prédios reais: a maior diferença
+  foi de 3,4e-13 Mbps em download e upload e zero em latência e jitter. No `villa-escritorio` todas as
+  linhas de download e upload são cortadas no teto, e lá a vazão não tem como ser comparada.
 
 ### 4.4 `versao_mlflow.py`
 
@@ -226,8 +230,10 @@ Registry.
 `tests/test_pacote_mlflow.py`, com um `mlflow.db` temporário:
 
 - `gravar` seguido de `carregar` devolve um pacote que prevê igual ao original;
+- o modelo carregado aceita coluna inteira, valor ausente, `radio` vazio e coluna a mais;
 - o modelo gravado carrega num processo novo, com a pasta de trabalho fora do repositório e sem `src` no
-  caminho do Python, e prevê as linhas do exemplo.
+  caminho do Python, e prevê as linhas do exemplo. A entrada vai por pickle: o JSON arredonda os números, e
+  isso basta para mudar uma previsão do modelo quantílico.
 
 `tests/test_versao_mlflow.py`, com `mlflow.db` temporário e a avaliação e o treino em mock (como
 `tests/test_studio_salvar.py` faz com o peso da avaliação):
