@@ -1,3 +1,35 @@
+# Changelog — Avaliação completa sai do servidor do Studio
+
+**Data:** 2026-11-10
+
+## Por quê
+
+Decisão de 2026-11-10: a pipeline passa a usar só o MLflow, e o Studio sai no fim (inventário em
+`docs/pipeline/2026-11-10-inventario-studio-mlflow.md`). O comando que vai treinar, avaliar e registrar no
+MLflow precisa da avaliação completa, que morava em `studio/api.py`: importar a função carregava o servidor
+inteiro, e ela sumiria junto com ele.
+
+## Mudanças
+
+- `core/completa.py` (novo): `avaliacao_completa`, `bloco_comodo`, `prever_quantis`, `presentes` e o cache do
+  piso da régua por cômodo. Não importa o Studio nem o FastAPI. Quem chama passa `conjunto(alvo)`, que devolve
+  o conjunto de cada alvo.
+- `studio/api.py`: `avaliacao_completa`, `_bloco_comodo`, `_presentes` e `_prever_quantis` continuam com os
+  mesmos nomes e assinaturas, mas só repassam para o core. `_piso_comodo_cache` é o mesmo dicionário do core,
+  então `_dados_mudaram` continua esvaziando o cache certo.
+- Os outros módulos de `studio/` (`features.py`, `selecao.py`, `paralelos.py`, `receitas.py`, `ingestao.py`)
+  não mudaram de lugar: os comandos novos podem importá-los de `ml.studio`.
+- Testes: `tests/test_completa.py` (novo, 4 testes, um deles confirma que o módulo carrega sem o Studio);
+  cinco dublês de `test_studio_salvar.py`, `test_studio_assistente.py` e `test_studio_comodo.py` passaram a
+  apontar para o core; um teste novo cobre o cache do core sendo esvaziado quando chega dataset.
+- Benchmarks, `modelos.json` e as réguas não mudaram.
+
+## Como conferir
+
+A avaliação completa da v5 no conjunto canônico, rodada pelo Studio antes e depois da mudança, deu arquivos
+idênticos (762 valores; nota por cômodo 0,7222). Suíte: 747 testes de Python e 26 de JS passando.
+
+
 # Changelog — Studio registra no MLflow sozinho
 
 **Data:** 2026-11-09
