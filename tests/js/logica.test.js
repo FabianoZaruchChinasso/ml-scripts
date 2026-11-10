@@ -243,3 +243,14 @@ test('linhasComodo: acerto por prédio, nota do cartão e piso vêm da régua gu
   assert.equal(r.piso.nota, 0.45);
   assert.equal(r.piso.predios.x.acertos, 0);
 });
+
+test('avisoMlflow junta o aviso do salvar/ativar e os do reavaliar, ou devolve null', () => {
+  const dica = '. Rode venv/bin/python src/ml/studio_mlflow.py para registrar de novo.';
+  assert.equal(L.avisoMlflow(null), null);
+  assert.equal(L.avisoMlflow({ aviso_mlflow: null }), null);
+  assert.equal(L.avisoMlflow({ reavaliadas: ['v1'], avisos_mlflow: [] }), null);
+  assert.equal(L.avisoMlflow({ aviso_mlflow: 'não registrou no MLflow: locked' }),
+    'não registrou no MLflow: locked' + dica);
+  assert.equal(L.avisoMlflow({ avisos_mlflow: [{ nome: 'v1', aviso: 'a' }, { nome: 'v2', aviso: 'b' }] }),
+    'v1: a; v2: b' + dica);
+});

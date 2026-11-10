@@ -30,6 +30,7 @@ from ml.core import formulas as core_formulas
 from ml.core import modelos as core_modelos
 from ml.core import qoe as core_qoe
 from ml.core import quantis as core_quantis
+from ml.core import registro_mlflow as core_registro_mlflow
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES
 from ml.studio import features as studio_features
@@ -800,6 +801,29 @@ def _metadados_do_desenho(job_id: str, features: list) -> dict:
           'nota_aninhada': {k: r['nota_aninhada'][k] for k in campos + ('escolhas_por_local',)}}
 
 
+AVISO_MLFLOW_MAX = 200
+
+
+def _registrar_mlflow(acao) -> Optional[str]:
+  """Roda o registro no MLflow; devolve None ou o aviso para a tela.
+
+  O modelos.json é a fonte da verdade: uma falha aqui (MLflow fora do ar, banco travado, pacote
+  quebrado) nunca desfaz nem impede a gravação. Recuperação: src/ml/studio_mlflow.py.
+  O aviso leva só a primeira linha do erro, cortada: o erro de banco travado do SQLAlchemy traz a
+  consulta SQL inteira. Com o banco travado, o aviso só chega depois de 20 s (o MLflow força
+  PRAGMA busy_timeout = 20000 em toda sessão).
+  """
+  try:
+    acao()
+    return None
+  except Exception as erro:
+    linhas = str(erro).strip().splitlines()
+    motivo = linhas[0] if linhas else type(erro).__name__
+    if len(motivo) > AVISO_MLFLOW_MAX:
+      motivo = motivo[:AVISO_MLFLOW_MAX] + '...'
+    return f'não registrou no MLflow: {motivo}'
+
+
 class NovaVersao(BaseModel):
   nome: str
   features: list
@@ -850,10 +874,10 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
     avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, corpo.features, denominador, progresso=progresso,
                                   perfil_qoe=corpo.perfil_qoe)
     try:
-      core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, conhecidas,
-                                 tabela, origem='selecao-gulosa' if selecao else 'studio',
-                                 avaliacao=avaliacao, selecao=selecao, denominador=denominador,
-                                 perfil_qoe=corpo.perfil_qoe)
+      gravado = core_modelos.salvar_versao(corpo.nome, corpo.features, corpo.descricao, conhecidas,
+                                           tabela, origem='selecao-gulosa' if selecao else 'studio',
+                                           avaliacao=avaliacao, selecao=selecao, denominador=denominador,
+                                           perfil_qoe=corpo.perfil_qoe)
     finally:
       _ajustes.clear()
       _modelos_cache.clear()
@@ -866,7 +890,15 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
       finally:
         _ajustes.clear()
         _modelos_cache.clear()
-    return {'nome': corpo.nome, 'ativa': corpo.ativar and erro_ativar is None, 'erro_ativar': erro_ativar}
+    ativa = corpo.ativar and erro_ativar is None
+
+    avisos = [_registrar_mlflow(lambda: core_registro_mlflow.registrar_avaliacao(
+      corpo.nome, gravado['versoes'][corpo.nome], 'salvar', ativo=ativa))]
+    if ativa:
+      # À parte: mesmo sem o run novo, a tag ativo precisa sair dos runs da versão anterior.
+      avisos.append(_registrar_mlflow(lambda: core_registro_mlflow.marcar_ativo(corpo.nome)))
+    return {'nome': corpo.nome, 'ativa': ativa, 'erro_ativar': erro_ativar,
+            'aviso_mlflow': '; '.join(a for a in avisos if a) or None}
 
   return _iniciar_job(('salvar', corpo.nome, tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente),
                        corpo.perfil_qoe, tuple(corpo.features))
@@ -891,7 +923,8 @@ def modelos_ativo(corpo: Ativo, request: Request):
     raise HTTPException(422, str(erro))
   _ajustes.clear()
   _modelos_cache.clear()
-  return modelos_listar()
+  aviso = _registrar_mlflow(lambda: core_registro_mlflow.marcar_ativo(corpo.nome))
+  return {**modelos_listar(), 'aviso_mlflow': aviso}
 
 
 class Reavaliacao(BaseModel):
@@ -920,7 +953,7 @@ def modelos_reavaliar(corpo: Reavaliacao, request: Request):
   nomes = list(corpo.nomes)
 
   def tarefa(progresso):
-    feitas = []
+    feitas, avisos = [], []
     for i, nome in enumerate(nomes):
       progresso({'nome': nome, 'i': i, 'total': len(nomes)})
       versao = registro['versoes'][nome]
@@ -929,15 +962,22 @@ def modelos_reavaliar(corpo: Reavaliacao, request: Request):
         avaliacao = avaliacao_completa(corpo.ds, corpo.ambiente, versao['features'], versao.get('denominador'),
                                        progresso=etapa, perfil_qoe=core_modelos.perfil_de(registro, nome))
         nota = core_modelos.nota_reavaliacao(versao.get('avaliacao'), avaliacao, date.today().isoformat())
-        core_modelos.reavaliar(nome, avaliacao, core_features.cobertura_tr069(versao['features'], tabela), nota)
+        regravado = core_modelos.reavaliar(nome, avaliacao, core_features.cobertura_tr069(versao['features'], tabela),
+                                           nota)
       except Exception as falha:
         detalhe = falha.detail if isinstance(falha, HTTPException) else str(falha)
-        raise RuntimeError(f'parou em {nome}: {detalhe}; já reavaliadas: {feitas}') from falha
+        # As que terminaram já foram gravadas; se o MLflow ficou para trás nelas, o erro precisa dizer.
+        mlflow = '; MLflow: ' + '; '.join(f"{a['nome']}: {a['aviso']}" for a in avisos) if avisos else ''
+        raise RuntimeError(f'parou em {nome}: {detalhe}; já reavaliadas: {feitas}{mlflow}') from falha
       finally:
         _ajustes.clear()
         _modelos_cache.clear()
       feitas.append(nome)
-    return {'reavaliadas': feitas}
+      aviso = _registrar_mlflow(lambda nome=nome, regravado=regravado: core_registro_mlflow.registrar_avaliacao(
+        nome, regravado['versoes'][nome], 'reavaliar', ativo=nome == regravado['ativo']))
+      if aviso:
+        avisos.append({'nome': nome, 'aviso': aviso})
+    return {'reavaliadas': feitas, 'avisos_mlflow': avisos}
   return _iniciar_job(('reavaliar', tuple(nomes), tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente))
                       + _chave_versoes(), tarefa)
 

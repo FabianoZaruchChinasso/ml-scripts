@@ -20,7 +20,7 @@
 
   const st = {
     ctx: null, alvo: 'speedtest_down_mbps',
-    reg: null, regErro: null, regAviso: null, msg: null, erro: null, menu: null, vereditos: {}, pendente: null, reav: null,
+    reg: null, regErro: null, regAviso: null, msg: null, erro: null, aviso: null, menu: null, vereditos: {}, pendente: null, reav: null,
     comodo: null, comodoKey: null, comodoErro: null,
     cols: null, colsKey: null, colsErro: null,
     sug: null, sugKey: null, sugTimer: null,
@@ -220,7 +220,7 @@
 
   function publicar() {
     const f = st.form;
-    st.salvarErro = null; st.msg = null; st.erro = null;
+    st.salvarErro = null; st.msg = null; st.erro = null; st.aviso = null;
     if (!NOME_OK.test(f.nome)) { st.salvarErro = 'Nome inválido: use minúsculas, dígitos e hífen (2 a 40 caracteres).'; desenhar(); return; }
     if (!f.desc.trim()) { st.salvarErro = 'Escreva uma descrição: ela é o que explica a versão no git log.'; desenhar(); return; }
     // O vínculo com o desenho automático só vale se o rascunho for exatamente o conjunto escolhido.
@@ -248,6 +248,7 @@
       st.salvando = false; st.salvarEtapa = null;
       if (job.status === 'erro') { st.salvarErro = job.erro; desenhar(); return null; }
       const r = job.resultado;
+      st.aviso = L.avisoMlflow(r);
       if (verPub) st.vereditos[chaveVered(nome)] = verPub;   // ainda com a ativa antiga: a chave é a do veredito que foi dado
       if (r.erro_ativar) st.erro = `Versão ${nome} salva, mas não foi possível ativar: ${r.erro_ativar}`;
       else st.msg = `Versão ${nome} salva${r.ativa ? ' e ativa' : ''} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
@@ -265,9 +266,9 @@
         : `Não há veredito por cômodo de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
       if (!window.confirm(`${txt}\n\nTornar ${nome} a versão ativa mesmo assim?`)) { desenhar(); return; }
     }
-    st.msg = null; st.erro = null;
+    st.msg = null; st.erro = null; st.aviso = null;
     U.post('api/modelos/ativo', { nome })
-      .then((reg) => { st.reg = reg; st.msg = `${nome} agora é a versão ativa. Revise src/ml/core/modelos.json no git diff antes do commit.`; })
+      .then((reg) => { st.reg = reg; st.aviso = L.avisoMlflow(reg); st.msg = `${nome} agora é a versão ativa. Revise src/ml/core/modelos.json no git diff antes do commit.`; })
       .catch((e) => { st.erro = `Não foi possível ativar ${nome}: ${e.message}`; })
       .finally(() => { st.cmpKey = null; agendar(); desenhar(); });
   }
@@ -278,7 +279,7 @@
     .filter((v) => motivoDesatualizada((v.avaliacao || {})[st.alvo])).map((v) => v.nome);
 
   function reavaliar(nomes) {
-    st.menu = null; st.msg = null; st.erro = null;
+    st.menu = null; st.msg = null; st.erro = null; st.aviso = null;
     st.reav = { status: 'rodando', progresso: [], total: nomes.length };
     desenhar();
     U.post('api/modelos/reavaliar', { nomes, ds: st.ctx.enabledIds.join(','), ambiente: st.ctx.ambiente })
@@ -296,6 +297,7 @@
       }
       if (job.status === 'pronto') {
         const n = job.resultado.reavaliadas.length;
+        st.aviso = L.avisoMlflow(job.resultado);
         st.msg = `${n} ${n === 1 ? 'versão reavaliada' : 'versões reavaliadas'} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
       } else {
         st.erro = `A reavaliação parou: ${job.erro}`;
@@ -437,7 +439,7 @@
   function secaoVersoes() {
     return `<div class="secao"><div class="secao-cab"><h2>Versões</h2>${barraReav()}
         <button class="linkbtn link" data-acao="comparar" aria-expanded="${st.cmpAberto}">${icone('i-bars')} Comparar por prédio</button></div>
-      ${st.msg ? U.gate('good', 'Feito', esc(st.msg)) : ''}${st.erro ? U.gate('critical', 'Algo deu errado', esc(st.erro)) : ''}
+      ${st.msg ? U.gate('good', 'Feito', esc(st.msg)) : ''}${st.aviso ? U.gate('warning', 'MLflow ficou para trás', esc(st.aviso)) : ''}${st.erro ? U.gate('critical', 'Algo deu errado', esc(st.erro)) : ''}
       <div class="vers">${st.reg.versoes.map(cartao).join('')}</div></div>`;
   }
 
@@ -811,7 +813,7 @@
       if (!window.confirm(`Descartar o rascunho (+${d.mais.length} −${d.menos.length}) e carregar ${nome}?`)) return;
     }
     usarBase(nome);
-    st.msg = null; st.erro = null;
+    st.msg = null; st.erro = null; st.aviso = null;
     mudouRascunho();
   }
 

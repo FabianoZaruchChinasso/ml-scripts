@@ -73,6 +73,7 @@ class TestAvaliacaoCompleta(unittest.TestCase):
 PEDIDO = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
 REGISTRO = {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x'}}}
 AVAL = {'atende_completo': {'media': 0.6}}
+GRAVADO = {'ativo': 'v1', 'versoes': {'v2': {'features': ['router_snr'], 'descricao': 'teste', 'avaliacao': AVAL}}}
 
 
 def sincrono(chave, tarefa):
@@ -94,12 +95,13 @@ class TestSalvarRota(unittest.TestCase):
       p.start()
       self.addCleanup(p.stop)
     self.job = mock.patch.object(api, '_iniciar_job', side_effect=sincrono).start()
+    self.mlflow = mock.patch.object(api, 'core_registro_mlflow').start()
     self.addCleanup(mock.patch.stopall)
 
   def salvar(self, ativar_falha=None, aval=AVAL, **campos):
     corpo = api.NovaVersao(**{'nome': 'v2', 'features': ['router_snr'], 'descricao': 'teste', **campos})
     with mock.patch.object(api, 'avaliacao_completa', side_effect=[aval] if isinstance(aval, dict) else aval) as a, \
-         mock.patch.object(api.core_modelos, 'salvar_versao') as s, \
+         mock.patch.object(api.core_modelos, 'salvar_versao', return_value=GRAVADO) as s, \
          mock.patch.object(api.core_modelos, 'definir_ativo', side_effect=ativar_falha) as d:
       try:
         r = api.modelos_salvar(corpo, PEDIDO)
@@ -109,7 +111,7 @@ class TestSalvarRota(unittest.TestCase):
 
   def test_salva_dentro_do_job_com_progresso(self):
     r, aval, salvar, ativar = self.salvar()
-    self.assertEqual(r['resultado'], {'nome': 'v2', 'ativa': False, 'erro_ativar': None})
+    self.assertEqual(r['resultado'], {'nome': 'v2', 'ativa': False, 'erro_ativar': None, 'aviso_mlflow': None})
     self.assertEqual(salvar.call_args.kwargs['avaliacao'], AVAL)
     self.assertIn('progresso', aval.call_args.kwargs)
     ativar.assert_not_called()
@@ -170,6 +172,45 @@ class TestSalvarRota(unittest.TestCase):
     self.assertIn('sem memória', str(r))
     salvar.assert_not_called()
 
+  def test_registra_no_mlflow_a_versao_gravada(self):
+    r, _, _, _ = self.salvar()
+    self.mlflow.registrar_avaliacao.assert_called_once_with('v2', GRAVADO['versoes']['v2'], 'salvar', ativo=False)
+    self.mlflow.marcar_ativo.assert_not_called()
+    self.assertIsNone(r['resultado']['aviso_mlflow'])
+
+  def test_ativar_marca_a_ativa_no_mlflow(self):
+    self.salvar(ativar=True)
+    self.mlflow.registrar_avaliacao.assert_called_once_with('v2', GRAVADO['versoes']['v2'], 'salvar', ativo=True)
+    self.mlflow.marcar_ativo.assert_called_once_with('v2')
+
+  def test_ativacao_que_falha_nao_marca_no_mlflow(self):
+    self.salvar(ativar=True, ativar_falha=ValueError('registro travado'))
+    self.assertFalse(self.mlflow.registrar_avaliacao.call_args.kwargs['ativo'])
+    self.mlflow.marcar_ativo.assert_not_called()
+
+  def test_falha_do_mlflow_vira_aviso_e_a_versao_fica_salva(self):
+    self.mlflow.registrar_avaliacao.side_effect = OSError('database is locked')
+    r, _, salvar, _ = self.salvar()
+    salvar.assert_called_once()
+    self.assertEqual(r['resultado']['aviso_mlflow'], 'não registrou no MLflow: database is locked')
+    self.assertIsNone(r['resultado']['erro_ativar'])
+
+  def test_falha_no_registro_ainda_marca_a_ativa(self):
+    self.mlflow.registrar_avaliacao.side_effect = OSError('database is locked')
+    r, _, _, _ = self.salvar(ativar=True)
+    self.mlflow.marcar_ativo.assert_called_once_with('v2')
+    self.assertEqual(r['resultado']['aviso_mlflow'], 'não registrou no MLflow: database is locked')
+
+  def test_duas_falhas_juntam_os_avisos(self):
+    self.mlflow.registrar_avaliacao.side_effect = OSError('a')
+    self.mlflow.marcar_ativo.side_effect = OSError('b')
+    r, _, _, _ = self.salvar(ativar=True)
+    self.assertEqual(r['resultado']['aviso_mlflow'], 'não registrou no MLflow: a; não registrou no MLflow: b')
+
+  def test_falha_na_avaliacao_nao_registra(self):
+    self.salvar(aval=[RuntimeError('sem memória')])
+    self.mlflow.registrar_avaliacao.assert_not_called()
+
 
 class TestReavaliarProgresso(unittest.TestCase):
   def test_reavaliar_repassa_a_etapa_com_o_nome_da_versao(self):
@@ -187,9 +228,60 @@ class TestReavaliarProgresso(unittest.TestCase):
          mock.patch.object(api, '_iniciar_job', side_effect=job), \
          mock.patch.object(api, 'avaliacao_completa', side_effect=aval), \
          mock.patch.object(api.core_features, 'cobertura_tr069', return_value={}), \
-         mock.patch.object(api.core_modelos, 'reavaliar'):
+         mock.patch.object(api.core_modelos, 'reavaliar'), \
+         mock.patch.object(api, 'core_registro_mlflow'):
       api.modelos_reavaliar(api.Reavaliacao(nomes=['v1'], ds='a.csv'), PEDIDO)
     self.assertEqual(eventos[-1], {'nome': 'v1', 'i': 0, 'total': 1, 'etapa': 'download', 'passo': 0, 'passos': 5})
+
+
+class TestAtivarRota(unittest.TestCase):
+  def setUp(self):
+    self.mlflow = mock.patch.object(api, 'core_registro_mlflow').start()
+    mock.patch.object(api, 'modelos_listar', return_value={'ativo': 'v2', 'versoes': []}).start()
+    self.addCleanup(mock.patch.stopall)
+
+  def test_ativar_marca_no_mlflow(self):
+    with mock.patch.object(api.core_modelos, 'definir_ativo') as definir:
+      r = api.modelos_ativo(api.Ativo(nome='v2'), PEDIDO)
+    definir.assert_called_once_with('v2')
+    self.mlflow.marcar_ativo.assert_called_once_with('v2')
+    self.assertEqual(r, {'ativo': 'v2', 'versoes': [], 'aviso_mlflow': None})
+
+  def test_falha_do_mlflow_vira_aviso_e_a_ativacao_fica(self):
+    self.mlflow.marcar_ativo.side_effect = OSError('database is locked')
+    with mock.patch.object(api.core_modelos, 'definir_ativo') as definir:
+      r = api.modelos_ativo(api.Ativo(nome='v2'), PEDIDO)
+    definir.assert_called_once_with('v2')
+    self.assertEqual(r['aviso_mlflow'], 'não registrou no MLflow: database is locked')
+
+  def test_ativacao_recusada_nao_mexe_no_mlflow(self):
+    with mock.patch.object(api.core_modelos, 'definir_ativo', side_effect=ValueError('não existe')):
+      with self.assertRaises(api.HTTPException):
+        api.modelos_ativo(api.Ativo(nome='v9'), PEDIDO)
+    self.mlflow.marcar_ativo.assert_not_called()
+
+
+class TestRegistrarMlflow(unittest.TestCase):
+  def test_aviso_usa_so_a_primeira_linha_do_erro(self):
+    def falha():
+      raise OSError('(sqlite3.OperationalError) database is locked\n[SQL: SELECT experiments.experiment_id]\n'
+                    '(Background on this error at: https://sqlalche.me/e/20/e3q8)')
+    self.assertEqual(api._registrar_mlflow(falha),
+                     'não registrou no MLflow: (sqlite3.OperationalError) database is locked')
+
+  def test_aviso_longo_e_cortado(self):
+    def falha():
+      raise OSError('x' * 500)
+    aviso = api._registrar_mlflow(falha)
+    self.assertEqual(aviso, 'não registrou no MLflow: ' + 'x' * 200 + '...')
+
+  def test_erro_sem_mensagem_usa_o_nome_da_excecao(self):
+    def falha():
+      raise OSError()
+    self.assertEqual(api._registrar_mlflow(falha), 'não registrou no MLflow: OSError')
+
+  def test_sem_erro_devolve_none(self):
+    self.assertIsNone(api._registrar_mlflow(lambda: None))
 
 
 if __name__ == '__main__':

@@ -404,7 +404,8 @@ class TestDenominadorNaApi(Base):
       return tarefa(lambda evento: None)
     with mock.patch.object(api.core_modelos, 'salvar_versao') as salvar, \
          mock.patch.object(api, 'avaliacao_completa', return_value={}), \
-         mock.patch.object(api, '_iniciar_job', side_effect=sincrono):
+         mock.patch.object(api, '_iniciar_job', side_effect=sincrono), \
+         mock.patch.object(api, 'core_registro_mlflow'):
       api.modelos_salvar(corpo, pedido)
     self.assertEqual(salvar.call_args.kwargs['denominador'], {'speedtest_down_mbps': 'router_snr'})
 

@@ -303,8 +303,18 @@
     return { linhas, piso };
   }
 
+  // Aviso do MLflow depois de salvar, ativar (aviso_mlflow) ou reavaliar (avisos_mlflow). O modelos.json
+  // já foi gravado; o aviso só diz que o MLflow ficou para trás e como recuperar.
+  function avisoMlflow(r) {
+    if (!r) return null;
+    const itens = [];
+    if (r.aviso_mlflow) itens.push(r.aviso_mlflow);
+    for (const a of r.avisos_mlflow || []) itens.push(`${a.nome}: ${a.aviso}`);
+    return itens.length ? `${itens.join('; ')}. Rode venv/bin/python src/ml/studio_mlflow.py para registrar de novo.` : null;
+  }
+
   return { METRICAS, MIN_AMOSTRAS, FOLGA_PCT, reprova, atende, mediana, chavePos, posicoes, daPosicao,
            reprovacao, gargalo, celulas, semContagem, contencao, piores, avisosConjunto,
            diffRascunho, mesmasFeatures, podeAtivar, notaCartao, precisaPedirComodo, vooUnico, corTr181, agruparColunas,
-           sugerirNome, descricaoRascunho, semVazamento, diffContraBase, acertosPorPredio, linhasComodo };
+           sugerirNome, descricaoRascunho, semVazamento, diffContraBase, acertosPorPredio, linhasComodo, avisoMlflow };
 });
