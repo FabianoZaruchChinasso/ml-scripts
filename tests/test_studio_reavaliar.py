@@ -13,12 +13,12 @@ PEDIDO = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
 ANTIGA = {'speedtest_down_mbps': {'datasets': ['a.csv'], 'ambiente': 'todos'}, 'atende_completo': {'media': 0.5}}
 NOVA = {'speedtest_down_mbps': {'datasets': ['a.csv', 'villa.csv'], 'ambiente': 'todos'},
         'atende_completo': {'media': 0.6}}
-REGISTRO = {'ativo': 'v1', 'versoes': {
+REGISTRO = {'versoes': {
   'v1': {'features': ['router_snr'], 'descricao': 'x', 'avaliacao': ANTIGA},
   'v2': {'features': ['router_snr', 'router_noise'], 'descricao': 'y', 'perfil_qoe': 'norma',
          'denominador': {'speedtest_down_mbps': 'router_snr'}}}}
 
-REGRAVADO = {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'avaliacao': NOVA},
+REGRAVADO = {'versoes': {'v1': {'features': ['router_snr'], 'avaliacao': NOVA},
                                         'v2': {'features': ['router_snr', 'router_noise'], 'avaliacao': NOVA}}}
 
 

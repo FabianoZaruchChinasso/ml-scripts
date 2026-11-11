@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 's
 from ml.studio import api
 from isolamento_mlflow import isolar as setUpModule, restaurar as tearDownModule  # noqa: E402,F401
 
-REGISTRO = {'ativo': 'v1', 'versoes': {
+REGISTRO = {'versoes': {
   'v1': {'features': ['router_snr', 'router_noise'], 'descricao': 'x'},
   'v2': {'features': ['router_tx_retries'], 'descricao': 'so vazamento'}}}
 

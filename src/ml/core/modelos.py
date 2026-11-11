@@ -49,8 +49,11 @@ _lock = threading.Lock()
 
 
 def validar_registro(registro) -> None:
-  if not isinstance(registro, dict) or set(registro) != {'ativo', 'versoes'}:
-    raise ValueError("o registro precisa ter exatamente as chaves 'ativo' e 'versoes'")
+  if isinstance(registro, dict) and 'ativo' in registro:
+    raise ValueError("o campo ativo saiu do modelos.json em 2026-11-11: a versão ativa é o alias 'ativo' "
+                     "do Model Registry (src/ml/ativar_mlflow.py)")
+  if not isinstance(registro, dict) or set(registro) != {'versoes'}:
+    raise ValueError("o registro precisa ter exatamente a chave 'versoes'")
   versoes = registro['versoes']
   if not isinstance(versoes, dict) or not versoes:
     raise ValueError('o registro precisa de pelo menos uma versão')
@@ -75,8 +78,6 @@ def validar_registro(registro) -> None:
           or not all(_valor_denominador_valido(v) for v in den.values())):
         raise ValueError(f'{nome!r}: denominador precisa ser {{alvo: coluna}} ou '
                          f'{{alvo: {{"coluna": ..., "radio": ...}}}}, só para {list(ALVOS_COM_DENOMINADOR)}')
-  if registro['ativo'] not in versoes:
-    raise ValueError(f"versão ativa {registro['ativo']!r} não existe no registro")
 
 
 def carregar(path: str = MODELOS_PATH) -> dict:
@@ -174,16 +175,6 @@ def salvar_versao(nome: str, features, descricao: str, colunas_conhecidas, tabel
       versao['denominador'] = dict(denominador)
     registro['versoes'][nome] = versao
     validar_registro(registro)
-    gravar_json_atomico(path, registro)
-  return registro
-
-
-def definir_ativo(nome: str, path: str = MODELOS_PATH) -> dict:
-  with _lock:
-    registro = carregar(path)
-    if nome not in registro['versoes']:
-      raise ValueError(f'versão {nome!r} não existe')
-    registro['ativo'] = nome
     gravar_json_atomico(path, registro)
   return registro
 

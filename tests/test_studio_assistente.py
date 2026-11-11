@@ -235,7 +235,7 @@ class TestReceitas(unittest.TestCase):
       R.montar('produto', ['router_', 'ROUTER_'], set())
 
 
-REGISTRO = {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'teste'}}}
+REGISTRO = {'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'teste'}}}
 
 
 class TestRotasAssistente(Base):
@@ -357,7 +357,7 @@ class TestRotasAssistente(Base):
     self.assertIn('delta_mae', r['promocao'])
 
 
-REGISTRO_DEN = {'ativo': 'v1', 'versoes': {
+REGISTRO_DEN = {'versoes': {
   'v1': {'features': ['router_snr'], 'descricao': 'teste', 'denominador': {'speedtest_down_mbps': 'router_snr'}},
   'v2': {'features': ['router_snr'], 'descricao': 'absoluta'}}}
 

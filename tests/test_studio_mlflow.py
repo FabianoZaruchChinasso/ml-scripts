@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 from ml import studio_mlflow
 from ml.core import registro_mlflow as R
 
-REGISTRO = {'ativo': 'v2', 'versoes': {
+REGISTRO = {'versoes': {
   'v1': {'features': ['a'], 'avaliacao': {'comodo': {'nota': 0.6}}},
   'v2': {'features': ['a', 'b'], 'avaliacao': {'comodo': {'nota': 0.7}}}}}
 

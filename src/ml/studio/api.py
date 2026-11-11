@@ -824,7 +824,7 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
   # Mesma regra da avaliação do rascunho: herda o denominador da base (ou da ativa).
   denominador = registro['versoes'][_base(corpo.base, registro)].get('denominador') or None
   try:
-    core_modelos.validar_registro({'ativo': corpo.nome, 'versoes': {corpo.nome: {
+    core_modelos.validar_registro({'versoes': {corpo.nome: {
       'features': corpo.features, 'descricao': corpo.descricao or '-'}}})
     selecao = _metadados_do_desenho(corpo.desenho, corpo.features) if corpo.desenho else None
   except (ValueError, AssertionError) as erro:

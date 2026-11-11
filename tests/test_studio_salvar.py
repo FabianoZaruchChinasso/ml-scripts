@@ -74,9 +74,9 @@ class TestAvaliacaoCompleta(unittest.TestCase):
 
 
 PEDIDO = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
-REGISTRO = {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x'}}}
+REGISTRO = {'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x'}}}
 AVAL = {'atende_completo': {'media': 0.6}}
-GRAVADO = {'ativo': 'v1', 'versoes': {'v2': {'features': ['router_snr'], 'descricao': 'teste', 'avaliacao': AVAL}}}
+GRAVADO = {'versoes': {'v2': {'features': ['router_snr'], 'descricao': 'teste', 'avaliacao': AVAL}}}
 
 
 def sincrono(chave, tarefa):

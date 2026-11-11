@@ -13,7 +13,7 @@ setUpModule, tearDownModule = com_ativa('v1')
 
 JOGO_BASE = {'nota': 0.7, 'intervalo': [0.5, 0.8], 'piso': {'nota': 0.5, 'intervalo': [0.4, 0.6]}}
 BLOCO = {'versao_comodo': 'x', 'nota': 0.6, 'jogo': JOGO_BASE}
-REGISTRO = {'ativo': 'v1', 'versoes': {
+REGISTRO = {'versoes': {
   'v1': {'features': ['router_snr'], 'descricao': 'x', 'denominador': {'speedtest_down_mbps': 'router_tx_rate_mbps'},
          'avaliacao': {'comodo': BLOCO}},
   'v2': {'features': ['router_snr'], 'descricao': 'sem cômodo', 'avaliacao': {'atende_completo': {'media': 0.6}}}}}
@@ -58,7 +58,7 @@ class TestAvaliarComodo(unittest.TestCase):
     self.assertEqual(r['jogo_base'], JOGO_BASE)
 
   def test_jogo_base_ausente_vira_none(self):
-    sem_jogo = {'ativo': 'v1', 'versoes': {'v1': dict(REGISTRO['versoes']['v1'],
+    sem_jogo = {'versoes': {'v1': dict(REGISTRO['versoes']['v1'],
                                                       avaliacao={'comodo': {'versao_comodo': 'x', 'nota': 0.6}})}}
     self.m['registro'].return_value = (sem_jogo, None)
     self.assertIsNone(api.modelos_avaliar_comodo(features='router_snr', contra='v1')['jogo_base'])

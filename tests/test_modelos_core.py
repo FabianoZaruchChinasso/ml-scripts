@@ -26,7 +26,7 @@ class Base(unittest.TestCase):
     self.pasta = tempfile.mkdtemp()
     self.path = os.path.join(self.pasta, 'modelos.json')
     with open(self.path, 'w', encoding='utf-8') as h:
-      json.dump({'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'semente'}}}, h)
+      json.dump({'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'semente'}}}, h)
 
   def tearDown(self):
     shutil.rmtree(self.pasta)
@@ -40,7 +40,16 @@ class TestRegistro(Base):
     self.salvar()
     reg = M.carregar(self.path)
     self.assertEqual(reg['versoes']['v2']['features'], ['router_snr', 'router_noise'])
-    self.assertEqual(reg['ativo'], 'v1')
+
+  def test_campo_ativo_e_recusado(self):
+    with self.assertRaisesRegex(ValueError, 'alias'):
+      M.validar_registro({'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x'}}})
+    with self.assertRaises(ValueError):
+      M.validar_registro({'versoes': {}, 'outro': 1})
+
+  def test_ativo_e_definir_ativo_sairam(self):
+    self.assertFalse(hasattr(M, 'ativo'))
+    self.assertFalse(hasattr(M, 'definir_ativo'))
 
   def test_versao_existente_e_imutavel(self):
     with self.assertRaises(ValueError):
@@ -83,17 +92,16 @@ class TestRegistro(Base):
 
   def test_historico_precisa_ser_lista_de_textos(self):
     base = {'features': ['router_snr'], 'descricao': 'x'}
-    M.validar_registro({'ativo': 'v1', 'versoes': {'v1': dict(base, historico=['2026-10-09: era v5-tr069'])}})
+    M.validar_registro({'versoes': {'v1': dict(base, historico=['2026-10-09: era v5-tr069'])}})
     for ruim in ('texto solto', [1], ['']):
       with self.assertRaises(ValueError):
-        M.validar_registro({'ativo': 'v1', 'versoes': {'v1': dict(base, historico=ruim)}})
+        M.validar_registro({'versoes': {'v1': dict(base, historico=ruim)}})
 
 
 class TestSemente(unittest.TestCase):
   def test_registro_do_repositorio(self):
     reg = M.carregar()
     self.assertIn('v1', reg['versoes'])
-    self.assertEqual(reg['ativo'], 'v5')
     self.assertEqual(reg['versoes']['v1']['features'], list(F.MODELO_ATUAL))
 
   def test_v4_renomeada_e_nova_v5(self):
@@ -111,7 +119,6 @@ class TestSemente(unittest.TestCase):
     self.assertEqual(v5['cobertura']['nivel'], 'proxy')
     self.assertEqual(F.cobertura_tr069(v5['features'], F.carregar_tabela())['nivel'], 'proxy')
     self.assertIn('atende_ajustado', v5['avaliacao'])
-    self.assertEqual(reg['ativo'], 'v5')
 
 
 class TestDerivadasNovas(unittest.TestCase):
@@ -146,7 +153,7 @@ class TestDerivadasNovas(unittest.TestCase):
 
 class TestAvaliacaoComRegua(unittest.TestCase):
   def test_registro_aceita_avaliacao_com_versao_da_regua_e_atende(self):
-    M.validar_registro({'ativo': 'v1', 'versoes': {'v1': {
+    M.validar_registro({'versoes': {'v1': {
       'features': ['router_snr'], 'descricao': 'x',
       'avaliacao': {'speedtest_down_mbps': {'pooled': 0.5, 'versao_regua': '2026-10-05.1'},
                     'atende_throughput': {'media': 0.8}}}}})
@@ -154,7 +161,7 @@ class TestAvaliacaoComRegua(unittest.TestCase):
 
 class TestDenominador(Base):
   def registro(self, denominador):
-    return {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
+    return {'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
                                               'denominador': denominador}}}
 
   def test_denominador_valido(self):
@@ -192,7 +199,7 @@ class TestDenominador(Base):
 
 class TestDenominadorPorBanda(Base):
   def registro(self, valor):
-    return {'ativo': 'v1', 'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
+    return {'versoes': {'v1': {'features': ['router_snr'], 'descricao': 'x',
                                               'denominador': {'speedtest_down_mbps': valor}}}}
 
   def test_forma_condicional_valida(self):
@@ -245,7 +252,7 @@ class TestReavaliar(Base):
   def test_reavalia_versao_com_vazamento(self):
     # A v1 de produção usa contadores que hoje são vazamento: precisa poder ser reavaliada.
     with open(self.path, 'w', encoding='utf-8') as h:
-      json.dump({'ativo': 'v1', 'versoes': {'v1': {'features': ['router_tx_bytes'], 'descricao': 'x'}}}, h)
+      json.dump({'versoes': {'v1': {'features': ['router_tx_bytes'], 'descricao': 'x'}}}, h)
     M.reavaliar('v1', self.AVAL, {}, 'nota', path=self.path)
     self.assertEqual(M.carregar(self.path)['versoes']['v1']['avaliacao'], self.AVAL)
 
@@ -289,7 +296,7 @@ class TestPerfilQoe(Base):
     with self.assertRaisesRegex(ValueError, 'perfil_qoe'):
       M.salvar_versao('v2', ['router_snr'], 'teste', CONHECIDAS, TABELA, perfil_qoe='x', path=self.path)
     with self.assertRaisesRegex(ValueError, 'perfil_qoe'):
-      M.validar_registro({'ativo': 'v1', 'versoes': {'v1': {'features': ['a'], 'descricao': 'd', 'perfil_qoe': 'x'}}})
+      M.validar_registro({'versoes': {'v1': {'features': ['a'], 'descricao': 'd', 'perfil_qoe': 'x'}}})
 
   def test_nota_traz_o_qoe_quando_existe(self):
     antiga = {'atende_completo': {'media': 0.6}, 'qoe': {'modelo': {'nota': 0.65}}}

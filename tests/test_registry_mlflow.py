@@ -140,5 +140,23 @@ class TestScriptsUsamOAlias(unittest.TestCase):
         self.assertIn('core_registry', texto)
 
 
+class TestNinguemLeOCampoAtivo(unittest.TestCase):
+  def test_codigo_python_nao_le_o_campo_ativo(self):
+    raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+    achados = []
+    for pasta, _, arquivos in os.walk(raiz):
+      for arq in arquivos:
+        if arq.endswith('.py'):
+          with open(os.path.join(pasta, arq), encoding='utf-8') as f:
+            for i, linha in enumerate(f, 1):
+              if "['ativo']" in linha or 'core_modelos.ativo(' in linha or 'definir_ativo' in linha:
+                achados.append(f'{arq}:{i}')
+    self.assertEqual(achados, [])
+
+  def test_modelos_json_do_repositorio_nao_tem_ativo(self):
+    from ml.core import modelos as M
+    self.assertNotIn('ativo', M.carregar())
+
+
 if __name__ == '__main__':
   unittest.main()
