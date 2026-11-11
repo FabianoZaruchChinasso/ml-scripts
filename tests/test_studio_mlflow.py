@@ -29,14 +29,13 @@ class TestScript(unittest.TestCase):
     cli = R.cliente()
     return list(cli.search_runs([cli.get_experiment_by_name(R.EXPERIMENTO).experiment_id]))
 
-  def test_registra_todas_com_evento_script_e_marca_a_ativa(self):
+  def test_registra_todas_com_evento_script(self):
     os.environ.pop('MODELO', None)
     studio_mlflow.main()
     tags = {r.data.tags['modelo']: r.data.tags for r in self.runs()}
     self.assertEqual(sorted(tags), ['v1', 'v2'])
     self.assertEqual({t['evento'] for t in tags.values()}, {'script'})
-    self.assertEqual(tags['v2']['ativo'], 'sim')
-    self.assertEqual(tags['v1']['ativo'], 'nao')
+    self.assertNotIn('ativo', tags['v2'])
 
   def test_modelo_limita_a_uma_versao(self):
     with mock.patch.dict(os.environ, {'MODELO': 'v1'}):

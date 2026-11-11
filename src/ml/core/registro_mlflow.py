@@ -1,6 +1,6 @@
 """Registro da avaliação do Studio no MLflow (experimento "MLflow Wifi Studio").
 
-Chamado pelo Studio ao salvar, reavaliar e ativar uma versão, e por src/ml/studio_mlflow.py para
+Chamado pelo Studio ao salvar e reavaliar uma versão, e por src/ml/studio_mlflow.py para
 recuperar o registro à mão. Não treina nada: lê a avaliação que o Studio guardou em
 core/modelos.json. Cada avaliação é um run '<nome>-studio'; reavaliar não apaga o run anterior,
 só tira dele a tag atual=sim.
@@ -140,10 +140,10 @@ def tags_git() -> dict:
 
 
 @_exclusivo
-def registrar_avaliacao(nome: str, versao: dict, evento: str, ativo: bool) -> str:
+def registrar_avaliacao(nome: str, versao: dict, evento: str) -> str:
   """Cria o run '<nome>-studio' da avaliação guardada em `versao` e devolve o run_id.
 
-  Tags: modelo, evento, atual=sim, ativo (sim/nao), versao_comodo (se houver), o commit do git e git_arvore (limpa/suja).
+  Tags: modelo, evento, atual=sim, versao_comodo (se houver), o commit do git e git_arvore (limpa/suja).
   Depois de gravar, os runs anteriores da mesma versão ficam com atual=nao. Se algo falhar no
   meio, o run fica FAILED com atual=nao, os anteriores não mudam e a exceção sobe.
   """
@@ -155,7 +155,7 @@ def registrar_avaliacao(nome: str, versao: dict, evento: str, ativo: bool) -> st
   params, metricas = parametros_e_metricas(nome, versao)
   av = versao.get('avaliacao') or {}
   comodo = av.get('comodo') or {}
-  tags = {'modelo': nome, 'evento': evento, 'atual': 'sim', 'ativo': 'sim' if ativo else 'nao'}
+  tags = {'modelo': nome, 'evento': evento, 'atual': 'sim'}
   if comodo.get('versao_comodo'):
     tags['versao_comodo'] = str(comodo['versao_comodo'])
   tags.update(_tags_git())
@@ -176,25 +176,3 @@ def registrar_avaliacao(nome: str, versao: dict, evento: str, ativo: bool) -> st
   for antigo in anteriores:
     cli.set_tag(antigo, 'atual', 'nao')
   return rid
-
-
-@_exclusivo
-def marcar_ativo(nome: str) -> int:
-  """ativo=sim nos runs da versão `nome`, ativo=nao nos das outras; devolve quantos ficaram ativos.
-
-  Não cria run. Runs sem tag nem parâmetro 'modelo' ficam como estão.
-  """
-  cli = cliente()
-  exp = cli.get_experiment_by_name(EXPERIMENTO)
-  if exp is None:
-    return 0
-  ativos = 0
-  for run in _runs(cli, exp.experiment_id):
-    versao = _versao_do_run(run)
-    if versao is None:
-      continue
-    valor = 'sim' if versao == nome else 'nao'
-    if run.data.tags.get('ativo') != valor:
-      cli.set_tag(run.info.run_id, 'ativo', valor)
-    ativos += valor == 'sim'
-  return ativos

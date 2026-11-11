@@ -767,13 +767,12 @@ class NovaVersao(BaseModel):
   ambiente: str = ''
   desenho: Optional[str] = None
   base: Optional[str] = None
-  ativar: bool = False
   perfil_qoe: str = 'norma'
 
 
 @app.post('/api/modelos')
 def modelos_salvar(corpo: NovaVersao, request: Request):
-  """Valida na hora (422 com o motivo); avaliação, gravação e ativação rodam num job.
+  """Valida na hora (422 com o motivo); avaliação e gravação rodam num job.
 
   A avaliação completa leva de 1 a 2 minutos: na requisição, o botão ficava parado sem
   dizer nada. O front acompanha por GET /api/modelos/salvar/{id}.
@@ -816,24 +815,9 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
     finally:
       _ajustes.clear()
       _modelos_cache.clear()
-    erro_ativar = None
-    if corpo.ativar:
-      try:
-        core_modelos.definir_ativo(corpo.nome)
-      except (OSError, ValueError) as erro:
-        erro_ativar = str(erro)
-      finally:
-        _ajustes.clear()
-        _modelos_cache.clear()
-    ativa = corpo.ativar and erro_ativar is None
-
-    avisos = [_registrar_mlflow(lambda: core_registro_mlflow.registrar_avaliacao(
-      corpo.nome, gravado['versoes'][corpo.nome], 'salvar', ativo=ativa))]
-    if ativa:
-      # À parte: mesmo sem o run novo, a tag ativo precisa sair dos runs da versão anterior.
-      avisos.append(_registrar_mlflow(lambda: core_registro_mlflow.marcar_ativo(corpo.nome)))
-    return {'nome': corpo.nome, 'ativa': ativa, 'erro_ativar': erro_ativar,
-            'aviso_mlflow': '; '.join(a for a in avisos if a) or None}
+    aviso = _registrar_mlflow(lambda: core_registro_mlflow.registrar_avaliacao(
+      corpo.nome, gravado['versoes'][corpo.nome], 'salvar'))
+    return {'nome': corpo.nome, 'aviso_mlflow': aviso}
 
   return _iniciar_job(('salvar', corpo.nome, tuple(sorted(_lista(corpo.ds))), _ambiente(corpo.ambiente),
                        corpo.perfil_qoe, tuple(corpo.features))
@@ -843,23 +827,6 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
 @app.get('/api/modelos/salvar/{job_id}')
 def modelos_salvamento(job_id: str):
   return _job(job_id)
-
-
-class Ativo(BaseModel):
-  nome: str
-
-
-@app.post('/api/modelos/ativo')
-def modelos_ativo(corpo: Ativo, request: Request):
-  _so_local(request)
-  try:
-    core_modelos.definir_ativo(corpo.nome)
-  except (OSError, ValueError) as erro:
-    raise HTTPException(422, str(erro))
-  _ajustes.clear()
-  _modelos_cache.clear()
-  aviso = _registrar_mlflow(lambda: core_registro_mlflow.marcar_ativo(corpo.nome))
-  return {**modelos_listar(), 'aviso_mlflow': aviso}
 
 
 class Reavaliacao(BaseModel):
@@ -909,7 +876,7 @@ def modelos_reavaliar(corpo: Reavaliacao, request: Request):
         _modelos_cache.clear()
       feitas.append(nome)
       aviso = _registrar_mlflow(lambda nome=nome, regravado=regravado: core_registro_mlflow.registrar_avaliacao(
-        nome, regravado['versoes'][nome], 'reavaliar', ativo=nome == regravado['ativo']))
+        nome, regravado['versoes'][nome], 'reavaliar'))
       if aviso:
         avisos.append({'nome': nome, 'aviso': aviso})
     return {'reavaliadas': feitas, 'avisos_mlflow': avisos}

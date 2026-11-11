@@ -79,11 +79,11 @@ class TestReavaliarRota(unittest.TestCase):
         api.modelos_reavaliar(api.Reavaliacao(nomes=nomes), PEDIDO)
       self.assertEqual(ctx.exception.status_code, 422)
 
-  def test_registra_cada_versao_reavaliada_com_a_ativa_marcada(self):
+  def test_registra_cada_versao_reavaliada(self):
     self.rodar(['v1', 'v2'], [NOVA, NOVA])
     self.assertEqual(self.mlflow.registrar_avaliacao.call_args_list, [
-      mock.call('v1', REGRAVADO['versoes']['v1'], 'reavaliar', ativo=True),
-      mock.call('v2', REGRAVADO['versoes']['v2'], 'reavaliar', ativo=False)])
+      mock.call('v1', REGRAVADO['versoes']['v1'], 'reavaliar'),
+      mock.call('v2', REGRAVADO['versoes']['v2'], 'reavaliar')])
 
   def test_falha_do_mlflow_vira_aviso_e_nao_para_o_lote(self):
     self.mlflow.registrar_avaliacao.side_effect = [OSError('database is locked'), None]

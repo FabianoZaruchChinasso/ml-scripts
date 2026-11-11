@@ -113,13 +113,13 @@ class Base(unittest.TestCase):
 
 class TestRegistrarAvaliacao(Base):
   def test_cria_run_com_tags_parametros_metricas_e_artefatos(self):
-    rid = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar', ativo=True)
+    rid = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar')
     run = R.cliente().get_run(rid)
     self.assertEqual(run.info.run_name, 'v9-studio')
     self.assertEqual(run.info.status, 'FINISHED')
-    for chave, valor in {'modelo': 'v9', 'evento': 'salvar', 'atual': 'sim', 'ativo': 'sim',
-                         'versao_comodo': 'v-c'}.items():
+    for chave, valor in {'modelo': 'v9', 'evento': 'salvar', 'atual': 'sim', 'versao_comodo': 'v-c'}.items():
       self.assertEqual(run.data.tags[chave], valor)
+    self.assertNotIn('ativo', run.data.tags)   # a ativa é o alias do Model Registry
     self.assertEqual(run.data.params['features'], 'a,b')
     self.assertNotIn('ativo', run.data.params)
     self.assertEqual(run.data.metrics['comodo_nota'], 0.7)
@@ -127,22 +127,21 @@ class TestRegistrarAvaliacao(Base):
     self.assertEqual(nomes, {'avaliacao.json', 'posicoes.json'})
 
   def test_artefatos_ficam_ao_lado_do_banco(self):
-    R.registrar_avaliacao('v9', versao_sintetica(), 'salvar', ativo=False)
+    R.registrar_avaliacao('v9', versao_sintetica(), 'salvar')
     exp = R.cliente().get_experiment_by_name(R.EXPERIMENTO)
     self.assertIn(self.tmp, exp.artifact_location)
 
   def test_sem_bloco_comodo_nao_tem_tag_versao_comodo(self):
     versao = versao_sintetica()
     del versao['avaliacao']['comodo']
-    rid = R.registrar_avaliacao('v9', versao, 'reavaliar', ativo=False)
+    rid = R.registrar_avaliacao('v9', versao, 'reavaliar')
     tags = self.tags(rid)
     self.assertNotIn('versao_comodo', tags)
-    self.assertEqual(tags['ativo'], 'nao')
 
   def test_segundo_registro_vira_o_atual_e_nao_toca_outras_versoes(self):
-    primeiro = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar', ativo=False)
-    outra = R.registrar_avaliacao('v8', versao_sintetica(), 'salvar', ativo=False)
-    segundo = R.registrar_avaliacao('v9', versao_sintetica(), 'reavaliar', ativo=False)
+    primeiro = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar')
+    outra = R.registrar_avaliacao('v8', versao_sintetica(), 'salvar')
+    segundo = R.registrar_avaliacao('v9', versao_sintetica(), 'reavaliar')
     self.assertEqual(self.tags(primeiro)['atual'], 'nao')
     self.assertEqual(self.tags(segundo)['atual'], 'sim')
     self.assertEqual(self.tags(outra)['atual'], 'sim')
@@ -150,20 +149,20 @@ class TestRegistrarAvaliacao(Base):
 
   def test_evento_invalido_levanta_sem_criar_run(self):
     with self.assertRaises(ValueError):
-      R.registrar_avaliacao('v9', versao_sintetica(), 'outro', ativo=False)
+      R.registrar_avaliacao('v9', versao_sintetica(), 'outro')
     self.assertEqual(self.runs(), [])
 
   def test_falha_no_meio_marca_o_run_como_falho_e_mantem_o_atual_anterior(self):
-    anterior = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar', ativo=False)
+    anterior = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar')
     with mock.patch('mlflow.MlflowClient.log_dict', side_effect=OSError('disco cheio')):
       with self.assertRaises(OSError):
-        R.registrar_avaliacao('v9', versao_sintetica(), 'reavaliar', ativo=False)
+        R.registrar_avaliacao('v9', versao_sintetica(), 'reavaliar')
     falhos = [r for r in self.runs() if r.info.status == 'FAILED']
     self.assertEqual(len(falhos), 1)
     self.assertEqual(falhos[0].data.tags['atual'], 'nao')
     self.assertEqual(self.tags(anterior)['atual'], 'sim')
 
-class TestMarcarAtivo(Base):
+class TestRunAntigo(Base):
   def run_antigo(self, nome=None):
     """Run como os gravados antes de 2026-11-09: sem tags, só o parâmetro 'modelo' (ou nem ele)."""
     cli = R.cliente()
@@ -173,38 +172,18 @@ class TestMarcarAtivo(Base):
     cli.set_terminated(run.info.run_id)
     return run.info.run_id
 
-  def test_troca_a_versao_ativa(self):
-    a = R.registrar_avaliacao('v1', versao_sintetica(), 'salvar', ativo=True)
-    b = R.registrar_avaliacao('v2', versao_sintetica(), 'salvar', ativo=False)
-    self.assertEqual(R.marcar_ativo('v2'), 1)
-    self.assertEqual(self.tags(a)['ativo'], 'nao')
-    self.assertEqual(self.tags(b)['ativo'], 'sim')
-
-  def test_todos_os_runs_da_versao_ficam_ativos(self):
-    R.registrar_avaliacao('v2', versao_sintetica(), 'salvar', ativo=False)
-    R.registrar_avaliacao('v2', versao_sintetica(), 'reavaliar', ativo=False)
-    self.assertEqual(R.marcar_ativo('v2'), 2)
-
-  def test_run_antigo_so_com_parametro_entra_e_run_sem_modelo_e_ignorado(self):
-    antigo = self.run_antigo('v5')
-    sem_modelo = self.run_antigo()
-    R.registrar_avaliacao('v1', versao_sintetica(), 'salvar', ativo=True)
-    self.assertEqual(R.marcar_ativo('v5'), 1)
-    self.assertEqual(self.tags(antigo)['ativo'], 'sim')
-    self.assertNotIn('ativo', self.tags(sem_modelo))
-
   def test_registro_novo_tira_o_atual_do_run_antigo(self):
     antigo = self.run_antigo('v5')
-    R.registrar_avaliacao('v5', versao_sintetica(), 'script', ativo=True)
+    R.registrar_avaliacao('v5', versao_sintetica(), 'script')
     self.assertEqual(self.tags(antigo)['atual'], 'nao')
 
-  def test_sem_experimento_devolve_zero(self):
-    self.assertEqual(R.marcar_ativo('v1'), 0)
+  def test_marcar_ativo_saiu(self):
+    self.assertFalse(hasattr(R, 'marcar_ativo'))
 
 
 class TestConcorrencia(Base):
   def test_dois_registros_simultaneos_da_mesma_versao_deixam_um_atual(self):
-    R.registrar_avaliacao('v1', versao_sintetica(), 'salvar', ativo=False)  # cria banco e experimento antes
+    R.registrar_avaliacao('v1', versao_sintetica(), 'salvar')  # cria banco e experimento antes
     original = R._runs
 
     def devagar(cli, exp_id):
@@ -214,8 +193,8 @@ class TestConcorrencia(Base):
       return runs
 
     with mock.patch.object(R, '_runs', side_effect=devagar):
-      threads = [threading.Thread(target=R.registrar_avaliacao, args=('v2', versao_sintetica(), 'reavaliar'),
-                                  kwargs={'ativo': False}) for _ in range(2)]
+      threads = [threading.Thread(target=R.registrar_avaliacao, args=('v2', versao_sintetica(), 'reavaliar'))
+                 for _ in range(2)]
       for t in threads:
         t.start()
       for t in threads:
@@ -250,7 +229,7 @@ class TestTagsGit(unittest.TestCase):
 class TestRegistroComGit(Base):
   def test_run_tem_commit_e_estado_da_arvore(self):
     with mock.patch.object(R, '_tags_git', return_value={'mlflow.source.git.commit': 'abc', 'git_arvore': 'suja'}):
-      rid = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar', ativo=False)
+      rid = R.registrar_avaliacao('v9', versao_sintetica(), 'salvar')
     tags = self.tags(rid)
     self.assertEqual(tags['mlflow.source.git.commit'], 'abc')
     self.assertEqual(tags['git_arvore'], 'suja')
@@ -272,7 +251,7 @@ class TestIsolamentoDosTestes(unittest.TestCase):
         continue
       with open(os.path.join(pasta, arq), encoding='utf-8') as f:
         texto = f.read()
-      if re.search(r'modelos_(salvar|reavaliar|ativo)\(', texto) and 'core_registro_mlflow' not in texto:
+      if re.search(r'modelos_(salvar|reavaliar)\(', texto) and 'core_registro_mlflow' not in texto:
         faltam.append(arq)
     self.assertEqual(faltam, [])
 
