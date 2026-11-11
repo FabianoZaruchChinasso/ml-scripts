@@ -36,6 +36,7 @@ from ml.core import limiar as core_limiar
 from ml.core import modelos as core_modelos
 from ml.core import producao as core_producao
 from ml.core import quantis as core_quantis
+from ml.core import registry_mlflow as core_registry
 from ml.core.data import validate_columns
 
 ALVO = os.environ.get('ALVO', 'speedtest_down_mbps')
@@ -136,11 +137,7 @@ def fatores_atende(registro: dict, nome_modelo: str, conj, ids, features) -> dic
 
 def main():
   registro = core_modelos.carregar()
-  nome_modelo = os.environ.get('MODELO') or registro['ativo']
-  if nome_modelo not in registro['versoes']:
-    raise SystemExit(
-      f"MODELO={nome_modelo!r} não existe em core/modelos.json; "
-      f"versões disponíveis: {sorted(registro['versoes'])}")
+  nome_modelo = core_registry.escolher_definicao(os.environ.get('MODELO'), registro)
 
   ids = [x for x in os.environ.get('DATASETS', '').split(',') if x] or None
   conj = core_carga.carregar(ALVO, ids=ids)
@@ -161,7 +158,7 @@ def main():
   radio_den = denominador.get('radio') if isinstance(denominador, dict) else None
   if coluna_den:
     validate_columns(conj.df, [coluna_den] + (['radio'] if radio_den else []), 'denominador')
-  print(f"Modelo: {nome_modelo}" + (' (ativo)' if nome_modelo == registro['ativo'] else '')
+  print(f"Modelo: {nome_modelo}" + (' (ativo)' if nome_modelo == core_registry.definicao_ativa() else '')
         + f" — {len(features)} features, alvo {ALVO}, datasets {conj.datasets}")
 
   impressoes = {d['id']: d['fingerprint'] for d in core_carga.descobertos() if d.get('usable')}

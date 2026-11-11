@@ -1,6 +1,7 @@
 """Régua por cômodo (core/comodo.py): reavalia as versões do registro e o piso.
 
-Versão: MODELO=<nome> restringe a uma versão (a ativa entra sempre, para a comparação).
+Versão: MODELO=<nome> restringe a uma versão (a ativa no Model Registry entra sempre, para a comparação;
+sem alias, o script para e pede para ativar uma versão com src/ml/ativar_mlflow.py).
 Datasets: DATASETS=a.zip,b.zip (padrão: o conjunto canônico, o mesmo do Studio). Imprime a
 referência da casa, a verdade por posição, a verdade contra o rótulo humano e, por versão, a
 nota com intervalo de 90%, a comparação com o piso e com a ativa, a matriz de confusão, os
@@ -30,6 +31,7 @@ from ml.core import carga as core_carga
 from ml.core import comodo as core_comodo
 from ml.core import modelos as core_modelos
 from ml.core import percepcao as core_percepcao
+from ml.core import registry_mlflow as core_registry
 from ml.core import qoe as core_qoe
 
 PISO = 'piso'
@@ -65,9 +67,9 @@ def denominador_experimento(coluna):
 def main():
   registro = core_modelos.carregar()
   pedido = os.environ.get('MODELO')
-  if pedido and pedido not in registro['versoes']:
-    raise SystemExit(f'MODELO={pedido!r} não existe em core/modelos.json; versões: {sorted(registro["versoes"])}')
-  ativa = registro['ativo']
+  if pedido:
+    core_registry.escolher_definicao(pedido, registro)   # só valida o nome
+  ativa = core_registry.escolher_definicao(None, registro)   # referência da comparação: sempre exige o alias
   nomes = [pedido] if pedido else list(registro['versoes'])
   if ativa not in nomes:
     nomes.append(ativa)

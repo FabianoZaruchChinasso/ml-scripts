@@ -126,5 +126,19 @@ class TestEscolherDefinicao(ComBanco):
     self.assertIn('ativa no Registry', str(erro.exception))
 
 
+class TestScriptsUsamOAlias(unittest.TestCase):
+  SCRIPTS = ('qoe_mlflow.py', 'regression_mlflow.py', 'compare_protocols.py', 'classification_benchmark.py',
+             'regression_benchmark.py', 'comodo_benchmark.py', 'versao_mlflow.py')
+
+  def test_nenhum_script_le_o_campo_ativo(self):
+    pasta = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src', 'ml'))
+    for arq in self.SCRIPTS:
+      with open(os.path.join(pasta, arq), encoding='utf-8') as f:
+        texto = f.read()
+      with self.subTest(arq=arq):
+        self.assertNotIn("['ativo']", texto)
+        self.assertIn('core_registry', texto)
+
+
 if __name__ == '__main__':
   unittest.main()

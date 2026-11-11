@@ -17,6 +17,7 @@ from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import features as core_features
 from ml.core import modelos as core_modelos
+from ml.core import registry_mlflow as core_registry
 from ml.core.data import validate_columns
 from ml.core.explain import (
   ShapConfig,
@@ -233,11 +234,11 @@ def parse_args():
   parser.add_argument(
     "--features",
     default="",
-    help="Features separadas por vírgula (padrão: as da versão ativa em core/modelos.json)",
+    help="Features separadas por vírgula (padrão: as da versão ativa no Model Registry)",
   )
   parser.add_argument('--modelo', default='',
-                      help='Versão de core/modelos.json (padrão: a ativa). Sem --features nem --use-stats, '
-                           'usa as features e o denominador dela.')
+                      help="Versão de core/modelos.json (padrão: a ativa no Model Registry, alias 'ativo'). "
+                           'Sem --features nem --use-stats, usa as features e o denominador dela.')
   parser.add_argument("--seed", type=int, default=42, help="Random seed")
   parser.add_argument("--use-stats", action='store_true', default=False, help="Use stats feat")
   parser.add_argument('--shap', action='store_true', default=False,
@@ -292,9 +293,7 @@ def main():
   np.random.seed(args.seed)
 
   registro = core_modelos.carregar()
-  nome = args.modelo or registro['ativo']
-  if nome not in registro['versoes']:
-    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  nome = core_registry.escolher_definicao(args.modelo, registro)
   denominadores = {}
   if args.use_stats == True:
     features = DEFAULT_FEATURES_STATS

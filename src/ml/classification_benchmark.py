@@ -35,6 +35,7 @@ from ml.core import classificacao as core_classificacao
 from ml.core import features as core_features
 from ml.core import limiar as core_limiar
 from ml.core import modelos as core_modelos
+from ml.core import registry_mlflow as core_registry
 from ml.core.splits import inner_logo_splits
 
 ALVO_DN, ALVO_UP = 'speedtest_down_mbps', 'speedtest_up_mbps'
@@ -144,7 +145,7 @@ def parse_args():
   parser = argparse.ArgumentParser(description='Benchmark de classificadores de "atende" por aplicação')
   parser.add_argument('--datasets', default='',
                       help='Nomes de arquivo em data/, separados por vírgula (padrão: o conjunto canônico)')
-  parser.add_argument('--modelo', default='', help='Versão de core/modelos.json (padrão: a ativa)')
+  parser.add_argument('--modelo', default='', help="Versão de core/modelos.json (padrão: a ativa no Model Registry, alias 'ativo')")
   parser.add_argument('--aplicacoes', default='',
                       help='Aplicações separadas por vírgula (padrão: todas de core/aplicacoes.json)')
   parser.add_argument('--tune', action='store_true', default=False,
@@ -264,9 +265,7 @@ def main():
   np.random.seed(args.seed)
 
   registro = core_modelos.carregar()
-  nome = args.modelo or registro['ativo']
-  if nome not in registro['versoes']:
-    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  nome = core_registry.escolher_definicao(args.modelo, registro)
   ids = [x for x in args.datasets.split(',') if x] or None
   tabela = core_features.carregar_tabela()
   conj_dn = core_carga.carregar(ALVO_DN, ids=ids, tabela=tabela)

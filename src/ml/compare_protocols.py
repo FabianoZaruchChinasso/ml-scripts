@@ -17,6 +17,7 @@ from ml.core import avaliacao as core_avaliacao
 from ml.core import carga as core_carga
 from ml.core import features as core_features
 from ml.core import modelos as core_modelos
+from ml.core import registry_mlflow as core_registry
 from ml.core.metrics import regression_metrics
 
 
@@ -25,7 +26,7 @@ def main():
   parser.add_argument('--datasets', default='',
                       help='Nomes de arquivo em data/, separados por vírgula (padrão: o conjunto canônico)')
   parser.add_argument('--alvo', '--target', dest='alvo', default='speedtest_down_mbps')
-  parser.add_argument('--modelo', default='', help='Versão de core/modelos.json (padrão: a ativa)')
+  parser.add_argument('--modelo', default='', help="Versão de core/modelos.json (padrão: a ativa no Model Registry, alias 'ativo')")
   parser.add_argument('--seed', type=int, default=42)
   parser.add_argument('--csv', default=None, help='REMOVIDO; use --datasets')
   parser.add_argument('--group-level', default=None, help='IGNORADO; a régua agrupa sempre por prédio')
@@ -36,9 +37,7 @@ def main():
     print('WARNING: --group-level é ignorado; a régua agrupa sempre por prédio.')
 
   registro = core_modelos.carregar()
-  nome = args.modelo or registro['ativo']
-  if nome not in registro['versoes']:
-    raise SystemExit(f'--modelo {nome!r} não existe; versões: {sorted(registro["versoes"])}')
+  nome = core_registry.escolher_definicao(args.modelo, registro)
   ids = [x for x in args.datasets.split(',') if x] or None
   conj = core_carga.carregar(args.alvo, ids=ids)
   vazadas = [c for c, k in conj.classes.items() if k is not None and k.vazamento]

@@ -23,6 +23,7 @@ from ml.core import features as core_features
 from ml.core import modelos as core_modelos
 from ml.core import producao as core_producao
 from ml.core import qoe as core_qoe
+from ml.core import registry_mlflow as core_registry
 
 # Tipos que o skops não confia por padrão: o wrapper de core/qoe e o XGBoost.
 TIPOS_CONFIAVEIS = ['numpy.dtype', 'ml.core.qoe.Balanceado', 'xgboost.core.Booster', 'xgboost.sklearn.XGBClassifier']
@@ -36,9 +37,7 @@ def _nome_artefato(aplicacao: str) -> str:
 
 def main():
   registro = core_modelos.carregar()
-  nome = os.environ.get('MODELO') or registro['ativo']
-  if nome not in registro['versoes']:
-    raise SystemExit(f'MODELO={nome!r} não existe em core/modelos.json; versões: {sorted(registro["versoes"])}')
+  nome = core_registry.escolher_definicao(os.environ.get('MODELO'), registro)
   perfil = core_modelos.perfil_de(registro, nome)
   ids = [x for x in os.environ.get('DATASETS', '').split(',') if x] or None
   conjs = {alvo: core_carga.carregar(alvo, ids=ids) for alvo in core_qoe.ALVOS}
