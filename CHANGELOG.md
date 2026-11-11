@@ -45,6 +45,16 @@ também precisa das entradas do treino como referência, e o run só guardava o 
   que garante que nenhum código Python lê o campo `ativo`.
 - O Fabiano precisa passar `--modelo` nos benchmarks enquanto o MLflow for só local.
 
+## Efeito medido
+
+- Migração: `versao_mlflow.py` para v1, v2-tr069, v3-tr069, v4 e v5 (4 a 5 min cada, 23 min no total) gerou as
+  versões registradas 1 a 5; a v5 (versão 5, run `0fdc19dc15a6449386dfa6b6b6c7b9d3`) é a ativa.
+- As 93 métricas do run novo da v5 são idênticas às do run `9b7a4ece25884f3bb164fd7f06986923` de 2026-11-10.
+- `models:/qoe-wifi@ativo` carrega e prevê; `referencia_entradas.parquet` tem 1.710 linhas e as 9 entradas da v5.
+- O Studio abre com a v5 como ativa, lida do alias; a rota `POST /api/modelos/ativo` responde 405.
+- A tag `ativo` foi apagada de 15 runs do Studio.
+- Suíte: 792 testes de Python e 26 de JS passando; o `mlflow.db` da raiz não foi tocado pelos testes.
+
 
 # Changelog — Comando único: treina, avalia e grava uma versão no MLflow
 
