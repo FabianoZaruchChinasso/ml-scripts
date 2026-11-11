@@ -48,7 +48,10 @@ registrada leva a tag `definicao`.
 - `ativa() -> dict`: `{'versao', 'definicao', 'run_id'}` da versão apontada pelo alias. `SemVersaoAtiva` se
   faltar algo. Se a URI for `sqlite:///` e o arquivo não existir, levanta `SemVersaoAtiva` **sem** criar o banco
   (na máquina de outra pessoa, ler não pode deixar um `mlflow.db` vazio para trás).
-- `ativar(versao) -> dict`: move o alias; devolve `{'anterior': int | None, 'atual': int}`. `ValueError` se a
+- `definicao_ativa() -> Optional[str]`: a definição do alias, ou `None` quando `ativa()` levantaria
+  `SemVersaoAtiva`. Para quem só marca "(ativa)" num texto, e para o Studio.
+- `ativar(versao) -> dict`: move o alias; devolve `{'anterior', 'atual', 'definicao_anterior',
+  'definicao_atual'}` (`anterior` e `definicao_anterior` são `None` quando não havia alias). `ValueError` se a
   versão não existir.
 - `escolher_definicao(explicita, registro) -> str`: `explicita` se vier; senão a definição do alias. Sai com
   `SystemExit` e mensagem clara se não houver alias ou se a definição não existir em `modelos.json`. É o que os
