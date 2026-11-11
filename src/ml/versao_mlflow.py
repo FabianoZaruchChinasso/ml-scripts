@@ -1,16 +1,18 @@
 """Treina, avalia e grava uma versão do registro num run do MLflow (experimento "MLflow Wifi Pipeline").
 
-Versão: MODELO=<nome> (padrão: a ativa em core/modelos.json). Datasets: DATASETS=a.zip,b.zip (nomes em
+Definição: MODELO=<nome> (padrão: a da versão ativa, alias 'ativo' do Model Registry). Datasets: DATASETS=a.zip,b.zip (nomes em
 data/; padrão: o conjunto canônico, o mesmo do Studio). O run leva a avaliação completa
 (core/completa.py), o pacote com os modelos finais e a receita de previsão (core/pacote.py) e a versão
 do dado. A métrica principal é o erro das quatro previsões; a régua por cômodo e os "atende" vão como
-métricas secundárias, com a versão de cada régua em tag. Não escreve em core/modelos.json nem toca nos
-runs do Studio.
+métricas secundárias, com a versão de cada régua em tag. Cada run vira uma versão registrada de 'qoe-wifi'
+(sem mover o alias) e leva as entradas do treino em referencia_entradas.parquet, a referência do
+monitoramento. Não escreve em core/modelos.json nem toca nos runs do Studio.
 """
 
 import hashlib
 import os
 import sys
+import tempfile
 
 import mlflow
 
@@ -23,9 +25,11 @@ from ml.core import modelos as core_modelos
 from ml.core import pacote as core_pacote
 from ml.core import pacote_mlflow as core_pacote_mlflow
 from ml.core import registro_mlflow as core_registro_mlflow
+from ml.core import registry_mlflow as core_registry
 
 EXPERIMENTO = 'MLflow Wifi Pipeline'
 DN = 'speedtest_down_mbps'
+ARQUIVO_REFERENCIA = 'referencia_entradas.parquet'
 
 
 def metricas_do_pipeline(avaliacao: dict) -> dict:
@@ -49,6 +53,15 @@ def metricas_do_pipeline(avaliacao: dict) -> dict:
           if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v}
 
 
+def referencia_entradas(df, entradas: list):
+  """As entradas do treino, sem alvos e sem índice. Coluna de objeto vira texto: o parquet recusa tipos misturados."""
+  ref = df[entradas].reset_index(drop=True)
+  for coluna in ref.columns:
+    if ref[coluna].dtype == object:
+      ref[coluna] = ref[coluna].map(lambda v: None if v is None or v != v else str(v))
+  return ref
+
+
 def _experimento() -> str:
   """Id do experimento. Ao criar, põe os artefatos ao lado do banco: o padrão do mlflow é ./mlruns da pasta atual."""
   exp = mlflow.get_experiment_by_name(EXPERIMENTO)
@@ -61,11 +74,11 @@ def _experimento() -> str:
   return mlflow.create_experiment(EXPERIMENTO, artifact_location=local)
 
 
-def registrar(nome: str, versao: dict, conjs: dict, avaliacao: dict, pacote, fingerprints: list) -> str:
-  """Grava o run '<nome>-pipeline' e devolve o run_id.
+def registrar(nome: str, versao: dict, conjs: dict, avaliacao: dict, pacote, fingerprints: list) -> tuple:
+  """Grava o run '<nome>-pipeline', registra o pacote como versão de 'qoe-wifi' e devolve (run_id, versão registrada).
 
-  `versao`: features, denominador e cobertura da versão avaliada. Se gravar ou carregar o pacote
-  falhar, o run termina FAILED e a exceção sobe.
+  `versao`: features, denominador e cobertura da versão avaliada. Se gravar, carregar ou registrar o pacote
+  falhar, o run termina FAILED e a exceção sobe. Não move o alias 'ativo'.
   """
   mlflow.set_tracking_uri(core_registro_mlflow.uri_rastreamento())
   base = conjs[DN]
@@ -94,17 +107,20 @@ def registrar(nome: str, versao: dict, conjs: dict, avaliacao: dict, pacote, fin
                     'posicoes.json')
     mlflow.log_dict(pacote.receita, 'receita.json')
     mlflow.log_dict(versao.get('cobertura') or {}, 'cobertura_tr069.json')
-    core_pacote_mlflow.gravar(pacote, exemplo)
+    with tempfile.TemporaryDirectory() as tmp:
+      caminho = os.path.join(tmp, ARQUIVO_REFERENCIA)
+      referencia_entradas(base.df, entradas).to_parquet(caminho, index=False)
+      mlflow.log_artifact(caminho)
+    info = core_pacote_mlflow.gravar(pacote, exemplo)
     mlflow.pyfunc.load_model(f'runs:/{run.info.run_id}/{core_pacote_mlflow.NOME}').predict(exemplo)
-  return run.info.run_id
+    versao_registrada = core_registry.registrar(info.model_uri, nome, fingerprints, pacote.receita['versao_pacote'])
+    mlflow.set_tag('versao_registrada', str(versao_registrada))
+  return run.info.run_id, versao_registrada
 
 
 def main():
   registro = core_modelos.carregar()
-  nome = os.environ.get('MODELO') or registro['ativo']
-  if nome not in registro['versoes']:
-    raise SystemExit(f"MODELO={nome!r} não existe em core/modelos.json; "
-                     f"versões disponíveis: {sorted(registro['versoes'])}")
+  nome = core_registry.escolher_definicao(os.environ.get('MODELO'), registro)
   definicao = registro['versoes'][nome]
   ids = [x for x in os.environ.get('DATASETS', '').split(',') if x] or None
   conjs = {alvo: core_carga.carregar(alvo, ids=ids) for alvo in core_pacote.PREFIXOS}
@@ -112,7 +128,7 @@ def main():
   for aviso in base.avisos:
     print(f'aviso: {aviso}')
   denominador = definicao.get('denominador') or None
-  print(f"Versão {nome}" + (' (ativa)' if nome == registro['ativo'] else '')
+  print(f"Versão {nome}" + (' (ativa)' if nome == core_registry.definicao_ativa() else '')
         + f": {len(definicao['features'])} features, datasets {base.datasets}")
   avaliacao = core_completa.avaliacao_completa(
     conjs.__getitem__, None, definicao['features'], denominador,
@@ -127,13 +143,15 @@ def main():
   versao = {'features': definicao['features'], 'denominador': denominador,
             'cobertura': core_features.cobertura_tr069(definicao['features'], base.tabela, base.catalogo)}
   impressoes = {d['id']: d['fingerprint'] for d in core_carga.descobertos() if d.get('usable')}
-  run_id = registrar(nome, versao, conjs, avaliacao, pacote, [impressoes[i] for i in base.datasets])
+  run_id, versao_registrada = registrar(nome, versao, conjs, avaliacao, pacote, [impressoes[i] for i in base.datasets])
   for alvo, p in core_registro_mlflow.ALVOS.items():
     bloco = avaliacao[alvo]
     print(f"{alvo}: R² {bloco['pooled']} (90%: {(bloco.get('intervalos') or {}).get('pooled')}), MAE {bloco['mae']}")
   print(f"secundárias: nota por cômodo {avaliacao['comodo']['nota']}, "
         f"atende completo {avaliacao['atende_completo']['media']}")
   print(f'run {run_id} em "{EXPERIMENTO}" ({core_registro_mlflow.uri_rastreamento()})')
+  print(f'versão registrada {versao_registrada} de "{core_registry.NOME_MODELO}" (o alias não mudou); '
+        f'para ativar: VERSAO={versao_registrada} venv/bin/python src/ml/ativar_mlflow.py')
 
 
 if __name__ == '__main__':

@@ -1,11 +1,13 @@
 import os
 import sys
+import io
 import tempfile
 import unittest
 from unittest import mock
 
 import mlflow
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
@@ -15,12 +17,13 @@ from ml.core import carga as C
 from ml.core import pacote as P
 from ml.core import pacote_mlflow as PM
 from ml.core import registro_mlflow as R
+from ml.core import registry_mlflow as G
 from test_studio_features import TABELA, frame
 
 DN, UP, LAT, JIT = P.PREFIXOS
 FEATURES = ['router_snr', 'router_signal_dbm', 'radio']
 POR_BANDA = {DN: {'coluna': 'router_snr', 'radio': '5ghz'}, UP: {'coluna': 'router_snr', 'radio': '5ghz'}}
-REGISTRO = {'ativo': 'v1', 'versoes': {'v1': {'features': FEATURES + ['router_tx_bytes'], 'descricao': 'teste',
+REGISTRO = {'versoes': {'v1': {'features': FEATURES + ['router_tx_bytes'], 'descricao': 'teste',
                                               'denominador': POR_BANDA}}}
 
 
@@ -78,9 +81,12 @@ class ComBancoTemporario(unittest.TestCase):
     env.start()
     self.addCleanup(env.stop)
 
-  def registrar(self):
+  def registrar_tudo(self, conjs=None):
     versao = {'features': FEATURES, 'denominador': POR_BANDA, 'cobertura': {'nivel': 'proxy'}}
-    return V.registrar('v9', versao, self.conjs, avaliacao(), self.pacote, ['abc123', 'def456'])
+    return V.registrar('v9', versao, conjs or self.conjs, avaliacao(), self.pacote, ['abc123', 'def456'])
+
+  def registrar(self):
+    return self.registrar_tudo()[0]
 
 
 class TestRegistrar(ComBancoTemporario):
@@ -110,13 +116,40 @@ class TestRegistrar(ComBancoTemporario):
     self.assertEqual((dado.dataset.name, len(dado.dataset.digest)), ('qoe-wifi', 8))
     self.assertEqual([t.value for t in dado.tags], ['treino'])
     self.assertEqual(sorted(a.path for a in cli.list_artifacts(run.info.run_id)),
-                     ['avaliacao.json', 'cobertura_tr069.json', 'posicoes.json', 'receita.json'])
+                     ['avaliacao.json', 'cobertura_tr069.json', 'posicoes.json', 'receita.json',
+                      'referencia_entradas.parquet'])
 
   def test_pacote_do_run_carrega_e_preve_igual(self):
     volta = PM.carregar(f'runs:/{self.registrar()}/{PM.NOME}')
     linhas = self.conjs[DN].df.head(7)
     np.testing.assert_allclose(P.prever(volta, linhas)[0].to_numpy(), P.prever(self.pacote, linhas)[0].to_numpy(),
                                rtol=1e-12)
+
+  def test_referencia_tem_as_entradas_do_treino(self):
+    run_id = self.registrar()
+    caminho = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path='referencia_entradas.parquet',
+                                                  dst_path=self.tmp)
+    ref = pd.read_parquet(caminho)
+    self.assertEqual(list(ref.columns), self.pacote.receita['entradas'])
+    self.assertEqual(len(ref), len(self.conjs[DN].df))
+
+  def test_registra_a_versao_sem_mover_o_alias(self):
+    run_id, versao = self.registrar_tudo()
+    self.assertEqual(versao, 1)
+    cli = R.cliente()
+    self.assertEqual(cli.get_run(run_id).data.tags['versao_registrada'], '1')
+    v = cli.get_model_version(G.NOME_MODELO, '1')
+    self.assertEqual((v.run_id, v.tags['definicao'], v.tags['fingerprints']), (run_id, 'v9', 'abc123,def456'))
+    self.assertEqual(v.tags['versao_pacote'], P.VERSAO_PACOTE)
+    self.assertIsNone(G.definicao_ativa())
+
+  def test_falha_ao_registrar_deixa_o_run_failed(self):
+    with mock.patch.object(V.core_registry, 'registrar', side_effect=RuntimeError('banco travado')):
+      with self.assertRaisesRegex(RuntimeError, 'banco travado'):
+        self.registrar()
+    cli = R.cliente()
+    runs = cli.search_runs([cli.get_experiment_by_name(V.EXPERIMENTO).experiment_id])
+    self.assertEqual([r.info.status for r in runs], ['FAILED'])
 
   def test_nao_cria_o_experimento_do_studio(self):
     self.registrar()
@@ -129,6 +162,17 @@ class TestRegistrar(ComBancoTemporario):
     cli = R.cliente()
     runs = cli.search_runs([cli.get_experiment_by_name(V.EXPERIMENTO).experiment_id])
     self.assertEqual([r.info.status for r in runs], ['FAILED'])
+
+
+class TestReferenciaEntradas(unittest.TestCase):
+  def test_texto_misturado_vira_texto_e_ausente_fica_ausente(self):
+    df = pd.DataFrame({'radio': ['5ghz', 2, None, float('nan')], 'snr': [1.0, None, 3.0, 4.0],
+                       'alvo': [1, 2, 3, 4]}, index=[7, 8, 9, 10])
+    ref = V.referencia_entradas(df, ['radio', 'snr'])
+    self.assertEqual(list(ref.columns), ['radio', 'snr'])
+    self.assertEqual(list(ref.index), [0, 1, 2, 3])
+    self.assertEqual(ref['radio'].tolist(), ['5ghz', '2', None, None])
+    ref.to_parquet(io.BytesIO(), index=False)   # tipos misturados quebrariam aqui
 
 
 class TestMain(unittest.TestCase):
@@ -145,7 +189,8 @@ class TestMain(unittest.TestCase):
         ('avaliar', (V.core_completa, 'avaliacao_completa'), {'return_value': medida}),
         ('treinar', (V.core_pacote, 'treinar'), {'return_value': 'pacote'}),
         ('cobertura', (V.core_features, 'cobertura_tr069'), {'return_value': {'nivel': 'proxy'}}),
-        ('registrar', (V, 'registrar'), {'return_value': 'run-1'})):
+        ('registrar', (V, 'registrar'), {'return_value': ('run-1', 3)}),
+        ('ativa', (V.core_registry, 'ativa'), {'return_value': {'versao': 3, 'definicao': 'v1', 'run_id': 'r'}})):
       p = mock.patch.object(*alvo, **extra)
       self.m[nome] = p.start()
       self.addCleanup(p.stop)
@@ -176,6 +221,17 @@ class TestMain(unittest.TestCase):
     self.assertEqual(versao, {'features': FEATURES + ['router_tx_bytes'], 'denominador': POR_BANDA,
                               'cobertura': {'nivel': 'proxy'}})
     self.assertEqual(medida['removidas_por_vazamento'], ['router_tx_bytes'])
+
+  def test_sem_modelo_usa_a_definicao_do_alias(self):
+    V.main()
+    self.assertEqual(self.m['registrar'].call_args.args[0], 'v1')
+
+  def test_sem_modelo_e_sem_alias_sai_antes_de_carregar_dados(self):
+    self.m['ativa'].side_effect = G.SemVersaoAtiva('não há banco do MLflow em sqlite:////nao/usado.db')
+    with self.assertRaises(SystemExit) as erro:
+      V.main()
+    self.assertIn('MODELO=', str(erro.exception))
+    self.m['carregar'].assert_not_called()
 
   def test_datasets_da_variavel_de_ambiente(self):
     with mock.patch.dict(os.environ, {'DATASETS': 'a.csv,b.zip'}):
