@@ -101,7 +101,7 @@ Wifi QoE"), gravados por scripts separados.
 
 ## O que falta no MLflow
 
-1. **Model Registry.** Nenhum script registra modelo; a versão ativa é um campo de `modelos.json`.
+1. **Model Registry** (feito em 2026-11-11). Antes, nenhum script registrava modelo e a versão ativa era um campo de `modelos.json`.
 2. **Um run que una modelo e avaliação.** Hoje a avaliação está num experimento e os binários em
    outros dois, sem ligação entre eles.
 3. **Versão do dado no run.** Só `experimental/classifier_mlflow.py` usa `mlflow.log_input`.
@@ -153,7 +153,7 @@ Os 9 arquivos `tests/test_studio_*.py` e os testes de JS precisam ser migrados o
 3. Criar o comando único de avaliação, que grava um run com modelo, avaliação, métricas por prédio
    e versão do dado. Feito em 2026-11-10: `src/ml/versao_mlflow.py`
    (spec em `docs/superpowers/specs/2026-11-10-versao-mlflow-design.md`).
-4. Registrar as versões v1 a v5 no Model Registry e criar o alias do modelo ativo.
+4. Registrar as versões v1 a v5 no Model Registry e criar o alias do modelo ativo. Feito em 2026-11-11: `core/registry_mlflow.py` e `ativar_mlflow.py`; o Studio lê o alias e não ativa mais (spec `docs/superpowers/specs/2026-11-11-model-registry-alias-design.md`).
 5. Criar o portão de promoção.
 6. Criar os comandos do Laboratório.
 7. Conferir, função por função desta lista, que o resultado novo bate com o do Studio.

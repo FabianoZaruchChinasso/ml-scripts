@@ -1,3 +1,51 @@
+# Changelog — Model Registry e alias do modelo ativo
+
+**Data:** 2026-11-11
+
+## Por quê
+
+Quarto passo da troca do Studio pelo MLflow (`docs/pipeline/2026-11-10-inventario-studio-mlflow.md`) e item
+"Model Registry e alias do modelo ativo" do backlog. A versão ativa era o campo `ativo` de `modelos.json`, que
+o MLflow não conhecia, e o pacote gravado por `versao_mlflow.py` não estava registrado em lugar nenhum: não
+havia como servir "o modelo ativo", que é o que a API e o portão de promoção vão precisar. O monitoramento
+também precisa das entradas do treino como referência, e o run só guardava o esquema e o digest do dado.
+
+## Decisões
+
+- A versão ativa é só o alias `ativo` do modelo registrado `qoe-wifi`. O campo `ativo` saiu de `modelos.json`
+  (o validador o recusa, com a mensagem de como ativar).
+- "Definição" é a entrada de `modelos.json` (v1 a v5); "versão registrada" é o número do Registry. Cada versão
+  registrada leva a tag `definicao`.
+- Registrar não move o alias. Quem promove é `ativar_mlflow.py` (agora) e o portão (próximo item).
+- Máquina sem o banco do MLflow: os scripts pedem `MODELO=` ou `--modelo` e param com mensagem clara. Ler a
+  ativa não cria um `mlflow.db` vazio.
+- O Studio lê o alias e não ativa mais versões (saíram a rota, o menu "Tornar ativa" e o "Salvar e tornar
+  ativa"). Sem alias, a tela abre sem ativa e mostra o aviso. As abas de inventário usam a última versão como
+  ponto de partida; as rotas que precisam de uma base respondem 409 pedindo uma.
+- Os benchmarks (`regression_benchmark.py`, `classification_benchmark.py`) passam a ler o alias como os outros:
+  o congelamento combinado com o Fabiano em 2026-10-22 foi suspenso em 2026-11-11.
+- `comodo_benchmark.py` continua exigindo a ativa (ela é a referência da comparação por cômodo): sem alias,
+  para com a mensagem.
+- Referência do monitoramento: as próprias entradas do treino, em `referencia_entradas.parquet`. O teste de
+  desvio fica livre para ser escolhido depois, sem treinar de novo.
+
+## Mudanças
+
+- `core/registry_mlflow.py` (novo): `registrar`, `versao_da_definicao`, `ativa`, `definicao_ativa`, `ativar` e
+  `escolher_definicao`, a função que os scripts chamam.
+- `versao_mlflow.py`: registra a versão (tag de run `versao_registrada`), grava `referencia_entradas.parquet` e
+  usa a definição do alias quando não há `MODELO=`.
+- `ativar_mlflow.py` (novo): mostra a ativa; `MODELO=<definição>` ou `VERSAO=<n>` move o alias.
+- `qoe_mlflow.py`, `regression_mlflow.py`, `compare_protocols.py`, `classification_benchmark.py`,
+  `regression_benchmark.py` e `comodo_benchmark.py`: definição pelo alias.
+- `core/registro_mlflow.py` e `studio_mlflow.py`: sem tag `ativo` nos runs do Studio e sem `marcar_ativo`.
+- `core/modelos.py`: sem `ativo()` e `definir_ativo`; entra `features_de`.
+- Testes: `test_registry_mlflow.py` e `test_ativar_mlflow.py` (novos), `test_studio_ativa.py` (novo),
+  `tests/isolamento_mlflow.py` (os testes do Studio apontam o MLflow para um banco que não existe) e um teste
+  que garante que nenhum código Python lê o campo `ativo`.
+- O Fabiano precisa passar `--modelo` nos benchmarks enquanto o MLflow for só local.
+
+
 # Changelog — Comando único: treina, avalia e grava uma versão no MLflow
 
 **Data:** 2026-11-10
