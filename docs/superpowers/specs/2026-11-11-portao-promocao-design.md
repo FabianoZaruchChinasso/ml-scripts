@@ -26,6 +26,7 @@ e R² ou MAE de conjuntos diferentes não se comparam.
 | Mesma definição (re-treino) | Dados da candidata contêm os da ativa e mais algum: compara a receita treinada só com os datasets da ativa contra a receita treinada com todos, por LOGO, nas mesmas linhas (todas as do prédio de teste). Promove se nenhum alvo piorar. Mesmos dados: nada a fazer. Dados que não contêm os da ativa: não promove e explica | Comparar a receita com ela mesma nos mesmos dados daria diferença zero. Com dado novo, a pergunta é se ele ajuda ou atrapalha; mais dado da mesma receita é a expectativa, então o ônus é mostrar dano (com 6 prédios, exigir "melhor" deixaria a ativa presa no dado velho) |
 | Sem versão ativa | Promove a candidata ("primeira") | Primeira execução da DAG |
 | Onde fica o veredito | Run da candidata: tags `portao_*` e arquivo `portao.json`. Versão registrada: tags `portao` e `portao_contra` | "Veredito gravado como tag do run" (backlog); a tag na versão aparece na tela do Registry |
+| Degradação da ativa | Quando a candidata traz datasets que a ativa não viu, o pacote implantado da ativa prevê essas linhas e o erro é comparado com o esperado (validação cruzada gravada no run da ativa). Vai para o relatório e para a tag `portao_degradacao`; não decide a promoção | Mostra se o modelo em produção piora com o tempo, sem precisar de outro comando; quando a coleta voltar, cada dado novo traz essa medida |
 | Simulação | `SIMULAR=1` calcula e grava o veredito sem mover o alias (tag `portao_simulado=sim`) | Para mostrar em reunião e testar a DAG sem trocar o modelo |
 | Promoção à mão | `ativar_mlflow.py` continua, para voltar uma versão (rollback) ou forçar uma troca | O portão é o caminho normal; a mão fica como exceção |
 
@@ -51,6 +52,19 @@ e R² ou MAE de conjuntos diferentes não se comparam.
   ganham `treinar_em` (série booleana alinhada ao `df`, padrão None = todas): em cada fold, só essas linhas
   entram no treino (e na correção conformal); as linhas de teste não mudam.
 
+### 3.1b `src/ml/core/degradacao.py` (novo, sem MLflow)
+
+- `medir(pacote, conjs, ids_antigos, esperado) -> dict`: para cada alvo, as linhas com `_ds` fora de
+  `ids_antigos` e alvo presente são previstas pelo pacote (`core_pacote.prever`). Download e upload: erro
+  absoluto, com a previsão cortada no teto de WAN do prédio (como na avaliação; o pacote não corta). Latência e
+  jitter: pinball do p90 e cobertura do p90. Intervalo de 90% do erro médio por reamostragem de posições dentro
+  dos prédios (`core_avaliacao.reamostras`). `esperado` são as métricas do run da ativa: `down_mae`, `up_mae`,
+  `lat_pinball_q90`, `jit_pinball_q90`. `resultado` = `degradou` se o intervalo fica todo acima do esperado ou
+  se a cobertura do p90 sai de `FAIXA_COBERTURA`; senão `estavel`. Alvo sem linhas novas fica de fora.
+- `degradou(blocos) -> bool`.
+- O esperado vem de LOGO (prédios que o modelo não viu). Para dado novo de um prédio que a ativa já viu, é uma
+  referência conservadora: o erro real tende a ser menor.
+
 ### 3.2 `src/ml/core/registry_mlflow.py`
 
 - `info_versao(n) -> dict`: `{'versao', 'definicao', 'run_id', 'fingerprints'}` (lista). `ValueError` se não existir.
@@ -75,10 +89,13 @@ SIMULAR=1 VERSAO=4 venv/bin/python src/ml/portao_mlflow.py
 6. Definições diferentes: os fingerprints da candidata precisam estar em `data/` (`core_carga.descobertos()`),
    senão para, porque o dado da candidata não pode ser reproduzido; carrega os quatro conjuntos com esses ids,
    `comparar` e `decidir`.
-7. Grava: no run da candidata, `portao.json` (decisão, blocos por alvo, auxiliares dos dois runs, ativa contra
-   quem comparou, data) e as tags `portao` (resultado), `portao_promovida` (sim/nao), `portao_contra` (número
-   da ativa ou `nenhuma`), `portao_simulado` (sim/nao); na versão registrada, `portao` e `portao_contra`.
-8. Promove (`ativar`) se a decisão mandar e não for simulação. Imprime o resultado, o motivo e o alias.
+7. Degradação: se a ativa existe, os dados foram carregados (passos 5 e 6) e a candidata tem datasets fora dos
+   da ativa, carrega o pacote da ativa (`models:/qoe-wifi/<n>`) e chama `core_degradacao.medir`, com os
+   ids da candidata cujo fingerprint está na ativa como antigos. Não precisa dos dados da ativa em `data/`.
+8. Grava: no run da candidata, `portao.json` (decisão, blocos por alvo, degradação, auxiliares dos dois runs,
+   ativa contra quem comparou, data) e as tags `portao` (resultado), `portao_promovida` (sim/nao), `portao_contra` (número
+   da ativa ou `nenhuma`), `portao_simulado` (sim/nao), `portao_degradacao` (sim/nao/sem_dado_novo); na versão registrada, `portao` e `portao_contra`.
+9. Promove (`ativar`) se a decisão mandar e não for simulação. Imprime o resultado, o motivo e o alias.
 
 Erros de entrada saem com `SystemExit` e mensagem. O código de saída é 0 tanto para "promovida" quanto para
 "mantida": a DAG lê o resultado no Registry.
@@ -90,6 +107,8 @@ Erros de entrada saem com `SystemExit` e mensagem. O código de saída é 0 tant
   contra ela mesma e dado antigo = todo o dado dão diferença zero).
 - `test_avaliacao.py` e `test_quantis.py`: `treinar_em` tira linhas
   do treino sem mudar as linhas de teste; `treinar_em` todo verdadeiro dá o mesmo resultado que None.
+- `test_degradacao.py` (novo): só as linhas novas são medidas; esperado alto dá `estavel`, esperado zero dá
+  `degradou`; sem linhas novas volta vazio; sem esperado, download e upload não degradam pelo erro.
 - `test_registry_mlflow.py`: `info_versao`, `versao_mais_recente`, `marcar_portao`.
 - `test_portao_mlflow.py` (novo), banco temporário, carga de dados e `comparar` substituídos por mock: sem
   ativa promove; candidata ativa não grava; melhor promove e grava tags e `portao.json`; pior não promove;
@@ -105,7 +124,8 @@ portão decide v5 contra v1 nos mesmos dados. Se não promover, a ativa volta à
 Dado novo, com o dado que já existe: os dois arquivos da Villa (`villa-20261025.csv`, `villa-esc-20261026.csv`,
 dois prédios coletados depois dos outros) fazem o papel de "dado novo". Registrar a v5 sem eles
 (`DATASETS=` com os outros ids da versão 5), ativar essa versão e rodar o portão com a versão 5 como candidata:
-ele compara a receita treinada sem a Villa com a treinada com ela. O alias termina na 5.
+ele compara a receita treinada sem a Villa com a treinada com ela, e mede a degradação da v5 sem a Villa nas
+linhas da Villa (dois prédios que ela nunca viu). O alias termina na 5.
 
 ## 6. Fora do escopo
 

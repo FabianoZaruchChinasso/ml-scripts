@@ -417,6 +417,174 @@ git commit -m "feat(core): comparação e decisão do portão de promoção"
 
 ---
 
+### Task 1b: `core/degradacao.py`
+
+**Files:**
+- Create: `src/ml/core/degradacao.py`
+- Test: `tests/test_degradacao.py`
+
+- [ ] **Step 1: Testes**
+
+`tests/test_degradacao.py`:
+
+```python
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from ml.core import avaliacao as A
+from ml.core import carga as C
+from ml.core import degradacao as D
+from ml.core import pacote as P
+from test_studio_features import TABELA, frame
+
+FEATURES = ['router_snr', 'router_signal_dbm', 'radio']
+ZERO = {'down_mae': 0.0, 'up_mae': 0.0, 'lat_pinball_q90': 0.0, 'jit_pinball_q90': 0.0}
+ALTO = {chave: 1e9 for chave in ZERO}
+
+
+class TestMedir(unittest.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    cls.addClassCleanup(setattr, A, 'ARVORES', A.ARVORES)
+    A.ARVORES = 25
+    antigos = {alvo: C.preparar({'a.csv': frame(seed=1)}, alvo, TABELA) for alvo in P.PREFIXOS}
+    cls.pacote = P.treinar(antigos, FEATURES, None)
+    cls.conjs = {alvo: C.preparar({'a.csv': frame(seed=1), 'b.csv': frame(seed=2)}, alvo, TABELA)
+                 for alvo in P.PREFIXOS}
+
+  def test_mede_so_as_linhas_novas(self):
+    r = D.medir(self.pacote, self.conjs, ['a.csv'], ALTO)
+    self.assertEqual(set(r), set(D.SAIDA))
+    for alvo, bloco in r.items():
+      df = self.conjs[alvo].df
+      self.assertEqual(bloco['n'], int(((df['_ds'] == 'b.csv') & df[alvo].notna()).sum()))
+      self.assertEqual(bloco['datasets'], ['b.csv'])
+      self.assertIsNotNone(bloco['intervalo'])
+    self.assertEqual([r[a]['resultado'] for a in A.ALVOS_COM_TETO], ['estavel', 'estavel'])
+    self.assertIn('cobertura', r['latency_ms'])
+
+  def test_erro_acima_do_esperado_degrada(self):
+    r = D.medir(self.pacote, self.conjs, ['a.csv'], ZERO)
+    self.assertEqual(r['speedtest_down_mbps']['resultado'], 'degradou')
+    self.assertIn('esperado', r['speedtest_down_mbps']['motivo'])
+    self.assertTrue(D.degradou(r))
+
+  def test_sem_linhas_novas_volta_vazio(self):
+    self.assertEqual(D.medir(self.pacote, self.conjs, ['a.csv', 'b.csv'], ALTO), {})
+    self.assertFalse(D.degradou({}))
+
+  def test_sem_esperado_vazao_nao_degrada_pelo_erro(self):
+    r = D.medir(self.pacote, self.conjs, ['a.csv'], {})
+    self.assertEqual([r[a]['resultado'] for a in A.ALVOS_COM_TETO], ['estavel', 'estavel'])
+    self.assertIsNone(r['speedtest_down_mbps']['esperado'])
+
+
+if __name__ == '__main__':
+  unittest.main()
+```
+
+Run: `venv/bin/python -m unittest discover -s tests -p 'test_degradacao.py'`
+Expected: erro de import.
+
+- [ ] **Step 2: Implementar**
+
+`src/ml/core/degradacao.py`:
+
+```python
+"""Degradação da versão ativa: o erro do pacote implantado nas linhas que ele nunca viu.
+
+Quando chega dado novo, o pacote da ativa (treinado só com os datasets dela) prevê as linhas dos datasets
+novos, como faria em produção. O erro medido é comparado com o esperado, a validação cruzada gravada no run
+da ativa: MAE de download e upload, pinball do p90 de latência e jitter. "degradou" quando o intervalo de 90%
+do erro novo fica todo acima do esperado, ou quando a cobertura do p90 nas linhas novas sai da faixa.
+
+O esperado vem de LOGO (prédios que o modelo não viu): para dado novo de um prédio que a ativa já viu, é uma
+referência conservadora. Download e upload são cortados no teto de WAN do prédio, como na avaliação (o pacote
+não corta). Não decide a promoção: vai para o relatório do portão.
+"""
+
+import numpy as np
+
+from ml.core import avaliacao as core_avaliacao
+from ml.core import pacote as core_pacote
+from ml.core import quantis as core_quantis
+from ml.core.sites import teto_wan
+
+SAIDA = {'speedtest_down_mbps': 'download_mbps', 'speedtest_up_mbps': 'upload_mbps',
+         'latency_ms': 'latency_ms_p90', 'jitter_ms': 'jitter_ms_p90'}
+ESPERADO = {'speedtest_down_mbps': 'down_mae', 'speedtest_up_mbps': 'up_mae',
+            'latency_ms': 'lat_pinball_q90', 'jitter_ms': 'jit_pinball_q90'}
+
+
+def _erro(alvo: str, y: np.ndarray, previsto: np.ndarray) -> np.ndarray:
+  """Erro por linha: absoluto na vazão, pinball do p90 em latência e jitter."""
+  if alvo in core_avaliacao.ALVOS_COM_TETO:
+    return np.abs(y - previsto)
+  e = y - previsto
+  return np.maximum(0.9 * e, -0.1 * e)
+
+
+def medir(pacote, conjs: dict, ids_antigos, esperado: dict) -> dict:
+  """{alvo: bloco} com o erro do pacote nas linhas de datasets fora de `ids_antigos`.
+
+  `esperado`: métricas do run da ativa (nomes em ESPERADO); a que faltar não entra na comparação. Alvo sem
+  linhas novas fica de fora.
+  """
+  antigos = list(ids_antigos)
+  saida = {}
+  for alvo, coluna in SAIDA.items():
+    df = conjs[alvo].df
+    novas = df[~df['_ds'].isin(antigos) & df[alvo].notna()]
+    if novas.empty:
+      continue
+    previsto = core_pacote.prever(pacote, novas)[0][coluna].to_numpy(dtype=float)
+    y = novas[alvo].to_numpy(dtype=float)
+    if alvo in core_avaliacao.ALVOS_COM_TETO:
+      tetos = np.array([teto_wan(s, alvo) or np.inf for s in novas['_site']], dtype=float)
+      previsto = np.minimum(previsto, tetos)
+    erro = _erro(alvo, y, previsto)
+    amostras = core_avaliacao.reamostras(novas['_pos'], novas['_site'])
+    intervalo = core_avaliacao._intervalo([erro[i].mean() for i in amostras])
+    referencia = esperado.get(ESPERADO[alvo])
+    bloco = {'n': int(len(novas)), 'datasets': sorted(novas['_ds'].unique()), 'metrica': ESPERADO[alvo],
+             'erro': round(float(erro.mean()), 4), 'intervalo': intervalo,
+             'esperado': None if referencia is None else round(float(referencia), 4)}
+    motivos = []
+    if bloco['esperado'] is not None and intervalo is not None and intervalo[0] > bloco['esperado']:
+      motivos.append(f"erro {bloco['erro']} (90%: {intervalo[0]} a {intervalo[1]}) acima do esperado "
+                     f"{bloco['esperado']}")
+    if alvo in core_quantis.ALVOS_QUANTILICOS:
+      bloco['cobertura'] = round(core_quantis.cobertura(y, previsto), 4)
+      lo, hi = core_quantis.FAIXA_COBERTURA
+      if not lo <= bloco['cobertura'] <= hi:
+        motivos.append(f"cobertura do p90 {bloco['cobertura']} fora da faixa de {lo} a {hi}")
+    bloco['resultado'] = 'degradou' if motivos else 'estavel'
+    bloco['motivo'] = '; '.join(motivos) or 'erro dentro do esperado'
+    saida[alvo] = bloco
+  return saida
+
+
+def degradou(blocos: dict) -> bool:
+  return any(b['resultado'] == 'degradou' for b in blocos.values())
+```
+
+- [ ] **Step 3: Rodar e ver passar**
+
+Run: `venv/bin/python -m unittest discover -s tests -p 'test_degradacao.py'`
+Expected: `OK` (4 testes). Se `core_pacote.prever` reclamar de colunas ausentes no frame sintético, confira `pacote.receita['entradas']` contra `conjs[alvo].df.columns` e ajuste `FEATURES` para colunas que o `frame()` de `test_studio_features` tem.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ml/core/degradacao.py tests/test_degradacao.py
+git commit -m "feat(core): erro da versão ativa nas linhas novas contra o esperado"
+```
+
+---
+
 ### Task 2: `registry_mlflow` lê uma versão e grava as tags do portão
 
 **Files:**
@@ -550,7 +718,10 @@ class TestPortao(ComBanco):
         ('carregar', (M.core_carga, 'carregar'), {'side_effect': lambda alvo, ids=None: mock.Mock(alvo=alvo)}),
         ('comparar', (M.core_portao, 'comparar'), {'return_value': por_alvo('melhor', 'empate', 'empate', 'empate')}),
         ('dado_novo', (M.core_portao, 'comparar_dado_novo'),
-         {'return_value': por_alvo('empate', 'empate', 'empate', 'empate')})):
+         {'return_value': por_alvo('empate', 'empate', 'empate', 'empate')}),
+        ('degradacao', (M.core_degradacao, 'medir'),
+         {'return_value': {'speedtest_down_mbps': {'resultado': 'degradou', 'motivo': 'x'}}}),
+        ('pacote', (M.core_pacote_mlflow, 'carregar'), {'return_value': 'pacote-da-ativa'})):
       p = mock.patch.object(*alvo, **extra)
       self.m[nome] = p.start()
       self.addCleanup(p.stop)
@@ -605,9 +776,20 @@ class TestPortao(ComBanco):
     self.assertEqual(rel['ativa']['definicao'], 'v1')
     self.assertIn('auxiliares', rel)
     self.assertEqual(self.m['carregar'].call_args.kwargs['ids'], ['a.zip', 'b.zip'])
+    self.m['degradacao'].assert_not_called()   # mesmos datasets: não há linha nova
+    self.assertEqual(tags['portao_degradacao'], 'sem_dado_novo')
     candidata, ativa = self.m['comparar'].call_args.args[1:]
     self.assertEqual(candidata, {'features': ['a', 'b'], 'denominador': DEN})
     self.assertEqual(ativa, {'features': ['a'], 'denominador': None})
+
+  def test_outra_definicao_com_dado_novo_mede_a_degradacao(self):
+    self.m['degradacao'].return_value = {'speedtest_down_mbps': {'resultado': 'estavel', 'motivo': 'x'}}
+    self.registrar('v1')
+    G.ativar(1)
+    G.registrar(self.modelo(), 'v5', ['abc', 'def', 'ghi'], 'p1')
+    self.rodar()
+    self.assertEqual(self.m['degradacao'].call_args.args[2], ['a.zip', 'b.zip'])
+    self.assertEqual(self.tags_run(2)['portao_degradacao'], 'nao')
 
   def test_pior_mantem_a_ativa(self):
     self.m['comparar'].return_value = por_alvo('melhor', 'pior', 'empate', 'empate')
@@ -635,6 +817,11 @@ class TestPortao(ComBanco):
     self.assertEqual(definicao, {'features': ['a', 'b'], 'denominador': DEN})
     self.assertEqual(self.m['dado_novo'].call_args.kwargs['ids_antigos'], ['a.zip', 'b.zip'])
     self.assertEqual(self.m['carregar'].call_args.kwargs['ids'], ['a.zip', 'b.zip', 'c.zip'])
+    pacote, _, antigos, _ = self.m['degradacao'].call_args.args
+    self.assertEqual((pacote, antigos), ('pacote-da-ativa', ['a.zip', 'b.zip']))
+    self.assertEqual(self.m['pacote'].call_args.args[0], f'models:/{G.NOME_MODELO}/1')
+    self.assertEqual(self.tags_run(2)['portao_degradacao'], 'sim')
+    self.assertIn('speedtest_down_mbps', self.relatorio(2)['degradacao'])
 
   def test_dado_novo_que_piora_nao_promove(self):
     self.m['dado_novo'].return_value = por_alvo('empate', 'pior', 'empate', 'empate')
@@ -695,7 +882,9 @@ VERSAO=<n> escolhe a candidata (padrão: a versão registrada mais recente, a qu
 gravar). As duas definições são comparadas nos dados da candidata (core/portao.py): download e upload pelo
 Δ MAE, latência e jitter pelo Δ pinball e pela cobertura do p90. Promove se nenhum alvo piorar e pelo menos
 um melhorar. A mesma definição com dado novo é comparada consigo mesma treinada só com o dado da ativa, e é
-promovida se nenhum alvo piorar; sem versão ativa, a candidata é promovida. SIMULAR=1 grava o veredito sem mover o alias. O veredito fica no run da candidata (tags portao_*
+promovida se nenhum alvo piorar; sem versão ativa, a candidata é promovida. Quando a candidata traz
+datasets que a ativa não viu, mede também a degradação da ativa: o erro do pacote dela nessas linhas contra o
+esperado (core/degradacao.py), só informativo. SIMULAR=1 grava o veredito sem mover o alias. O veredito fica no run da candidata (tags portao_*
 e portao.json) e na versão registrada (tags portao e portao_contra). O código de saída é 0 tanto para
 "promovida" quanto para "mantida".
 
@@ -709,11 +898,15 @@ import os
 import sys
 from datetime import date
 
+import mlflow
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from ml.core import carga as core_carga
+from ml.core import degradacao as core_degradacao
 from ml.core import modelos as core_modelos
 from ml.core import pacote as core_pacote
+from ml.core import pacote_mlflow as core_pacote_mlflow
 from ml.core import portao as core_portao
 from ml.core import registro_mlflow as core_registro_mlflow
 from ml.core import registry_mlflow as core_registry
@@ -737,33 +930,51 @@ def _ids(fingerprints: list) -> list:
   return [por_fp[f] for f in fingerprints]
 
 
+def _antigos(ids: list, candidata: dict, ativa: dict) -> list:
+  """Ids da candidata cujo dataset a ativa já viu (os outros são o dado novo)."""
+  vistos = set(ativa['fingerprints'])
+  return [i for i, fp in zip(ids, candidata['fingerprints']) if fp in vistos]
+
+
+def _degradacao(ativa: dict, conjs: dict, antigos: list) -> dict:
+  """Erro do pacote da ativa nas linhas que ele nunca viu, contra o esperado gravado no run dela."""
+  mlflow.set_tracking_uri(core_registro_mlflow.uri_rastreamento())
+  pacote = core_pacote_mlflow.carregar(f"models:/{core_registry.NOME_MODELO}/{ativa['versao']}")
+  esperado = core_registro_mlflow.cliente().get_run(ativa['run_id']).data.metrics
+  return core_degradacao.medir(pacote, conjs, antigos, esperado)
+
+
 def _auxiliares(cli, run_id: str) -> dict:
   metricas = cli.get_run(run_id).data.metrics
   return {chave: metricas.get(chave) for chave in AUXILIARES}
 
 
-def gravar(candidata: dict, ativa, decisao: dict, por_alvo, simular: bool) -> None:
+def gravar(candidata: dict, ativa, decisao: dict, por_alvo, simular: bool, degradacao=None) -> None:
   """portao.json e tags no run da candidata; tags na versão registrada."""
   cli = core_registro_mlflow.cliente()
   contra = str(ativa['versao']) if ativa else 'nenhuma'
   relatorio = {
     'data': date.today().isoformat(), 'candidata': candidata, 'ativa': ativa, 'decisao': decisao,
-    'simulado': simular, 'por_alvo': por_alvo,
+    'simulado': simular, 'por_alvo': por_alvo, 'degradacao': degradacao,
     'auxiliares': {'candidata': _auxiliares(cli, candidata['run_id']),
                    'ativa': _auxiliares(cli, ativa['run_id']) if ativa else None,
                    'nota': 'métricas gravadas em cada run, não decidem; podem ser de dados diferentes'}}
   # json com default=float: os blocos do core podem trazer números do numpy.
   cli.log_dict(candidata['run_id'], json.loads(json.dumps(relatorio, default=float)), 'portao.json')
   tags = {'portao': decisao['resultado'], 'portao_promovida': 'sim' if decisao['promover'] and not simular else 'nao',
-          'portao_contra': contra, 'portao_simulado': 'sim' if simular else 'nao'}
+          'portao_contra': contra, 'portao_simulado': 'sim' if simular else 'nao',
+          'portao_degradacao': ('sem_dado_novo' if degradacao is None
+                                else 'sim' if core_degradacao.degradou(degradacao) else 'nao')}
   for chave, valor in tags.items():
     cli.set_tag(candidata['run_id'], chave, valor)
   core_registry.marcar_portao(candidata['versao'], {'portao': decisao['resultado'], 'portao_contra': contra})
 
 
-def _imprimir(candidata: dict, ativa, decisao: dict, por_alvo, simular: bool) -> None:
+def _imprimir(candidata: dict, ativa, decisao: dict, por_alvo, simular: bool, degradacao=None) -> None:
   for alvo, bloco in (por_alvo or {}).items():
     print(f"  {alvo}: {bloco['veredito']['resultado']} ({bloco['veredito']['motivo']})")
+  for alvo, bloco in (degradacao or {}).items():
+    print(f"  degradação da ativa em {alvo}: {bloco['resultado']} ({bloco['motivo']})")
   contra = f"{ativa['versao']} ({ativa['definicao']})" if ativa else 'nenhuma'
   print(f"candidata {candidata['versao']} ({candidata['definicao']}) contra a ativa {contra}: "
         f"{decisao['resultado']}; {decisao['motivo']}")
@@ -793,7 +1004,7 @@ def main():
     return
   registro = core_modelos.carregar()
   def_candidata = _definicao(registro, candidata['definicao'])
-  por_alvo = None
+  por_alvo, degradacao = None, None
   if ativa is None:
     decisao = {'promover': True, 'resultado': 'primeira', 'motivo': 'não há versão ativa'}
   elif candidata['definicao'] == ativa['definicao']:
@@ -802,11 +1013,12 @@ def main():
       decisao = core_portao.decidir_sem_comparar(situacao)
     else:
       ids = _ids(candidata['fingerprints'])
-      antigos = _ids(ativa['fingerprints'])
+      antigos = _antigos(ids, candidata, ativa)
       print(f"{candidata['definicao']} com dado novo: treino só com {antigos} contra treino com {ids}")
       conjs = {alvo: core_carga.carregar(alvo, ids=ids) for alvo in core_pacote.PREFIXOS}
       por_alvo = core_portao.comparar_dado_novo(conjs, def_candidata, ids_antigos=antigos)
       decisao = core_portao.decidir_dado_novo(por_alvo)
+      degradacao = _degradacao(ativa, conjs, antigos)
   else:
     def_ativa = _definicao(registro, ativa['definicao'])
     ids = _ids(candidata['fingerprints'])
@@ -815,10 +1027,13 @@ def main():
     conjs = {alvo: core_carga.carregar(alvo, ids=ids) for alvo in core_pacote.PREFIXOS}
     por_alvo = core_portao.comparar(conjs, def_candidata, def_ativa)
     decisao = core_portao.decidir(por_alvo)
-  gravar(candidata, ativa, decisao, por_alvo, simular)
+    antigos = _antigos(ids, candidata, ativa)
+    if len(antigos) < len(ids):
+      degradacao = _degradacao(ativa, conjs, antigos)
+  gravar(candidata, ativa, decisao, por_alvo, simular, degradacao)
   if decisao['promover'] and not simular:
     core_registry.ativar(candidata['versao'])
-  _imprimir(candidata, ativa, decisao, por_alvo, simular)
+  _imprimir(candidata, ativa, decisao, por_alvo, simular, degradacao)
 
 
 if __name__ == '__main__':
@@ -828,7 +1043,7 @@ if __name__ == '__main__':
 - [ ] **Step 3: Rodar e ver passar**
 
 Run: `venv/bin/python -m unittest discover -s tests -p 'test_portao_mlflow.py'`
-Expected: `OK` (10 testes). Nota: `from test_registry_mlflow import ComBanco, G` faz o `discover` rodar também os testes de `test_registry_mlflow` neste arquivo? Não: o unittest só coleta classes `TestCase` com métodos `test_*`; `ComBanco` não tem nenhum. Se aparecerem testes duplicados, troque por `import test_registry_mlflow as base` e use `base.ComBanco`.
+Expected: `OK` (11 testes). Nota: `from test_registry_mlflow import ComBanco, G` faz o `discover` rodar também os testes de `test_registry_mlflow` neste arquivo? Não: o unittest só coleta classes `TestCase` com métodos `test_*`; `ComBanco` não tem nenhum. Se aparecerem testes duplicados, troque por `import test_registry_mlflow as base` e use `base.ComBanco`.
 
 - [ ] **Step 4: Commit**
 
@@ -856,7 +1071,7 @@ SIMULAR=1 VERSAO=4 venv/bin/python src/ml/portao_mlflow.py         # record the 
 Na seção "MLflow", depois do item da versão ativa, acrescentar:
 
 ```
-- `src/ml/portao_mlflow.py` is the promotion gate. It compares the candidate (`VERSAO=`, default: the latest registered version) with the active version on the candidate's data: out-of-fold predictions of both definitions on the same rows, download and upload by the MAE difference, latency and jitter by the p90 pinball difference and the p90 coverage (90% intervals, positions resampled within buildings). It promotes when no target gets worse and at least one gets better; a tie keeps the active version. The same definition retrained with more data is compared with itself trained only on the active version's datasets (same rows, leave-one-building-out) and promoted unless some target gets worse. The verdict is stored on the candidate run (tags `portao`, `portao_promovida`, `portao_contra`, `portao_simulado`, file `portao.json`, with the per-room ruler and "atende completo" of both runs as auxiliaries) and on the registered version (tags `portao`, `portao_contra`). `ativar_mlflow.py` stays for rollbacks.
+- `src/ml/portao_mlflow.py` is the promotion gate. It compares the candidate (`VERSAO=`, default: the latest registered version) with the active version on the candidate's data: out-of-fold predictions of both definitions on the same rows, download and upload by the MAE difference, latency and jitter by the p90 pinball difference and the p90 coverage (90% intervals, positions resampled within buildings). It promotes when no target gets worse and at least one gets better; a tie keeps the active version. The same definition retrained with more data is compared with itself trained only on the active version's datasets (same rows, leave-one-building-out) and promoted unless some target gets worse. The verdict is stored on the candidate run (tags `portao`, `portao_promovida`, `portao_contra`, `portao_simulado`, file `portao.json`, with the per-room ruler and "atende completo" of both runs as auxiliaries) and on the registered version (tags `portao`, `portao_contra`). When the candidate brings datasets the active version has not seen, the gate also measures degradation: the active package predicts those rows and its error (download/upload MAE capped at the WAN ceiling, latency/jitter p90 pinball and coverage) is compared with the cross-validation error stored in the active run (tag `portao_degradacao`, block `degradacao` in `portao.json`); it does not decide the promotion. `ativar_mlflow.py` stays for rollbacks.
 ```
 
 - [ ] **Step 2: Docstring de `ativar_mlflow.py`**
@@ -865,7 +1080,7 @@ Trocar "É a promoção manual até o portão de promoção existir." por "O cam
 
 - [ ] **Step 3: CHANGELOG**
 
-Acrescentar no topo uma entrada "Changelog — Portão de promoção", data 2026-11-11, no formato das outras (Por quê, Decisões, Mudanças). As decisões são as da tabela da seção 2 da spec; as mudanças, os arquivos das Tarefas 1 a 3. A seção "Efeito medido" entra na Tarefa 5.
+Acrescentar no topo uma entrada "Changelog — Portão de promoção", data 2026-11-11, no formato das outras (Por quê, Decisões, Mudanças). As decisões são as da tabela da seção 2 da spec; as mudanças, os arquivos das Tarefas 0 a 3. A seção "Efeito medido" entra na Tarefa 5.
 
 - [ ] **Step 4: Inventário**
 
@@ -928,7 +1143,7 @@ VERSAO=5 venv/bin/python src/ml/portao_mlflow.py 2>&1 | grep -v -i warn
 venv/bin/python src/ml/ativar_mlflow.py
 ```
 
-Expected: "v5 com dado novo: treino só com [...] contra treino com [...]", os quatro vereditos e a decisão. Se não promover, anotar o motivo (é um resultado: a Villa pioraria algum alvo) e voltar à mão com `VERSAO=5 venv/bin/python src/ml/ativar_mlflow.py`. **O alias termina na 5.** A versão 6 fica registrada (v5 sem a Villa), com o veredito do portão nas tags da 5.
+Expected: "v5 com dado novo: treino só com [...] contra treino com [...]", os quatro vereditos e a decisão. Também as quatro linhas "degradação da ativa em ...": o erro da versão 6 (v5 sem a Villa) nas linhas da Villa contra o esperado; anotar. Se não promover, anotar o motivo (é um resultado: a Villa pioraria algum alvo) e voltar à mão com `VERSAO=5 venv/bin/python src/ml/ativar_mlflow.py`. **O alias termina na 5.** A versão 6 fica registrada (v5 sem a Villa), com o veredito do portão nas tags da 5.
 
 - [ ] **Step 4: O veredito está gravado**
 
@@ -950,7 +1165,7 @@ Expected: as versões 4 e 5 com as tags do portão e `portao.json`.
 
 - [ ] **Step 5: Efeito medido no CHANGELOG**
 
-Acrescentar à entrada do portão a seção "Efeito medido" com: o resultado por alvo de v4 contra v5, de v5 contra v1 e da v5 com a Villa contra a v5 sem a Villa, o tempo de cada comparação, e o estado final do alias. Commit:
+Acrescentar à entrada do portão a seção "Efeito medido" com: o resultado por alvo de v4 contra v5, de v5 contra v1 e da v5 com a Villa contra a v5 sem a Villa, a degradação da v5 sem a Villa nas linhas da Villa (erro contra o esperado, por alvo), o tempo de cada comparação, e o estado final do alias. Commit:
 
 ```bash
 git add CHANGELOG.md
