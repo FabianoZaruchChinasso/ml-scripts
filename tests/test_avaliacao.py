@@ -144,6 +144,17 @@ class TestTreinarEm(Base):
     self.assertTrue({i for indices in vistos for i in indices} <= set(conj.df.index[so_metade]))
 
 
+class TestMotivoDaPromocao(Base):
+  def test_motivo_so_cita_atende_quando_ele_entra_na_conta(self):
+    delta = {'valor': -5.0, 'intervalo': [-8.0, -2.0], 'mae_base': 100.0}
+    sem = A.veredito_promocao(delta)
+    self.assertEqual(sem['resultado'], 'melhor')
+    self.assertNotIn('atende', sem['motivo'])
+    com = A.veredito_promocao(delta, {'valor': 0.0, 'intervalo': [-0.01, 0.01]})
+    self.assertEqual(com['resultado'], 'melhor')
+    self.assertIn('sem piorar "atende"', com['motivo'])
+
+
 class TestMaeLog(Base):
   def test_previsao_negativa_conta_como_zero(self):
     self.assertAlmostEqual(A.mae_log([0.0, 9.0], [-5.0, 9.0]), 0.0)

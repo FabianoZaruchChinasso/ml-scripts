@@ -437,8 +437,8 @@ def _veredito_promocao(delta_mae: dict, delta_atende: dict = None) -> dict:
   mae_ok = delta_mae['valor'] <= RUIDO_MAE_REL * delta_mae['mae_base']
   atende_ok = delta_atende is None or delta_atende['valor'] >= -RUIDO_ATENDE
   if hi_m < 0 and atende_ok:
-    return {'resultado': 'melhor', 'motivo': f'O MAE caiu {_br(-delta_mae["valor"], 1)} (90%: {faixa_m}) '
-                                             'sem piorar "atende".'}
+    sufixo = '' if delta_atende is None else ' sem piorar "atende"'
+    return {'resultado': 'melhor', 'motivo': f'O MAE caiu {_br(-delta_mae["valor"], 1)} (90%: {faixa_m}){sufixo}.'}
   if delta_atende is not None and delta_atende['intervalo'][0] > 0 and mae_ok:
     lo_a, hi_a = delta_atende['intervalo']
     return {'resultado': 'melhor', 'motivo': f'A acurácia de "atende" subiu {_br(delta_atende["valor"], 3)} '

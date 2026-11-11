@@ -39,6 +39,24 @@ sido avaliado com dados diferentes.
 - `portao_mlflow.py` (novo): `VERSAO=<n>` escolhe a candidata (padrão: a mais recente); `SIMULAR=1`.
 - Testes: `test_portao.py`, `test_degradacao.py`, `test_portao_mlflow.py` (novos), mais testes de `treinar_em` em
   `test_avaliacao.py` e `test_quantis.py` e de Registry em `test_registry_mlflow.py`.
+- `core/avaliacao.py`: o motivo "O MAE caiu ..." só cita "sem piorar atende" quando o "atende" entra na
+  conta (no portão ele não entra).
+
+## Efeito medido (dado real, conjunto canônico mais a Villa; cada comparação leva cerca de 5,5 min)
+
+- **v4 contra v5 (simulação):** `melhor`. Upload: MAE caiu 1,7 (90%: -2,4 a -1,0). Download, latência e jitter:
+  empate. Seria promovida; o alias não mudou.
+- **v5 contra v1 (de verdade, com a v1 ativa):** `melhor`. Download: MAE caiu 12,9 (90%: -17,7 a -7,8). Upload:
+  caiu 21,7 (90%: -29,5 a -13,2). Latência e jitter: empate. A v5 foi promovida.
+- **Dado novo, com a Villa no papel de dado novo** (versão 6 = v5 sem a Villa, ativa; candidata = versão 5, v5
+  com a Villa): `pior`, não promovida. Download: MAE subiu 4,2 (90%: 3,1 a 5,1). Upload: subiu 1,7 (90%: 1,0 a
+  2,4). Latência: pinball do p90 caiu 2,35 (90%: -3,47 a -1,22). Jitter: caiu 0,49 (90%: -0,89 a -0,11).
+- **Degradação da ativa nas linhas da Villa** (pacote da v5 sem a Villa, dois prédios que ele nunca viu): MAE de
+  108 Mbps em download e em upload contra 38 e 37 esperados (intervalo inferior 85 e 67); cobertura do p90 de
+  0,951 em latência e 0,954 em jitter, um pouco acima da faixa de 0,80 a 0,95.
+- Estado final: alias na versão 5 (v5 completa). A versão 6 (v5 sem a Villa) ficou registrada.
+- Limite conhecido: cada execução do portão sobrescreve as tags `portao_*` e o `portao.json` do run da
+  candidata; a versão 5 guarda hoje só o veredito mais recente (contra a 6).
 
 
 # Changelog — Model Registry e alias do modelo ativo
