@@ -79,7 +79,7 @@ def correcao_conformal(X: pd.DataFrame, y_log, sites, q: float = 0.9, estimador=
 
 
 def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
-                                estimadores: dict = None, conformal: bool = True) -> pd.DataFrame:
+                                estimadores: dict = None, conformal: bool = True, treinar_em=None) -> pd.DataFrame:
   """p50 e p90 de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
   Treina em log1p(y) e volta com expm1, cortado em 0. Com `conformal`, soma ao p90 (em
@@ -88,6 +88,8 @@ def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
   sair abaixo do p50 (quantis cruzados), o p90 passa a valer o p50 e a linha fica com
   `cruzado`. `q90_bruto` é o p90 antes da correção conformal (também cortado em 0 e sem passar
   abaixo do p50). `estimadores` ({quantil: estimador}) troca os modelos; são clonados a cada fold.
+  `treinar_em` (série booleana alinhada a `df`, ou None para todas) restringe as linhas de treino de cada
+  fold, inclusive as da correção conformal; as linhas de teste não mudam.
   Devolve _linha, y (em ms), q50, q90, q90_bruto, cruzado, correcao, sem_correcao, _site, _pos,
   indexados como `df`.
   """
@@ -99,19 +101,25 @@ def prever_quantis_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas,
   X = matriz(sub, colunas)
   y = sub[y_col].astype(float)
   y_log = np.log1p(y.clip(lower=0))
+  dentro = pd.Series(True, index=sub.index)
+  if treinar_em is not None:
+    dentro = treinar_em.reindex(sub.index, fill_value=False).astype(bool)
   linha = sub['_linha'] if '_linha' in sub.columns else pd.Series(sub.index.astype(str), index=sub.index)
   posicao = sub['_pos'] if '_pos' in sub.columns else sub['_site']
   partes = []
   for fold in outer_logo_folds(X, y_log, sub['_site']):
+    usar = dentro.loc[fold.X_train.index].to_numpy()
+    X_treino, y_treino = fold.X_train[usar], fold.y_train[usar]
+    sites_treino = fold.train_site_ids[usar]
     em_log = {}
     for q in QUANTIS:
       base = estimadores.get(q)
       modelo = clone(base) if base is not None else modelo_quantil(q)
-      modelo.fit(fold.X_train, fold.y_train)
+      modelo.fit(X_treino, y_treino)
       em_log[q] = np.asarray(modelo.predict(fold.X_test), dtype=float)
     correcao = None
     if conformal:
-      correcao = correcao_conformal(fold.X_train, fold.y_train, fold.train_site_ids, 0.9, estimadores.get(0.9))
+      correcao = correcao_conformal(X_treino, y_treino, sites_treino, 0.9, estimadores.get(0.9))
     termo = 0.0 if correcao is None else correcao
     bruto = em_log[0.9]
     em_log[0.9] = bruto + termo

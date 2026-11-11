@@ -110,6 +110,40 @@ class TestPrevisoes(Base):
     self.assertIs(SF._logo, A._logo)
 
 
+class TestTreinarEm(Base):
+  def test_treinar_em_tira_linhas_do_treino_sem_mudar_o_teste(self):
+    conj = conjunto()
+    so_metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    vistos = []
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(),
+                                 ao_ajustar=lambda fold, modelo: vistos.append(modelo.indices_),
+                                 treinar_em=so_metade)
+    self.assertEqual(sorted(prev['_linha']), sorted(conj.df['_linha']))   # todas as linhas são previstas
+    treinadas = {i for indices in vistos for i in indices}
+    self.assertTrue(treinadas)
+    self.assertTrue(treinadas <= set(conj.df.index[so_metade]))
+
+  def test_treinar_em_tudo_igual_a_none(self):
+    conj = conjunto()
+    tudo = pd.Series(True, index=conj.df.index)
+    a = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
+    b = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=tudo)
+    pd.testing.assert_frame_equal(a, b)
+
+  def test_treinar_em_passa_pelo_denominador_por_banda(self):
+    f = frame()
+    f['radio'] = np.where(np.arange(len(f)) % 2 == 0, '5ghz', '2.4ghz')
+    tabela = {**TABELA, 'colunas': {**TABELA['colunas'], 'radio': {'classe': 'tr069'}}}
+    conj = C.preparar({'a.csv': f}, 'speedtest_down_mbps', tabela, catalogo=())
+    so_metade = pd.Series(np.arange(len(conj.df)) % 3 != 0, index=conj.df.index)
+    vistos = []
+    A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(),
+                          ao_ajustar=lambda fold, modelo: vistos.append(modelo.indices_),
+                          denominador={'coluna': 'router_snr', 'radio': '5ghz'}, treinar_em=so_metade)
+    self.assertTrue(vistos)
+    self.assertTrue({i for indices in vistos for i in indices} <= set(conj.df.index[so_metade]))
+
+
 class TestMaeLog(Base):
   def test_previsao_negativa_conta_como_zero(self):
     self.assertAlmostEqual(A.mae_log([0.0, 9.0], [-5.0, 9.0]), 0.0)

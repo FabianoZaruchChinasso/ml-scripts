@@ -63,6 +63,32 @@ class TestMetricas(unittest.TestCase):
 
 
 class TestPrevisoes(unittest.TestCase):
+  def test_treinar_em_tudo_igual_a_none_e_metade_muda_a_previsao(self):
+    conj = conjunto()
+    tudo = pd.Series(True, index=conj.df.index)
+    metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    a = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
+    b = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=tudo)
+    c = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=metade)
+    pd.testing.assert_frame_equal(a, b)
+    self.assertEqual(sorted(c['_linha']), sorted(conj.df['_linha']))
+    self.assertFalse(np.allclose(a['q50'].to_numpy(), c.loc[a.index, 'q50'].to_numpy()))
+
+  def test_treinar_em_conta_as_linhas_de_treino(self):
+    conj = conjunto()
+    metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    vistos = []
+
+    class Conta(Constante):
+      def fit(self, X, y):
+        vistos.append(set(X.index))
+        return super().fit(X, y)
+
+    Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], conformal=False,
+                                  estimadores={0.5: Conta(), 0.9: Conta()}, treinar_em=metade)
+    self.assertTrue(vistos)
+    self.assertTrue(set().union(*vistos) <= set(conj.df.index[metade]))
+
   def test_folds_por_predio_e_colunas(self):
     conj = conjunto()
     prev = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])

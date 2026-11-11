@@ -54,7 +54,8 @@ def assert_sem_vazamento(colunas, vazadas) -> None:
 
 def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores: int = None,
                         min_teste: int = 1, min_treino: int = 1, estimador=None,
-                        ao_ajustar=None, denominador=None, excluir_limitados: bool = False) -> pd.DataFrame:
+                        ao_ajustar=None, denominador=None, excluir_limitados: bool = False,
+                        treinar_em=None) -> pd.DataFrame:
   """Previsão de cada linha pelo modelo treinado sem o prédio dela (LOGO por `_site`).
 
   Para download e upload, linhas `_limitado_wan` saem do treino e a previsão é
@@ -70,6 +71,8 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   (eficiência e absoluto, mesmas linhas de treino), e cada linha de teste recebe a
   eficiência se `radio` for igual ao valor indicado, e o absoluto nos demais casos
   (inclusive `radio` vazio).
+  `treinar_em` (série booleana alinhada a `df`, ou None para todas) restringe as linhas de treino de cada
+  fold; as linhas de teste não mudam.
   Devolve colunas _linha, y, yhat, den_imputado, _site, _pos, indexadas como `df`.
   """
   assert_sem_vazamento(colunas, vazadas)
@@ -77,7 +80,7 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
     if excluir_limitados:
       raise ValueError('excluir_limitados não é suportado com denominador por banda')
     return _prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
-                             ao_ajustar, denominador)
+                             ao_ajustar, denominador, treinar_em)
   if not colunas:
     return pd.DataFrame(columns=_COLUNAS_PREVISAO)
   sub = df[df[y_col].notna()]
@@ -92,11 +95,14 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
   limitado = pd.Series(False, index=sub.index)
   if (com_teto or excluir_limitados) and '_limitado_wan' in sub.columns:
     limitado = sub['_limitado_wan'].astype(bool)
+  fora_do_treino = pd.Series(False, index=sub.index)
+  if treinar_em is not None:
+    fora_do_treino = ~treinar_em.reindex(sub.index, fill_value=False).astype(bool)
   linha = sub['_linha'] if '_linha' in sub.columns else pd.Series(sub.index.astype(str), index=sub.index)
   posicao = sub['_pos'] if '_pos' in sub.columns else sub['_site']
   partes = []
   for fold in outer_logo_folds(X, y, sub['_site']):
-    treino = ~limitado.loc[fold.X_train.index].to_numpy()
+    treino = ~(limitado | fora_do_treino).loc[fold.X_train.index].to_numpy()
     if len(fold.y_test) < min_teste or int(treino.sum()) < min_treino:
       continue
     alvo_treino = fold.y_train[treino]
@@ -132,14 +138,14 @@ def prever_fora_do_fold(df: pd.DataFrame, colunas, y_col: str, vazadas, arvores:
 
 
 def _prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
-                      ao_ajustar, denominador: dict) -> pd.DataFrame:
+                      ao_ajustar, denominador: dict, treinar_em=None) -> pd.DataFrame:
   """Eficiência nas linhas de uma banda, absoluto nas demais (mesmos folds, dois modelos)."""
   if 'radio' not in df.columns:
     raise ValueError("denominador por banda precisa da coluna 'radio' no conjunto")
   eficiencia = prever_fora_do_fold(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
-                                   ao_ajustar, denominador['coluna'])
+                                   ao_ajustar, denominador['coluna'], treinar_em=treinar_em)
   absoluto = prever_fora_do_fold(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador,
-                                 ao_ajustar, None)
+                                 ao_ajustar, None, treinar_em=treinar_em)
   if eficiencia.empty:
     return eficiencia
   absoluto = absoluto.loc[eficiencia.index]
