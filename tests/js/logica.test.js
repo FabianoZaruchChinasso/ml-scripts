@@ -96,20 +96,8 @@ test('diffRascunho separa o que entrou do que saiu, em ordem alfabética', () =>
   assert.equal(L.mesmasFeatures(['a'], ['a', 'b']), false);
 });
 
-const AVAL = (extra = {}) => Object.assign({ cobertura: { nivel: '100%', lacunas: [] } }, extra);
-const COMODO = (resultado) => ({ resultado, nota: 0.7, nota_base: 0.6, diferenca: 0.1 });
-
-test('podeAtivar segue o veredito por cômodo e exige cobertura implantável', () => {
-  assert.deepEqual(L.podeAtivar(AVAL(), true, COMODO('melhor')), { ok: true, motivo: '' });
-  assert.equal(L.podeAtivar(AVAL(), false, COMODO('melhor')).ok, false);
-  assert.equal(L.podeAtivar(null, true, COMODO('melhor')).ok, false);
-  assert.match(L.podeAtivar(AVAL(), true, null).motivo, /^Sem veredito por cômodo contra a versão ativa/);
-  assert.match(L.podeAtivar(AVAL(), true, {}).motivo, /^Sem veredito por cômodo contra a versão ativa/);
-  assert.match(L.podeAtivar(AVAL(), true, COMODO('empate')).motivo, /por cômodo não diz "melhor"/);
-  assert.match(L.podeAtivar(AVAL(), true, COMODO('pior')).motivo, /por cômodo não diz "melhor"/);
-  const parcial = AVAL({ cobertura: { nivel: 'parcial', lacunas: [{ feature: 'client_mode' }] } });
-  assert.match(L.podeAtivar(parcial, true, COMODO('melhor')).motivo, /TR-069 parcial" \(client_mode\)/);
-  assert.equal(L.podeAtivar(AVAL({ cobertura: { nivel: 'proxy', lacunas: [] } }), true, COMODO('melhor')).ok, true);
+test('podeAtivar saiu: promover é do portão (src/ml/ativar_mlflow.py)', () => {
+  assert.equal(L.podeAtivar, undefined);
 });
 
 test('notaCartao usa a régua por cômodo, trata 0 como valor e sem ela pede reavaliação', () => {
@@ -203,6 +191,9 @@ test('corTr181, sugerirNome e descricaoRascunho', () => {
   assert.equal(L.corTr181(null), 'lab');
   assert.equal(L.sugerirNome('v3-tr069', ['v1', 'v3-tr069', 'v4-tr069']), 'v5-tr069');
   assert.equal(L.sugerirNome('base', ['base']), 'base-2');
+  // sem versão ativa, parte da última versão
+  assert.equal(L.sugerirNome(null, ['v1', 'v5']), 'v6');
+  assert.equal(L.sugerirNome(null, []), 'v1');
   assert.equal(L.descricaoRascunho({ mais: ['a'], menos: ['b'] }, 'download: melhor'), '+a −b · download: melhor');
   assert.equal(L.descricaoRascunho({ mais: [], menos: [] }, ''), 'sem mudança de features');
 });

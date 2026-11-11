@@ -46,7 +46,8 @@
   const featsBase = () => (versao(st.base) || { features: [] }).features;
   const diff = () => L.diffContraBase(featsBase(), (versao(st.base) || {}).vazadas, selLista());
   const sujo = () => { const d = diff(); return d.mais.length + d.menos.length > 0; };
-  const igualAtiva = () => L.mesmasFeatures(ativa().features, selLista());
+  const igualAtiva = () => !!ativa() && L.mesmasFeatures(ativa().features, selLista());
+  const ultima = () => (st.reg && st.reg.versoes.length ? st.reg.versoes[st.reg.versoes.length - 1].nome : null);
   const pronto = () => !!(st.ctx && st.ctx.enabledIds.length && st.reg);
   // A avaliação depende do conjunto, do rascunho, da base (denominador) e da ativa (referência).
   const chaveAval = () => [chaveConj(), selLista().join(','), st.base, st.reg.ativo].join('|');
@@ -55,7 +56,7 @@
   // O cômodo não depende do alvo da tela: a chave é a do rascunho, da base (denominador) e da ativa.
   const chaveComodo = () => [dsIds().join(','), st.ctx.ambiente, selLista().join(','), st.base, st.reg.ativo].join('|');
   const comodoAtual = () => (st.comodo && st.comodoKey === chaveComodo() ? st.comodo : null);
-  // Último veredito por cômodo de cada versão (para o "Tornar ativa" do cartão); independe do alvo.
+  // Último veredito por cômodo de cada versão contra a ativa; independe do alvo.
   // Inclui a ativa: "melhor contra a ativa antiga" não vale depois que outra versão é ativada.
   const chaveVered = (nome) => [nome, 'comodo', dsIds().join(','), st.ctx.ambiente, st.reg.ativo].join('|');
   const chaveCmp = () => chaveConj() + '|' + st.reg.ativo + '|' + st.reg.versoes.map((v) => v.nome).join(',');
@@ -70,7 +71,7 @@
   }
 
   function aplicarRascunho(features, desenhoId) {
-    usarBase(st.reg.ativo);
+    usarBase(st.reg.ativo || st.base || ultima());
     st.sel = new Set(features);
     st.desenho = desenhoId ? { id: desenhoId, features: features.slice().sort() } : null;
   }
@@ -78,7 +79,7 @@
   function carregarRegistro() {
     return U.pedir('api/modelos').then((reg) => {
       st.reg = reg; st.regErro = null; st.regAviso = reg.erro || null;
-      if (!st.base || !versao(st.base)) usarBase(reg.ativo);
+      if (!st.base || !versao(st.base)) usarBase(reg.ativo || ultima());
       if (st.pendente) { aplicarRascunho(st.pendente.features, st.pendente.desenhoId); st.pendente = null; }
     }).catch((e) => { st.regErro = e.message; })
       .finally(() => { agendar(); desenhar(); });
@@ -126,13 +127,13 @@
   /* ---------------- avaliação reativa ---------------- */
   function urlAvaliar(alvo) {
     return 'api/modelos/avaliar?' + queryDe(alvo) + '&features=' + encodeURIComponent(selLista().join(',')) +
-      '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo);
+      '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo || '');
   }
 
   function urlComodo() {
     return 'api/modelos/avaliar_comodo?ds=' + encodeURIComponent(st.ctx.enabledIds.join(',')) +
       '&ambiente=' + encodeURIComponent(st.ctx.ambiente) + '&features=' + encodeURIComponent(selLista().join(',')) +
-      '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo);
+      '&base=' + encodeURIComponent(st.base) + '&contra=' + encodeURIComponent(st.reg.ativo || '');
   }
 
   // Síncrono no servidor (cerca de 1 min sem cache). Resposta de chave velha é descartada.
@@ -205,12 +206,12 @@
       .finally(() => { st.comparando = false; desenhar(); });
   }
 
-  /* ---------------- salvar e ativar ---------------- */
-  function abrirForm(ativar) {
+  /* ---------------- salvar ---------------- */
+  function abrirForm() {
     const a = avalAtual() ? st.aval : null;
     const sufixo = a && a.resumo_base ? `${U.ALVO[st.alvo].rotulo.toLowerCase()}: ${VEREDITO[promocao(a).resultado].rotulo.toLowerCase()}` +
-      ` contra ${st.reg.ativo} (R² ${num(a.resumo_base.pooled, 2)}→${num(a.resumo.pooled, 2)})` : '';
-    st.form = { ativar, nome: L.sugerirNome(st.reg.ativo, st.reg.versoes.map((v) => v.nome)),
+      ` contra ${st.reg.ativo || 'a base'} (R² ${num(a.resumo_base.pooled, 2)}→${num(a.resumo.pooled, 2)})` : '';
+    st.form = { nome: L.sugerirNome(st.reg.ativo, st.reg.versoes.map((v) => v.nome)),
                 desc: L.descricaoRascunho(diff(), sufixo) };
     st.salvarErro = null;
     desenhar();
@@ -230,7 +231,7 @@
     const verPub = cPub ? cPub.resultado : null;
     st.salvando = true; st.salvarEtapa = null; desenhar();
     U.post('api/modelos', { nome, descricao: f.desc, features: selLista(), ds: st.ctx.enabledIds.join(','),
-                            ambiente: st.ctx.ambiente, base: st.base, desenho, ativar: !!f.ativar })
+                            ambiente: st.ctx.ambiente, base: st.base, desenho })
       .then((r) => acompanharSalvar(r.id, nome, verPub))
       .catch((e) => { st.salvando = false; st.salvarErro = e.message; desenhar(); });
   }
@@ -250,27 +251,10 @@
       const r = job.resultado;
       st.aviso = L.avisoMlflow(r);
       if (verPub) st.vereditos[chaveVered(nome)] = verPub;   // ainda com a ativa antiga: a chave é a do veredito que foi dado
-      if (r.erro_ativar) st.erro = `Versão ${nome} salva, mas não foi possível ativar: ${r.erro_ativar}`;
-      else st.msg = `Versão ${nome} salva${r.ativa ? ' e ativa' : ''} em src/ml/core/modelos.json. Revise no git diff antes do commit.`;
+      st.msg = `Versão ${nome} salva em src/ml/core/modelos.json. Revise no git diff antes do commit; para ativá-la, rode versao_mlflow.py e ativar_mlflow.py.`;
       st.cmpKey = null;
       return U.pedir('api/modelos').then((reg) => { st.reg = reg; usarBase(nome); agendar(); desenhar(); });
     }).catch((e) => { st.salvando = false; st.salvarEtapa = null; st.salvarErro = e.message; desenhar(); });
-  }
-
-  function ativarManual(nome) {
-    st.menu = null;
-    const conhecido = st.vereditos[chaveVered(nome)];
-    if (conhecido !== 'melhor') {
-      const txt = conhecido
-        ? `O último veredito por cômodo de ${nome} contra ${st.reg.ativo} foi "${VEREDITO[conhecido].rotulo}".`
-        : `Não há veredito por cômodo de ${nome} contra ${st.reg.ativo} nesta sessão: clique no cartão para avaliar antes.`;
-      if (!window.confirm(`${txt}\n\nTornar ${nome} a versão ativa mesmo assim?`)) { desenhar(); return; }
-    }
-    st.msg = null; st.erro = null; st.aviso = null;
-    U.post('api/modelos/ativo', { nome })
-      .then((reg) => { st.reg = reg; st.aviso = L.avisoMlflow(reg); st.msg = `${nome} agora é a versão ativa. Revise src/ml/core/modelos.json no git diff antes do commit.`; })
-      .catch((e) => { st.erro = `Não foi possível ativar ${nome}: ${e.message}`; })
-      .finally(() => { st.cmpKey = null; agendar(); desenhar(); });
   }
 
   /* ---------------- reavaliar ---------------- */
@@ -431,14 +415,14 @@
       <button class="btn-icone ver-menu" data-acao="menu" data-nome="${esc(v.nome)}" data-k="menu-${esc(v.nome)}"
         aria-haspopup="menu" aria-expanded="${st.menu === v.nome}" aria-label="Mais ações para ${esc(v.nome)}">${icone('i-more')}</button>
       ${st.menu === v.nome ? `<div class="menu" role="menu">
-        <button role="menuitem" data-acao="reavaliar" data-nome="${esc(v.nome)}"${st.reav ? ' disabled' : ''}>Reavaliar</button>
-        ${v.ativo ? '' : `<button role="menuitem" data-acao="ativar" data-nome="${esc(v.nome)}">Tornar ativa</button>`}</div>` : ''}
+        <button role="menuitem" data-acao="reavaliar" data-nome="${esc(v.nome)}"${st.reav ? ' disabled' : ''}>Reavaliar</button></div>` : ''}
     </div>`;
   }
 
   function secaoVersoes() {
     return `<div class="secao"><div class="secao-cab"><h2>Versões</h2>${barraReav()}
         <button class="linkbtn link" data-acao="comparar" aria-expanded="${st.cmpAberto}">${icone('i-bars')} Comparar por prédio</button></div>
+      <p class="hint">A versão ativa é o alias do Model Registry; para trocar: <code>MODELO=&lt;versão&gt; venv/bin/python src/ml/ativar_mlflow.py</code>.</p>
       ${st.msg ? U.gate('good', 'Feito', esc(st.msg)) : ''}${st.aviso ? U.gate('warning', 'MLflow ficou para trás', esc(st.aviso)) : ''}${st.erro ? U.gate('critical', 'Algo deu errado', esc(st.erro)) : ''}
       <div class="vers">${st.reg.versoes.map(cartao).join('')}</div></div>`;
   }
@@ -651,7 +635,7 @@
     const contra = v.predios_contra || [];
     return `<div class="${atual ? '' : 'stale'}">
       <div class="veredito ${v.resultado}">${icone(VEREDITO[v.resultado].icone)}
-        <div><b>${esc(VEREDITO[v.resultado].frase(st.reg.ativo))}</b> <span class="gate-msg">(ativa)</span>
+        <div><b>${esc(VEREDITO[v.resultado].frase(st.reg.ativo || 'a base'))}</b> <span class="gate-msg">(ativa)</span>
           ${r2 && r2.provisorio ? ` <span class="tag mid" title="${esc(r2.motivos_provisorio.join('; '))}">provisório</span>` : ''}
           ${atual ? '' : ' <span class="tag lab">desatualizado</span>'}
           <div class="gate-msg">${esc(v.motivo)}</div></div></div>
@@ -675,20 +659,20 @@
     if (!c) return '<p class="hint" role="status">Avaliando por cômodo (quatro alvos, cerca de 1 min)…</p>';
     const faixa = (iv) => (iv ? ` <em>${num(iv[0], 3)} a ${num(iv[1], 3)}</em>` : '');
     const kpis = [['Cômodo rascunho', num(c.nota, 3), faixa(c.intervalo)],
-                  [`Cômodo ${esc(st.reg.ativo)}`, num(c.nota_base, 3), ''],
+                  [`Cômodo ${esc(st.reg.ativo || '–')}`, num(c.nota_base, 3), ''],
                   ['Piso (só radio)', num(c.piso.nota, 3), faixa(c.piso.intervalo)]];
     // Resposta em cache de antes do "apto para jogo" não traz `jogo`.
     const jogo = c.jogo ? `<div class="kpis">${[['Apto para jogo, rascunho', num(c.jogo.nota, 3), faixa(c.jogo.intervalo)],
-      [`Apto para jogo, ${esc(st.reg.ativo)}`, c.jogo_base ? num(c.jogo_base.nota, 3) : '–', ''],
+      [`Apto para jogo, ${esc(st.reg.ativo || '–')}`, c.jogo_base ? num(c.jogo_base.nota, 3) : '–', ''],
       ['Apto para jogo, piso', num(c.jogo.piso.nota, 3), faixa(c.jogo.piso.intervalo)]]
       .map(([t, b, e]) => `<div><span>${t}</span><b>${b}</b>${e}</div>`).join('')}</div>
-      <p class="gate-msg">Acurácia balanceada de apto para jogo por posição: informativo, não entra na ativação.</p>` : '';
+      <p class="gate-msg">Acurácia balanceada de apto para jogo por posição: informativo.</p>` : '';
     const predios = Object.entries(c.por_predio).map(([s, [a, n]]) => `${esc(s)} ${a}/${n}`).join(', ');
-    const dif = `Diferença contra ${st.reg.ativo}: ${num(c.diferenca, 3)}` +
+    const dif = `Diferença contra ${st.reg.ativo || 'a base'}: ${num(c.diferenca, 3)}` +
       (c.intervalo_diferenca ? ` (90%: ${num(c.intervalo_diferenca[0], 3)} a ${num(c.intervalo_diferenca[1], 3)}).` : '.');
     return `<div class="qoe">
       <div class="veredito ${c.resultado}">${icone(VEREDITO[c.resultado].icone)}
-        <div><b>Cômodo: ${esc(VEREDITO[c.resultado].frase(st.reg.ativo))}</b> <span class="gate-msg">(decide a ativação)</span>
+        <div><b>Cômodo: ${esc(VEREDITO[c.resultado].frase(st.reg.ativo || 'a base'))}</b> <span class="gate-msg">(referência)</span>
           <div class="gate-msg">${esc(dif)}</div></div></div>
       <div class="kpis">${kpis.map(([t, b, e]) => `<div><span>${t}</span><b>${b}</b>${e}</div>`).join('')}</div>
       ${jogo}
@@ -701,7 +685,7 @@
     if (!st.sel.size) return '<p class="hint">Adicione features para avaliar.</p>';
     if (igualAtiva()) {
       return `<div class="veredito igual">${icone('i-equal')}<div><b>Igual à versão ativa</b>
-        <div class="gate-msg">O rascunho tem as mesmas features de ${esc(st.reg.ativo)}. Mude alguma, ou clique noutro cartão, para ver o efeito.</div></div></div>`;
+        <div class="gate-msg">O rascunho tem as mesmas features de ${esc(st.reg.ativo || '–')}. Mude alguma, ou clique noutro cartão, para ver o efeito.</div></div></div>`;
     }
     const vivo = st.avaliando ? `<div class="ao-vivo"><span class="giro" aria-hidden="true"></span>
       <span role="status">Reavaliando com a última mudança…</span>
@@ -735,16 +719,7 @@
       ${st.salvarErro ? `<p class="dock-erro" role="alert">${esc(st.salvarErro)}</p>` : ''}
       ${st.salvando ? '<p class="hint" role="status">Leva de 2 a 3 minutos. Recarregar a página não cancela: a versão é gravada mesmo assim.</p>' : ''}
       <div class="dock-form-acoes"><button class="btn" data-acao="cancelar-salvar"${st.salvando ? ' disabled' : ''}>Cancelar</button>
-        <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? textoSalvando() : f.ativar ? 'Salvar e tornar ativa' : 'Salvar versão'}</button></div></div>`;
-  }
-
-  // Por que "Salvar e tornar ativa" está desabilitado: a avaliação por cômodo ainda roda, falhou, ou a trava diz.
-  function motivoDock(c, pode) {
-    if (!c && st.sel.size && !igualAtiva()) {
-      return st.comodoErro && st.comodoKey === chaveComodo()
-        ? `Avaliação por cômodo falhou: ${st.comodoErro} (use "Tentar de novo" no painel)` : 'Avaliando por cômodo…';
-    }
-    return st.avaliando ? 'Reavaliando o rascunho…' : pode.motivo;
+        <button class="btn-pri" data-acao="confirmar-salvar"${st.salvando ? ' disabled' : ''}>${st.salvando ? textoSalvando() : 'Salvar versão'}</button></div></div>`;
   }
 
   function dock() {
@@ -753,9 +728,7 @@
     el.classList.toggle('hide', !mostrar);
     if (!mostrar) { el.innerHTML = ''; return; }
     const d = diff();
-    const atual = avalAtual();
     const c = comodoAtual();
-    const pode = L.podeAtivar(st.aval, atual, c);
     const estado = st.avaliando ? '<span class="dock-ver">avaliando…</span>'
       : c ? `<span class="dock-ver ${c.resultado}">${icone(VEREDITO[c.resultado].icone)} ${VEREDITO[c.resultado].rotulo}</span>` : '';
     U.redesenhar(el, `<div class="dock-linha">
@@ -765,9 +738,7 @@
         <span class="dock-acoes">
           <button class="btn" data-acao="descartar" data-k="descartar">Descartar</button>
           <button class="btn" data-acao="abrir-salvar" data-k="abrir-salvar"${st.sel.size ? '' : ' disabled'}>Salvar…</button>
-          <button class="btn-pri" data-acao="abrir-ativar" data-k="abrir-ativar"${pode.ok ? '' : ' disabled'} aria-describedby="mDockMotivo">Salvar e tornar ativa</button>
         </span></div>
-      ${pode.ok ? '' : `<p class="dock-motivo" id="mDockMotivo" role="status">${esc(motivoDock(c, pode))}</p>`}
       ${st.form ? formSalvar() : ''}`);
   }
 
@@ -837,7 +808,6 @@
       case 'comodo-repetir': st.comodoKey = null; avaliarComodo(); desenhar(); break;
       case 'base': escolherBase(b.dataset.nome); break;
       case 'menu': st.menu = st.menu === b.dataset.nome ? null : b.dataset.nome; desenhar(); break;
-      case 'ativar': ativarManual(b.dataset.nome); break;
       case 'reavaliar': reavaliar([b.dataset.nome]); break;
       case 'reavaliar-todas': reavaliar(desatualizadas()); break;
       case 'comparar': st.cmpAberto = !st.cmpAberto; if (st.cmpAberto && st.cmpKey !== chaveCmp()) comparar(); desenhar(); break;
@@ -853,8 +823,7 @@
       case 'fechar-receita': st.recAberto = false; st.rec.resultado = null; st.rec.erro = null; desenhar(); break;
       case 'salvar-receita': salvarReceita(); break;
       case 'descartar': usarBase(st.base); mudouRascunho(); break;
-      case 'abrir-salvar': abrirForm(false); break;
-      case 'abrir-ativar': abrirForm(true); break;
+      case 'abrir-salvar': abrirForm(); break;
       case 'cancelar-salvar': st.form = null; st.salvarErro = null; desenhar(); break;
       case 'confirmar-salvar': publicar(); break;
       default: break;

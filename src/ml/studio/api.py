@@ -358,7 +358,7 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
 
 
 @app.get('/api/modelos/avaliar_comodo')
-def modelos_avaliar_comodo(features: str, contra: str, ds: str = '', ambiente: str = '', base: str = ''):
+def modelos_avaliar_comodo(features: str, contra: str = '', ds: str = '', ambiente: str = '', base: str = ''):
   """Régua por cômodo do rascunho e o veredito contra a avaliação guardada de `contra` (core/comodo.py).
 
   Só o rascunho é previsto (quatro alvos, cerca de 1 min sem cache); `contra` entra pela tabela por
@@ -373,6 +373,7 @@ def modelos_avaliar_comodo(features: str, contra: str, ds: str = '', ambiente: s
   for nome in (contra, base):
     if nome and nome not in registro['versoes']:
       raise HTTPException(404, f'versão {nome!r} não existe')
+  contra = contra or _base(base, registro)   # sem `contra` (sem ativa), compara com a própria base
   chave = (('avaliar_comodo', tuple(sorted(_lista(ds))), _ambiente(ambiente), tuple(feats), contra, base)
            + _chave_versoes())
   if chave not in _modelos_cache:

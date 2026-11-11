@@ -54,7 +54,7 @@
       if (!st.base || !st.versoes.includes(st.base)) {
         const puras = reg.versoes.filter((v) => !v.fora_do_tr069.length
           && !(v.selecao && v.selecao.parametros && v.selecao.parametros.sem_volume === false));
-        st.base = (puras.length ? puras[puras.length - 1] : reg.versoes.find((v) => v.ativo)).nome;
+        st.base = (puras.length ? puras[puras.length - 1] : reg.versoes.find((v) => v.ativo) || reg.versoes[reg.versoes.length - 1]).nome;
       }
       st.derivadas = der; st.derivErro = der.erro;
     }).catch((e) => { st.derivErro = e.message; }).finally(desenhar);

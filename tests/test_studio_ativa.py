@@ -44,5 +44,22 @@ class TestAtivaNoStudio(unittest.TestCase):
       M.features_de(REGISTRO, 'v9')
 
 
+class TestAvaliarComodoSemAtiva(unittest.TestCase):
+  def test_sem_contra_e_sem_ativa_compara_com_a_base(self):
+    guardado = {'versoes': {'v1': {'features': ['a'], 'avaliacao': {}}}}
+    with mock.patch.object(api, '_registro', return_value=(guardado, None)):
+      with self.assertRaises(api.HTTPException) as erro:
+        api.modelos_avaliar_comodo(features='a', contra='', base='v1')
+    # chegou a olhar a avaliação guardada de v1 (a própria base): 409 de "não foi avaliada", e não KeyError/500
+    self.assertEqual(erro.exception.status_code, 409)
+    self.assertIn('v1', erro.exception.detail)
+
+  def test_sem_contra_sem_base_e_sem_ativa_e_409(self):
+    with mock.patch.object(api, '_registro', return_value=(REGISTRO, None)):
+      with self.assertRaises(api.HTTPException) as erro:
+        api.modelos_avaliar_comodo(features='a', contra='', base='')
+    self.assertEqual(erro.exception.status_code, 409)
+
+
 if __name__ == '__main__':
   unittest.main()

@@ -155,22 +155,6 @@
     return !d.mais.length && !d.menos.length;
   };
 
-  // A ativação segue o veredito da régua por cômodo (core/comodo.py); o de promoção da regressão
-  // continua na tela, mas não trava. `comodo` é a resposta de api/modelos/avaliar_comodo.
-  function podeAtivar(aval, atual, comodo) {
-    if (!aval || !atual) return { ok: false, motivo: 'Espere a avaliação do rascunho atual terminar.' };
-    if (!comodo || !comodo.resultado) return { ok: false, motivo: 'Sem veredito por cômodo contra a versão ativa: espere a avaliação por cômodo.' };
-    const cob = aval.cobertura;
-    if (!cob || (cob.nivel !== '100%' && cob.nivel !== 'proxy')) {
-      const lacunas = cob ? cob.lacunas.map((l) => l.feature).join(', ') : '';
-      return { ok: false, motivo: `O rascunho é "TR-069 parcial" (${lacunas}): salve para estudar; ativar daqui exige 100% TR-069 ou proxy.` };
-    }
-    if (comodo.resultado !== 'melhor') {
-      return { ok: false, motivo: 'O veredito por cômodo não diz "melhor": para ativar mesmo assim, salve e use o menu do cartão.' };
-    }
-    return { ok: true, motivo: '' };
-  }
-
   // Decisão de pedir a avaliação por cômodo: há rascunho diferente da ativa e o que está guardado
   // é de outra chave (ou de nenhuma). Idempotente por chave: em voo ou pronto, não repete.
   function precisaPedirComodo(e) {
@@ -250,10 +234,11 @@
     };
   }
 
-  // Próximo nome livre a partir da ativa: v3-tr069 -> v4-tr069 (ou o primeiro livre depois).
+  // Próximo nome livre a partir da ativa (ou da última versão, sem ativa): v3-tr069 -> v4-tr069.
   function sugerirNome(ativo, nomes) {
-    const m = ativo.match(/^(\D*)(\d+)(.*)$/);
-    const gerar = m ? (i) => m[1] + i + m[3] : (i) => `${ativo}-${i}`;
+    const ref = ativo || nomes[nomes.length - 1] || 'v0';
+    const m = ref.match(/^(\D*)(\d+)(.*)$/);
+    const gerar = m ? (i) => m[1] + i + m[3] : (i) => `${ref}-${i}`;
     let i = m ? Number(m[2]) + 1 : 2;
     while (nomes.includes(gerar(i))) i += 1;
     return gerar(i);
@@ -303,7 +288,7 @@
     return { linhas, piso };
   }
 
-  // Aviso do MLflow depois de salvar, ativar (aviso_mlflow) ou reavaliar (avisos_mlflow). O modelos.json
+  // Aviso do MLflow depois de salvar (aviso_mlflow) ou reavaliar (avisos_mlflow). O modelos.json
   // já foi gravado; o aviso só diz que o MLflow ficou para trás e como recuperar.
   function avisoMlflow(r) {
     if (!r) return null;
@@ -315,6 +300,6 @@
 
   return { METRICAS, MIN_AMOSTRAS, FOLGA_PCT, reprova, atende, mediana, chavePos, posicoes, daPosicao,
            reprovacao, gargalo, celulas, semContagem, contencao, piores, avisosConjunto,
-           diffRascunho, mesmasFeatures, podeAtivar, notaCartao, precisaPedirComodo, vooUnico, corTr181, agruparColunas,
+           diffRascunho, mesmasFeatures, notaCartao, precisaPedirComodo, vooUnico, corTr181, agruparColunas,
            sugerirNome, descricaoRascunho, semVazamento, diffContraBase, acertosPorPredio, linhasComodo, avisoMlflow };
 });

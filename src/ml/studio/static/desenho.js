@@ -76,7 +76,7 @@
         <div class="kpis">
           <div><span>Nota aninhada (honesta)</span><b>${num(r.nota_aninhada.pooled, 3)}</b><em>MAE ${num(r.nota_aninhada.mae, 1)} ${u}</em></div>
           <div><span>Nota da seleção (otimista)</span><b>${num(r.nota_selecao.pooled, 3)}</b><em>MAE ${num(r.nota_selecao.mae, 1)} ${u}</em></div>
-          <div><span>Ativa: ${esc(st.reg.ativo)}</span><b>${avAtivo ? num(avAtivo.pooled, 3) : '–'}</b><em>MAE ${avAtivo ? num(avAtivo.mae, 1) : '–'} ${u}</em></div>
+          <div><span>Ativa: ${esc(st.reg.ativo || '–')}</span><b>${avAtivo ? num(avAtivo.pooled, 3) : '–'}</b><em>MAE ${avAtivo ? num(avAtivo.mae, 1) : '–'} ${u}</em></div>
         </div>
         <p class="hint">A nota aninhada roda a seleção sem o local de teste, para cada local: é o que esperar num prédio novo.
           A nota da seleção escolheu olhando todos os locais e por isso sai melhor do que é. Compare a ativa com a <b>aninhada</b>.</p>
