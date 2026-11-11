@@ -255,6 +255,19 @@ class TestIsolamentoDosTestes(unittest.TestCase):
         faltam.append(arq)
     self.assertEqual(faltam, [])
 
+  def test_testes_que_importam_o_studio_isolam_o_registry(self):
+    """Sem o isolamento, o Studio leria o alias do mlflow.db da raiz."""
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    faltam = []
+    for arq in sorted(os.listdir(pasta)):
+      if not arq.endswith('.py') or arq == 'test_registro_mlflow.py':
+        continue
+      with open(os.path.join(pasta, arq), encoding='utf-8') as f:
+        texto = f.read()
+      if re.search(r'from ml\.studio import api\b', texto) and 'isolamento_mlflow' not in texto:
+        faltam.append(arq)
+    self.assertEqual(faltam, [])
+
   def test_testes_do_pipeline_usam_banco_temporario(self):
     """Os testes de pacote_mlflow e versao_mlflow gravam runs de verdade: sem MLFLOW_TRACKING_URI
     temporário, eles iriam para o mlflow.db da raiz."""

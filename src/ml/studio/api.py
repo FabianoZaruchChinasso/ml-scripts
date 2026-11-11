@@ -32,6 +32,7 @@ from ml.core import modelos as core_modelos
 from ml.core import qoe as core_qoe
 from ml.core import quantis as core_quantis
 from ml.core import registro_mlflow as core_registro_mlflow
+from ml.core import registry_mlflow as core_registry
 from ml.core.sites import BUILDING_ENVIRONMENT, resolve_site_id
 from ml.core.splits import COMFORTABLE_SITES
 from ml.studio import features as studio_features
@@ -127,9 +128,31 @@ def _registro():
   try:
     return core_modelos.carregar(), None
   except (OSError, ValueError) as erro:
-    reserva = {'ativo': 'v1', 'versoes': {'v1': {
+    reserva = {'versoes': {'v1': {
       'features': list(core_features.MODELO_ATUAL), 'descricao': 'reserva: modelos.json ilegível'}}}
     return reserva, f'registro de modelos ilegível: {erro}'
+
+
+def _ativa(registro) -> Optional[str]:
+  """Definição da versão ativa (alias 'ativo' do Model Registry), ou None sem alias ou com alias para
+  uma definição que não está em modelos.json."""
+  nome = core_registry.definicao_ativa()
+  return nome if nome in registro['versoes'] else None
+
+
+def _base(base, registro) -> str:
+  """A versão base pedida; sem ela, a ativa; sem as duas, 409."""
+  nome = base or _ativa(registro)
+  if not nome:
+    raise HTTPException(409, 'sem versão ativa no Model Registry: escolha a versão base '
+                             '(ou ative uma com src/ml/ativar_mlflow.py)')
+  return nome
+
+
+def _features_ativa(registro) -> list:
+  """Features do ponto de partida do inventário: a ativa; sem alias, a última versão (o inventário é informativo)."""
+  nome = _ativa(registro) or list(registro['versoes'])[-1]
+  return core_modelos.features_de(registro, nome)
 
 
 def _versoes_por_nome(registro) -> dict:
@@ -143,7 +166,7 @@ def _denominadores(registro) -> dict:
 def _chave_versoes():
   return (core_features.versao_tabela(), core_features.CATALOGO_VERSAO,
           core_features.versao_derivadas(), core_modelos.versao_registro(), core_aplicacoes.versao(),
-          core_aplicacoes.versao(core_aplicacoes.APLICACOES_NORMA_PATH))
+          core_aplicacoes.versao(core_aplicacoes.APLICACOES_NORMA_PATH), core_registry.definicao_ativa())
 
 
 def _conjunto(ds: str, alvo: str, ambiente: str = ''):
@@ -168,10 +191,10 @@ def _conjunto(ds: str, alvo: str, ambiente: str = ''):
 def features_inventario(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = ''):
   conj, erro_tabela = _conjunto(ds, alvo, ambiente)
   registro, erro_registro = _registro()
-  inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+  inv = studio_features.inventario(conj, _features_ativa(registro))
   inv['tabela_erro'] = erro_tabela
   inv['registro_erro'] = erro_registro
-  inv['modelo_ativo'] = registro['ativo']
+  inv['modelo_ativo'] = _ativa(registro)
   return inv
 
 
@@ -182,7 +205,7 @@ def features_ajuste(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: s
   chave = (tuple(conj.datasets), alvo, _ambiente(ambiente)) + _chave_versoes()
   if chave not in _ajustes:
     try:
-      inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+      inv = studio_features.inventario(conj, _features_ativa(registro))
       _ajustes[chave] = studio_features.ajuste(conj, inv, _versoes_por_nome(registro), _denominadores(registro))
     except ValueError as erro:
       raise HTTPException(422, str(erro))
@@ -203,10 +226,11 @@ def _colunas_conhecidas() -> set:
 def modelos_listar():
   registro, erro = _registro()
   tabela, _ = _tabela()
+  ativa = _ativa(registro)
   versoes = []
   for nome, v in registro['versoes'].items():
     classes = core_modelos.classificar_features(v['features'], tabela)
-    versoes.append(dict(v, nome=nome, ativo=nome == registro['ativo'],
+    versoes.append(dict(v, nome=nome, ativo=nome == ativa,
                         fora_do_tr069=core_modelos.fora_do_tr069(v['features'], tabela),
                         # Recalculada com a tabela de hoje; 'cobertura_salva' é a gravada na versão.
                         cobertura=core_features.cobertura_tr069(v['features'], tabela),
@@ -214,7 +238,9 @@ def modelos_listar():
                         perfil_qoe=core_modelos.perfil_de(registro, nome),
                         pendentes=[f for f, c in classes.items() if c is not None and c.pendente],
                         vazadas=[f for f, c in classes.items() if c is not None and c.vazamento]))
-  return {'ativo': registro['ativo'], 'versoes': versoes, 'erro': erro,
+  if not erro and not ativa:
+    erro = 'sem versão ativa no Model Registry: ative uma com src/ml/ativar_mlflow.py'
+  return {'ativo': ativa, 'versoes': versoes, 'erro': erro,
           'contadores': core_features.estado_contadores(tabela),
           'versao_tabela': core_features.versao_tabela(),
           'versao_catalogo': core_features.CATALOGO_VERSAO,
@@ -228,9 +254,9 @@ def modelos_comparar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: 
   chave = ('comparar', tuple(conj.datasets), alvo, _ambiente(ambiente)) + _chave_versoes()
   if chave not in _modelos_cache:
     try:
-      inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+      inv = studio_features.inventario(conj, _features_ativa(registro))
       _modelos_cache[chave] = studio_features.comparar(conj, inv, _versoes_por_nome(registro),
-                                                       registro['ativo'], _denominadores(registro))
+                                                       _ativa(registro), _denominadores(registro))
     except ValueError as erro:
       raise HTTPException(422, str(erro))
   return _modelos_cache[chave]
@@ -303,7 +329,7 @@ def modelos_avaliar(features: str, ds: str = '', alvo: str = 'speedtest_down_mbp
   if chave not in _modelos_cache:
     vazadas = studio_features.vazadas_do_conjunto(conj)
     # O rascunho herda o denominador da versão de onde partiu (ou da ativa, sem base).
-    den_nova = registro['versoes'][base or registro['ativo']].get('denominador') or {}
+    den_nova = registro['versoes'][_base(base, registro)].get('denominador') or {}
     den_ref = (registro['versoes'][ref].get('denominador') or {}) if ref else {}
     try:
       studio_features.assert_sem_vazamento(feats, vazadas)
@@ -353,7 +379,7 @@ def modelos_avaliar_comodo(features: str, contra: str, ds: str = '', ambiente: s
     guardado = (registro['versoes'][contra].get('avaliacao') or {}).get('comodo')
     if not guardado:
       raise HTTPException(409, f'{contra} não foi avaliada pela régua por cômodo: reavalie {contra} antes de comparar')
-    denominador = registro['versoes'][base or registro['ativo']].get('denominador') or None
+    denominador = registro['versoes'][_base(base, registro)].get('denominador') or None
     conjs = {alvo: _conjunto(ds, alvo, ambiente)[0] for alvo in core_qoe.ALVOS}
     vazadas = {alvo: studio_features.vazadas_do_conjunto(c) for alvo, c in conjs.items()}
     try:
@@ -434,7 +460,7 @@ def modelos_desenhar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: 
   def tarefa(progresso):
     conj, _ = _conjunto(ds, alvo, ambiente)
     registro, _ = _registro()
-    inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+    inv = studio_features.inventario(conj, _features_ativa(registro))
     resultado = studio_selecao.desenhar(conj, inv, progresso, sem_volume, escopo)
     resultado['ambiente'] = _ambiente(ambiente) or 'todos'
     return resultado
@@ -574,7 +600,7 @@ def contadores(corpo: EstadoContadores, request: Request):
 
 def _features_base(base: str) -> list:
   registro, _ = _registro()
-  nome = base or registro['ativo']
+  nome = _base(base, registro)
   if nome not in registro['versoes']:
     raise HTTPException(404, f'versão {nome!r} não existe')
   return list(registro['versoes'][nome]['features'])
@@ -587,9 +613,9 @@ def paralelos_iniciar(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente:
   def tarefa(progresso):
     conj, _ = _conjunto(ds, alvo, ambiente)
     registro, _ = _registro()
-    inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+    inv = studio_features.inventario(conj, _features_ativa(registro))
     resultado = studio_paralelos.analisar(conj, inv, feats, progresso)
-    resultado['versao_base'] = base or registro['ativo']
+    resultado['versao_base'] = _base(base, registro)
     return resultado
   return _iniciar_job(('paralelos', tuple(sorted(_lista(ds))), alvo, _ambiente(ambiente), base)
                       + _chave_versoes(), tarefa)
@@ -655,7 +681,7 @@ def derivadas_salvar(corpo: Formula, request: Request):
   _so_local(request)
   teste = _testar(corpo)
   resumo_teste = {'alvo': corpo.alvo, 'datasets': sorted(_lista(corpo.ds)), 'ambiente': _ambiente(corpo.ambiente) or 'todos',
-                  'base': corpo.base or _registro()[0]['ativo'], 'criterios': teste['criterios'],
+                  'base': _base(corpo.base, _registro()[0]), 'criterios': teste['criterios'],
                   'ganho': teste['ganho'], 'reconstrucao': teste['reconstrucao'],
                   'versao_tabela': core_features.versao_tabela()}
   try:
@@ -675,7 +701,7 @@ def derivadas_salvar(corpo: Formula, request: Request):
 def assistente_colunas(ds: str = '', alvo: str = 'speedtest_down_mbps', ambiente: str = ''):
   conj, _ = _conjunto(ds, alvo, ambiente)
   registro, _ = _registro()
-  inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+  inv = studio_features.inventario(conj, _features_ativa(registro))
   return {'colunas': studio_features.lista_assistente(inv, conj.catalogo)}
 
 
@@ -688,12 +714,12 @@ def assistente_sugestoes(ds: str = '', alvo: str = 'speedtest_down_mbps', ambien
     conj, _ = _conjunto(ds, alvo, ambiente)
     registro, _ = _registro()
     studio_features._checar_locais(conj.df)
-    inv = studio_features.inventario(conj, core_modelos.ativo(registro))
+    inv = studio_features.inventario(conj, _features_ativa(registro))
     liberadas = [c['coluna'] for c in studio_features.lista_assistente(inv, conj.catalogo) if c['liberada']]
     candidatas = [c for c in liberadas if c not in feats]
     ganho = studio_features.ganho_mais_um(conj, feats, candidatas, studio_features.vazadas_do_conjunto(conj),
                                           progresso)
-    return {'base': base or registro['ativo'], 'alvo': alvo, 'ganho': ganho,
+    return {'base': _base(base, registro), 'alvo': alvo, 'ganho': ganho,
             'ganho_min': studio_paralelos.GANHO_MIN}
   return _iniciar_job(('sugestoes', tuple(sorted(_lista(ds))), alvo, _ambiente(ambiente), base)
                       + _chave_versoes(), tarefa)
@@ -795,7 +821,7 @@ def modelos_salvar(corpo: NovaVersao, request: Request):
     raise HTTPException(422, f'estas colunas estão marcadas como vazamento e não podem entrar numa versão nova: '
                              f'{vazadas}. Tire-as do rascunho.')
   # Mesma regra da avaliação do rascunho: herda o denominador da base (ou da ativa).
-  denominador = registro['versoes'][corpo.base or registro['ativo']].get('denominador') or None
+  denominador = registro['versoes'][_base(corpo.base, registro)].get('denominador') or None
   try:
     core_modelos.validar_registro({'ativo': corpo.nome, 'versoes': {corpo.nome: {
       'features': corpo.features, 'descricao': corpo.descricao or '-'}}})

@@ -7,6 +7,9 @@ from unittest import mock
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 from ml.studio import api
+from isolamento_mlflow import com_ativa  # noqa: E402
+
+setUpModule, tearDownModule = com_ativa('v1')
 
 
 def conj(alvo):

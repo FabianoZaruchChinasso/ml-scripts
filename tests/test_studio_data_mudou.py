@@ -7,6 +7,7 @@ from unittest import mock
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 from ml.studio import api
+from isolamento_mlflow import isolar as setUpModule, restaurar as tearDownModule  # noqa: E402,F401
 
 
 class TestDataMudou(unittest.TestCase):

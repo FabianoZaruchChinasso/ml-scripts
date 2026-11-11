@@ -72,13 +72,6 @@ class TestRegistro(Base):
                     selecao={'nota_aninhada': {'pooled': 0.1}}, path=self.path)
     self.assertEqual(M.carregar(self.path)['versoes']['v2']['selecao']['nota_aninhada']['pooled'], 0.1)
 
-  def test_definir_ativo(self):
-    self.salvar()
-    M.definir_ativo('v2', path=self.path)
-    self.assertEqual(M.ativo(M.carregar(self.path)), ['router_snr', 'router_noise'])
-    with self.assertRaises(ValueError):
-      M.definir_ativo('v9', path=self.path)
-
   def test_fora_do_tr069_olha_derivadas(self):
     self.assertEqual(M.fora_do_tr069(['router_snr', 'RSSI', 'perda_percurso_db'], TABELA), ['RSSI'])
 

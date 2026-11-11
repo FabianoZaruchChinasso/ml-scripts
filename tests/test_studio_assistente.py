@@ -15,6 +15,9 @@ from ml.studio import api
 from ml.studio import features as SF
 from ml.studio import receitas as R
 from test_studio_features import TABELA, Base, frame
+from isolamento_mlflow import com_ativa  # noqa: E402
+
+setUpModule, tearDownModule = com_ativa('v1')
 
 
 def delta(pooled, mae, por_local=None):

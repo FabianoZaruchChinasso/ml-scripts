@@ -7,6 +7,7 @@ from unittest import mock
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 from ml.studio import api
+from isolamento_mlflow import isolar as setUpModule, restaurar as tearDownModule  # noqa: E402,F401
 
 PEDIDO = types.SimpleNamespace(client=types.SimpleNamespace(host='127.0.0.1'))
 ANTIGA = {'speedtest_down_mbps': {'datasets': ['a.csv'], 'ambiente': 'todos'}, 'atende_completo': {'media': 0.5}}

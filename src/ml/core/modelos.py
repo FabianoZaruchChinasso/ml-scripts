@@ -94,8 +94,9 @@ def versao_registro(path: str = MODELOS_PATH) -> str:
     return 'ausente'
 
 
-def ativo(registro: dict) -> list:
-  return list(registro['versoes'][registro['ativo']]['features'])
+def features_de(registro: dict, nome: str) -> list:
+  """Features da definição `nome`. KeyError se ela não existir."""
+  return list(registro['versoes'][nome]['features'])
 
 
 def denominador_de(registro: dict, nome: str, alvo: str):

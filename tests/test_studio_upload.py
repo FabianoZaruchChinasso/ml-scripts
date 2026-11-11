@@ -19,6 +19,7 @@ from ml.core import carga as C
 from ml.core import sites as S
 from ml.studio import api
 from ml.studio import ingestao as I
+from isolamento_mlflow import isolar as setUpModule, restaurar as tearDownModule  # noqa: E402,F401
 
 VILLA = {'chave': 'casa-zeta', 'rotulo': 'Casa Zeta', 'ambiente': 'domestico', 'prefixo': 'zeta'}
 
