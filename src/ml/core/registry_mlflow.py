@@ -52,6 +52,34 @@ def versao_da_definicao(definicao: str) -> int:
   return max(int(v.version) for v in achadas)
 
 
+def versao_mais_recente() -> int:
+  """O maior número de versão registrada. ValueError se não houver nenhuma."""
+  achadas = core_registro_mlflow.cliente().search_model_versions(f"name='{NOME_MODELO}'")
+  if not achadas:
+    raise ValueError(f'nenhuma versão registrada de {NOME_MODELO!r}; rode src/ml/versao_mlflow.py')
+  return max(int(v.version) for v in achadas)
+
+
+def info_versao(versao: int) -> dict:
+  """{'versao', 'definicao', 'run_id', 'fingerprints'} de uma versão registrada. ValueError se não existir."""
+  cli = core_registro_mlflow.cliente()
+  try:
+    v = cli.get_model_version(NOME_MODELO, str(versao))
+  except MlflowException as erro:
+    if erro.error_code in _AUSENTE:
+      raise ValueError(f'{NOME_MODELO!r} não tem a versão {versao}') from erro
+    raise
+  return {'versao': int(v.version), 'definicao': v.tags.get('definicao'), 'run_id': v.run_id,
+          'fingerprints': [f for f in (v.tags.get('fingerprints') or '').split(',') if f]}
+
+
+def marcar_portao(versao: int, tags: dict) -> None:
+  """Grava as tags do veredito do portão na versão registrada."""
+  cli = core_registro_mlflow.cliente()
+  for chave, valor in tags.items():
+    cli.set_model_version_tag(NOME_MODELO, str(versao), chave, str(valor))
+
+
 def ativa() -> dict:
   """{'versao', 'definicao', 'run_id'} da versão apontada pelo alias. SemVersaoAtiva se faltar algo."""
   cli = _cliente_de_leitura()

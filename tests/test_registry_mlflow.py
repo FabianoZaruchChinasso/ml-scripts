@@ -158,5 +158,29 @@ class TestNinguemLeOCampoAtivo(unittest.TestCase):
     self.assertNotIn('ativo', M.carregar())
 
 
+class TestInfoVersao(ComBanco):
+  def test_info_e_mais_recente(self):
+    self.registrar('v1')
+    G.registrar(self.modelo(), 'v5', ['abc', 'def', 'ghi'], 'p1')
+    self.assertEqual(G.versao_mais_recente(), 2)
+    info = G.info_versao(2)
+    self.assertEqual((info['versao'], info['definicao'], info['fingerprints']), (2, 'v5', ['abc', 'def', 'ghi']))
+    self.assertTrue(info['run_id'])
+
+  def test_sem_versoes_e_versao_inexistente(self):
+    self.modelo()
+    with self.assertRaisesRegex(ValueError, 'nenhuma versão'):
+      G.versao_mais_recente()
+    self.registrar()
+    with self.assertRaisesRegex(ValueError, 'versão 7'):
+      G.info_versao(7)
+
+  def test_marcar_portao(self):
+    self.registrar()
+    G.marcar_portao(1, {'portao': 'melhor', 'portao_contra': 3})
+    tags = G.core_registro_mlflow.cliente().get_model_version(G.NOME_MODELO, '1').tags
+    self.assertEqual((tags['portao'], tags['portao_contra']), ('melhor', '3'))
+
+
 if __name__ == '__main__':
   unittest.main()
