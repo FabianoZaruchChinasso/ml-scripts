@@ -270,7 +270,7 @@ class TestIsolamentoDosTestes(unittest.TestCase):
 
   def test_testes_do_pipeline_usam_banco_temporario(self):
     """Os testes de pacote_mlflow e versao_mlflow gravam runs de verdade: sem MLFLOW_TRACKING_URI
-    temporário, eles iriam para o mlflow.db da raiz."""
+    temporário (direto ou pela classe ComBanco), eles iriam para o mlflow.db da raiz."""
     pasta = os.path.dirname(os.path.abspath(__file__))
     faltam = []
     for arq in sorted(os.listdir(pasta)):
@@ -278,7 +278,8 @@ class TestIsolamentoDosTestes(unittest.TestCase):
         continue
       with open(os.path.join(pasta, arq), encoding='utf-8') as f:
         texto = f.read()
-      if re.search(r'pacote_mlflow|versao_mlflow', texto) and 'MLFLOW_TRACKING_URI' not in texto:
+      isolado = 'MLFLOW_TRACKING_URI' in texto or 'ComBanco' in texto   # ComBanco fixa o banco temporário
+      if re.search(r'pacote_mlflow|versao_mlflow', texto) and not isolado:
         faltam.append(arq)
     self.assertEqual(faltam, [])
 
