@@ -4,7 +4,7 @@
 
 **Goal:** `venv/bin/python src/ml/portao_mlflow.py` decide se a versão registrada mais recente de `qoe-wifi` substitui a ativa, grava o veredito no run e na versão, e move o alias quando for o caso.
 
-**Architecture:** `src/ml/core/portao.py` compara duas definições nas mesmas linhas (previsões fora do fold recalculadas nos dados da candidata) e decide, sem MLflow. `src/ml/core/registry_mlflow.py` ganha leitura de uma versão e tags de portão. `src/ml/portao_mlflow.py` é o comando: lê o Registry, chama o core, grava e promove.
+**Architecture:** `src/ml/core/portao.py` compara duas definições nas mesmas linhas (previsões fora do fold recalculadas nos dados da candidata), ou, no re-treino da mesma definição, a receita treinada só com o dado antigo contra a treinada com tudo, e decide, sem MLflow. As funções de previsão fora do fold ganham `treinar_em` para restringir as linhas de treino. `src/ml/core/registry_mlflow.py` ganha leitura de uma versão e tags de portão. `src/ml/portao_mlflow.py` é o comando: lê o Registry, chama o core, grava e promove.
 
 **Tech Stack:** Python 3.12, mlflow 3.15.1 (sqlite), pandas, scikit-learn, unittest.
 
@@ -27,6 +27,133 @@
 - `core_avaliacao.delta_mae` + `veredito_promocao` e `core_quantis.delta_pinball` + `veredito_quantis` são os vereditos que o Studio usa em `_promocao` (`src/ml/studio/api.py`); comparam nas mesmas linhas (`_linha`) e reamostram posições dentro dos prédios com semente fixa.
 - Cobertura do p90 nas cinco versões registradas: latência 0,905 a 0,920 e jitter 0,906 a 0,919, dentro de `FAIXA_COBERTURA` (0,80 a 0,95).
 - O run de `versao_mlflow.py` tem as métricas `comodo_nota`, `comodo_lo90`, `comodo_hi90` e `atende_completo`; a versão registrada tem as tags `definicao` e `fingerprints` (separados por vírgula).
+
+---
+
+### Task 0: `treinar_em` nas previsões fora do fold
+
+**Files:**
+- Modify: `src/ml/core/avaliacao.py` (`prever_fora_do_fold`, `_prever_por_banda`), `src/ml/core/quantis.py` (`prever_quantis_fora_do_fold`)
+- Test: `tests/test_avaliacao.py`, `tests/test_quantis.py`
+
+- [ ] **Step 1: Testes**
+
+Em `tests/test_avaliacao.py`, classe `TestPrevisoes`, acrescentar (o `Constante` do arquivo guarda em `indices_` as linhas de treino de cada ajuste):
+
+```python
+  def test_treinar_em_tira_linhas_do_treino_sem_mudar_o_teste(self):
+    conj = conjunto()
+    so_metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    vistos = []
+    prev = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(),
+                                 ao_ajustar=lambda fold, modelo: vistos.append(modelo.indices_),
+                                 treinar_em=so_metade)
+    self.assertEqual(sorted(prev['_linha']), sorted(conj.df['_linha']))   # todas as linhas são previstas
+    treinadas = {i for indices in vistos for i in indices}
+    self.assertTrue(treinadas)
+    self.assertTrue(treinadas <= set(conj.df.index[so_metade]))
+
+  def test_treinar_em_tudo_igual_a_none(self):
+    conj = conjunto()
+    tudo = pd.Series(True, index=conj.df.index)
+    a = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
+    b = A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=tudo)
+    pd.testing.assert_frame_equal(a, b)
+
+  def test_treinar_em_passa_pelo_denominador_por_banda(self):
+    f = frame()
+    f['radio'] = np.where(np.arange(len(f)) % 2 == 0, '5ghz', '2.4ghz')
+    conj = conjunto(f=f)
+    so_metade = pd.Series(np.arange(len(conj.df)) % 3 != 0, index=conj.df.index)
+    vistos = []
+    A.prever_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], estimador=Constante(),
+                          ao_ajustar=lambda fold, modelo: vistos.append(modelo.indices_),
+                          denominador={'coluna': 'router_snr', 'radio': '5ghz'}, treinar_em=so_metade)
+    self.assertTrue({i for indices in vistos for i in indices} <= set(conj.df.index[so_metade]))
+```
+
+(Se `C.preparar` descartar a coluna `radio` do frame sintético por não estar na `TABELA` do arquivo, acrescente `'radio': {'classe': 'tr069'}` às colunas da `TABELA` só neste teste, com uma cópia do dicionário.)
+
+Em `tests/test_quantis.py`, classe `TestPrevisoes`, acrescentar:
+
+```python
+  def test_treinar_em_tudo_igual_a_none_e_metade_muda_a_previsao(self):
+    conj = conjunto()
+    tudo = pd.Series(True, index=conj.df.index)
+    metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    a = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [])
+    b = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=tudo)
+    c = Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], treinar_em=metade)
+    pd.testing.assert_frame_equal(a, b)
+    self.assertEqual(sorted(c['_linha']), sorted(conj.df['_linha']))
+    self.assertFalse(np.allclose(a['q50'].to_numpy(), c.loc[a.index, 'q50'].to_numpy()))
+
+  def test_treinar_em_conta_as_linhas_de_treino(self):
+    conj = conjunto()
+    metade = pd.Series(np.arange(len(conj.df)) % 2 == 0, index=conj.df.index)
+    vistos = []
+
+    class Conta(Constante):
+      def fit(self, X, y):
+        vistos.append(set(X.index))
+        return super().fit(X, y)
+
+    Q.prever_quantis_fora_do_fold(conj.df, ['router_snr'], conj.alvo, [], conformal=False,
+                                  estimadores={0.5: Conta(), 0.9: Conta()}, treinar_em=metade)
+    self.assertTrue(vistos)
+    self.assertTrue(set().union(*vistos) <= set(conj.df.index[metade]))
+```
+
+Run: `venv/bin/python -m unittest discover -s tests -p 'test_avaliacao.py'` e `-p 'test_quantis.py'`
+Expected: `TypeError: ... unexpected keyword argument 'treinar_em'`.
+
+- [ ] **Step 2: Implementar**
+
+`src/ml/core/avaliacao.py`:
+- `prever_fora_do_fold(..., excluir_limitados: bool = False, treinar_em=None)`; na docstring, acrescentar: "`treinar_em` (série booleana alinhada a `df`, ou None para todas) restringe as linhas de treino de cada fold; as linhas de teste não mudam."
+- No ramo `if isinstance(denominador, dict):`, repassar: `return _prever_por_banda(..., ao_ajustar, denominador, treinar_em)`.
+- Depois de `limitado = ...` (antes do laço), acrescentar:
+
+```python
+  fora_do_treino = pd.Series(False, index=sub.index)
+  if treinar_em is not None:
+    fora_do_treino = ~treinar_em.reindex(sub.index, fill_value=False).astype(bool)
+```
+
+- No laço, `treino = ~limitado.loc[fold.X_train.index].to_numpy()` vira
+  `treino = ~(limitado | fora_do_treino).loc[fold.X_train.index].to_numpy()`.
+
+- `_prever_por_banda(df, colunas, y_col, vazadas, arvores, min_teste, min_treino, estimador, ao_ajustar, denominador: dict, treinar_em=None)`: as duas chamadas internas a `prever_fora_do_fold` passam `treinar_em=treinar_em`.
+
+`src/ml/core/quantis.py`, `prever_quantis_fora_do_fold(..., conformal: bool = True, treinar_em=None)`; docstring: mesma frase. Antes do laço:
+
+```python
+  dentro = pd.Series(True, index=sub.index)
+  if treinar_em is not None:
+    dentro = treinar_em.reindex(sub.index, fill_value=False).astype(bool)
+```
+
+No laço, logo no começo de cada fold:
+
+```python
+    usar = dentro.loc[fold.X_train.index].to_numpy()
+    X_treino, y_treino = fold.X_train[usar], fold.y_train[usar]
+    sites_treino = np.asarray(fold.train_site_ids)[usar]
+```
+
+e trocar `fold.X_train, fold.y_train` por `X_treino, y_treino` no `modelo.fit` e na chamada de `correcao_conformal` (que passa a receber `sites_treino` no lugar de `fold.train_site_ids`). Se `fold.train_site_ids` não for alinhado a `fold.X_train` (conferir em `core/splits.py`), use `sub['_site'].loc[fold.X_train.index].to_numpy()[usar]`.
+
+- [ ] **Step 3: Rodar e ver passar**
+
+Run: `venv/bin/python -m unittest discover -s tests -p 'test_avaliacao.py'`, `-p 'test_quantis.py'`, `-p 'test_pacote.py'` e `-p 'test_completa.py'`
+Expected: `OK` nos quatro (os dois últimos confirmam que o padrão `None` não mudou nada).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ml/core/avaliacao.py src/ml/core/quantis.py tests/test_avaliacao.py tests/test_quantis.py
+git commit -m "feat(core): previsões fora do fold aceitam restringir as linhas de treino"
+```
 
 ---
 
@@ -77,21 +204,25 @@ class TestDecidir(unittest.TestCase):
 
 
 class TestMesmaDefinicao(unittest.TestCase):
-  def test_mesmos_dados(self):
-    d = T.decidir_mesma_definicao(['b', 'a'], ['a', 'b'])
-    self.assertEqual((d['promover'], d['resultado']), (False, 'igual'))
+  def test_situacoes(self):
+    self.assertEqual(T.situacao_mesma_definicao(['b', 'a'], ['a', 'b']), 'igual')
+    self.assertEqual(T.situacao_mesma_definicao(['a', 'b', 'c'], ['a', 'b']), 'dado_novo')
+    self.assertEqual(T.situacao_mesma_definicao(['a', 'c'], ['a', 'b']), 'dados_diferentes')
+    self.assertEqual(T.situacao_mesma_definicao(['a'], ['a', 'b']), 'dados_diferentes')
 
-  def test_dado_novo(self):
-    d = T.decidir_mesma_definicao(['a', 'b', 'c'], ['a', 'b'])
+  def test_decidir_dado_novo_promove_sem_pior(self):
+    d = T.decidir_dado_novo(por_alvo('empate', 'empate', 'empate', 'empate'))
     self.assertEqual((d['promover'], d['resultado']), (True, 'dado_novo'))
-    self.assertIn('1', d['motivo'])
+    d = T.decidir_dado_novo(por_alvo('melhor', 'empate', 'empate', 'pior'))
+    self.assertEqual((d['promover'], d['resultado']), (False, 'pior'))
+    self.assertIn('jitter_ms', d['motivo'])
 
-  def test_dados_que_nao_contem_os_da_ativa(self):
-    for candidata in (['a', 'c'], ['a']):
-      with self.subTest(candidata=candidata):
-        d = T.decidir_mesma_definicao(candidata, ['a', 'b'])
-        self.assertEqual((d['promover'], d['resultado']), (False, 'dados_diferentes'))
-        self.assertIn('ativar_mlflow.py', d['motivo'])
+  def test_decisoes_sem_comparacao(self):
+    for situacao in ('igual', 'dados_diferentes'):
+      with self.subTest(situacao=situacao):
+        d = T.decidir_sem_comparar(situacao)
+        self.assertEqual((d['promover'], d['resultado']), (False, situacao))
+    self.assertIn('ativar_mlflow.py', T.decidir_sem_comparar('dados_diferentes')['motivo'])
 
 
 class TestComparar(unittest.TestCase):
@@ -128,6 +259,21 @@ class TestComparar(unittest.TestCase):
                      {'features': ['router_signal_dbm', 'radio'], 'denominador': None})
     self.assertEqual(sem['speedtest_down_mbps']['delta_mae']['valor'], 0.0)
     self.assertNotEqual(com['speedtest_down_mbps']['delta_mae']['valor'], 0.0)
+
+  def test_dado_novo_com_todo_o_dado_antigo_tem_diferenca_zero(self):
+    d = {'features': ['router_snr', 'radio'], 'denominador': None}
+    r = T.comparar_dado_novo(self.conjs, d, ids_antigos=['a.csv'])   # tudo é antigo: as duas receitas são iguais
+    self.assertEqual(list(r), list(T.ALVOS))
+    self.assertEqual([r[a]['delta_mae']['valor'] for a in A.ALVOS_COM_TETO], [0.0, 0.0])
+    self.assertEqual([r[a]['delta_pinball']['valor'] for a in ('latency_ms', 'jitter_ms')], [0.0, 0.0])
+
+  def test_dado_novo_compara_nas_mesmas_linhas(self):
+    conjs = {alvo: C.preparar({'a.csv': frame(seed=1), 'b.csv': frame(seed=2)}, alvo, TABELA) for alvo in P.PREFIXOS}
+    d = {'features': ['router_snr', 'router_signal_dbm'], 'denominador': None}
+    r = T.comparar_dado_novo(conjs, d, ids_antigos=['a.csv'])
+    for alvo in A.ALVOS_COM_TETO:
+      self.assertEqual(r[alvo]['delta_mae']['n'], int(conjs[alvo].df[alvo].notna().sum()))
+      self.assertIn(r[alvo]['veredito']['resultado'], RESULTADOS)
 
 
 if __name__ == '__main__':
@@ -199,27 +345,68 @@ def decidir(por_alvo: dict) -> dict:
           'motivo': 'empate nos quatro alvos: com estes prédios não dá para separar as duas versões; a ativa fica'}
 
 
-def decidir_mesma_definicao(fp_candidata, fp_ativa) -> dict:
-  """Re-treino da mesma definição: a validação cruzada nos mesmos dados daria diferença zero.
-
-  Promove quando os dados da candidata contêm os da ativa e mais algum.
-  """
+def situacao_mesma_definicao(fp_candidata, fp_ativa) -> str:
+  """Re-treino da mesma definição: 'igual' (mesmos dados), 'dado_novo' (os da ativa e mais algum) ou
+  'dados_diferentes' (não contém os da ativa)."""
   candidata, ativa = set(fp_candidata), set(fp_ativa)
   if candidata == ativa:
-    return {'promover': False, 'resultado': 'igual',
-            'motivo': 'mesma definição e mesmos dados da ativa: nada a trocar'}
-  if candidata > ativa:
-    return {'promover': True, 'resultado': 'dado_novo',
-            'motivo': f'mesma definição treinada com os dados da ativa e mais {len(candidata - ativa)} dataset(s)'}
+    return 'igual'
+  return 'dado_novo' if candidata > ativa else 'dados_diferentes'
+
+
+def decidir_sem_comparar(situacao: str) -> dict:
+  """Mesma definição em que o portão não compara: mantém a ativa e explica."""
+  if situacao == 'igual':
+    return {'promover': False, 'resultado': 'igual', 'motivo': 'mesma definição e mesmos dados da ativa: nada a trocar'}
   return {'promover': False, 'resultado': 'dados_diferentes',
           'motivo': 'mesma definição com dados que não contêm os da ativa: o portão não compara; '
                     'se for o caso, troque à mão com src/ml/ativar_mlflow.py'}
+
+
+def _treino(conj, ids_antigos) -> 'pd.Series':
+  return conj.df['_ds'].isin(list(ids_antigos))
+
+
+def comparar_dado_novo(conjs: dict, definicao: dict, ids_antigos) -> dict:
+  """Mesma receita, dois treinos: só as linhas dos datasets `ids_antigos` ("ativa") contra todas
+  ("candidata"). Mesmo formato de `comparar`; as previsões são das mesmas linhas (LOGO por prédio)."""
+  por_alvo = {}
+  for alvo in core_avaliacao.ALVOS_COM_TETO:
+    conj = conjs[alvo]
+    usadas, vazadas = core_completa.presentes(conj, definicao['features'])
+    den = (definicao.get('denominador') or {}).get(alvo)
+    com_tudo = core_avaliacao.prever_fora_do_fold(conj.df, usadas, alvo, vazadas, denominador=den)
+    so_antigo = core_avaliacao.prever_fora_do_fold(conj.df, usadas, alvo, vazadas, denominador=den,
+                                                   treinar_em=_treino(conj, ids_antigos))
+    delta = core_avaliacao.delta_mae(com_tudo, so_antigo)
+    por_alvo[alvo] = {'delta_mae': delta, 'veredito': core_avaliacao.veredito_promocao(delta)}
+  for alvo in core_quantis.ALVOS_QUANTILICOS:
+    conj = conjs[alvo]
+    usadas, vazadas = core_completa.presentes(conj, definicao['features'])
+    com_tudo = core_quantis.prever_quantis_fora_do_fold(conj.df, usadas, alvo, vazadas)
+    so_antigo = core_quantis.prever_quantis_fora_do_fold(conj.df, usadas, alvo, vazadas,
+                                                         treinar_em=_treino(conj, ids_antigos))
+    delta = core_quantis.delta_pinball(com_tudo, so_antigo)
+    cobertura = round(core_quantis.cobertura(com_tudo['y'], com_tudo['q90']), 4)
+    por_alvo[alvo] = {'delta_pinball': delta, 'cobertura': cobertura,
+                      'veredito': core_quantis.veredito_quantis(delta, cobertura)}
+  return por_alvo
+
+
+def decidir_dado_novo(por_alvo: dict) -> dict:
+  """Re-treino com dado novo: promove se nenhum alvo piorar. Mais dado da mesma receita é a expectativa;
+  com 6 prédios, exigir "melhor" deixaria a ativa presa no dado velho."""
+  piores = [a for a, b in por_alvo.items() if b['veredito']['resultado'] == 'pior']
+  if piores:
+    return {'promover': False, 'resultado': 'pior', 'motivo': f'o dado novo piora {", ".join(piores)}'}
+  return {'promover': True, 'resultado': 'dado_novo',
+          'motivo': 'mesma definição com dado novo, sem piorar nenhum alvo'}
 ```
 
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `venv/bin/python -m unittest discover -s tests -p 'test_portao.py'`
-Expected: `OK` (9 testes). Se `test_denominador_por_alvo_chega_na_previsao` falhar porque o `frame()` sintético não tem linhas de 5 GHz suficientes para o modelo de eficiência, troque `'radio': '5ghz'` por um denominador simples (`{'speedtest_down_mbps': 'router_snr', 'speedtest_up_mbps': 'router_snr'}`) e mantenha a asserção.
+Expected: `OK` (11 testes). Se `test_denominador_por_alvo_chega_na_previsao` falhar porque o `frame()` sintético não tem linhas de 5 GHz suficientes para o modelo de eficiência, troque `'radio': '5ghz'` por um denominador simples (`{'speedtest_down_mbps': 'router_snr', 'speedtest_up_mbps': 'router_snr'}`) e mantenha a asserção.
 
 - [ ] **Step 5: Commit**
 
@@ -361,7 +548,9 @@ class TestPortao(ComBanco):
         ('registro', (M.core_modelos, 'carregar'), {'return_value': REGISTRO}),
         ('descobertos', (M.core_carga, 'descobertos'), {'return_value': DESCOBERTOS}),
         ('carregar', (M.core_carga, 'carregar'), {'side_effect': lambda alvo, ids=None: mock.Mock(alvo=alvo)}),
-        ('comparar', (M.core_portao, 'comparar'), {'return_value': por_alvo('melhor', 'empate', 'empate', 'empate')})):
+        ('comparar', (M.core_portao, 'comparar'), {'return_value': por_alvo('melhor', 'empate', 'empate', 'empate')}),
+        ('dado_novo', (M.core_portao, 'comparar_dado_novo'),
+         {'return_value': por_alvo('empate', 'empate', 'empate', 'empate')})):
       p = mock.patch.object(*alvo, **extra)
       self.m[nome] = p.start()
       self.addCleanup(p.stop)
@@ -434,7 +623,7 @@ class TestPortao(ComBanco):
     tags = self.tags_run(2)
     self.assertEqual((tags['portao'], tags['portao_promovida'], tags['portao_simulado']), ('melhor', 'nao', 'sim'))
 
-  def test_mesma_definicao_com_dado_novo_promove_sem_comparar(self):
+  def test_mesma_definicao_com_dado_novo_compara_os_dois_treinos(self):
     self.registrar('v5')
     G.ativar(1)
     G.registrar(self.modelo(), 'v5', ['abc', 'def', 'ghi'], 'p1')
@@ -442,6 +631,27 @@ class TestPortao(ComBanco):
     self.assertEqual(G.ativa()['versao'], 2)
     self.assertEqual(self.tags_run(2)['portao'], 'dado_novo')
     self.m['comparar'].assert_not_called()
+    conjs, definicao = self.m['dado_novo'].call_args.args
+    self.assertEqual(definicao, {'features': ['a', 'b'], 'denominador': DEN})
+    self.assertEqual(self.m['dado_novo'].call_args.kwargs['ids_antigos'], ['a.zip', 'b.zip'])
+    self.assertEqual(self.m['carregar'].call_args.kwargs['ids'], ['a.zip', 'b.zip', 'c.zip'])
+
+  def test_dado_novo_que_piora_nao_promove(self):
+    self.m['dado_novo'].return_value = por_alvo('empate', 'pior', 'empate', 'empate')
+    self.registrar('v5')
+    G.ativar(1)
+    G.registrar(self.modelo(), 'v5', ['abc', 'def', 'ghi'], 'p1')
+    self.rodar()
+    self.assertEqual(G.ativa()['versao'], 1)
+    self.assertEqual(self.tags_run(2)['portao'], 'pior')
+
+  def test_mesma_definicao_e_mesmos_dados_nao_carrega(self):
+    self.registrar('v5')
+    G.ativar(1)
+    self.registrar('v5')
+    self.rodar()
+    self.assertEqual(G.ativa()['versao'], 1)
+    self.assertEqual(self.tags_run(2)['portao'], 'igual')
     self.m['carregar'].assert_not_called()
 
   def test_dado_da_candidata_fora_de_data_para_antes_de_carregar(self):
@@ -484,8 +694,8 @@ Expected: erro de import (`No module named 'ml.portao_mlflow'`).
 VERSAO=<n> escolhe a candidata (padrão: a versão registrada mais recente, a que versao_mlflow.py acabou de
 gravar). As duas definições são comparadas nos dados da candidata (core/portao.py): download e upload pelo
 Δ MAE, latência e jitter pelo Δ pinball e pela cobertura do p90. Promove se nenhum alvo piorar e pelo menos
-um melhorar. A mesma definição com dado novo é promovida sem comparação; sem versão ativa, a candidata é
-promovida. SIMULAR=1 grava o veredito sem mover o alias. O veredito fica no run da candidata (tags portao_*
+um melhorar. A mesma definição com dado novo é comparada consigo mesma treinada só com o dado da ativa, e é
+promovida se nenhum alvo piorar; sem versão ativa, a candidata é promovida. SIMULAR=1 grava o veredito sem mover o alias. O veredito fica no run da candidata (tags portao_*
 e portao.json) e na versão registrada (tags portao e portao_contra). O código de saída é 0 tanto para
 "promovida" quanto para "mantida".
 
@@ -587,7 +797,16 @@ def main():
   if ativa is None:
     decisao = {'promover': True, 'resultado': 'primeira', 'motivo': 'não há versão ativa'}
   elif candidata['definicao'] == ativa['definicao']:
-    decisao = core_portao.decidir_mesma_definicao(candidata['fingerprints'], ativa['fingerprints'])
+    situacao = core_portao.situacao_mesma_definicao(candidata['fingerprints'], ativa['fingerprints'])
+    if situacao != 'dado_novo':
+      decisao = core_portao.decidir_sem_comparar(situacao)
+    else:
+      ids = _ids(candidata['fingerprints'])
+      antigos = _ids(ativa['fingerprints'])
+      print(f"{candidata['definicao']} com dado novo: treino só com {antigos} contra treino com {ids}")
+      conjs = {alvo: core_carga.carregar(alvo, ids=ids) for alvo in core_pacote.PREFIXOS}
+      por_alvo = core_portao.comparar_dado_novo(conjs, def_candidata, ids_antigos=antigos)
+      decisao = core_portao.decidir_dado_novo(por_alvo)
   else:
     def_ativa = _definicao(registro, ativa['definicao'])
     ids = _ids(candidata['fingerprints'])
@@ -609,7 +828,7 @@ if __name__ == '__main__':
 - [ ] **Step 3: Rodar e ver passar**
 
 Run: `venv/bin/python -m unittest discover -s tests -p 'test_portao_mlflow.py'`
-Expected: `OK` (8 testes). Nota: `from test_registry_mlflow import ComBanco, G` faz o `discover` rodar também os testes de `test_registry_mlflow` neste arquivo? Não: o unittest só coleta classes `TestCase` com métodos `test_*`; `ComBanco` não tem nenhum. Se aparecerem testes duplicados, troque por `import test_registry_mlflow as base` e use `base.ComBanco`.
+Expected: `OK` (10 testes). Nota: `from test_registry_mlflow import ComBanco, G` faz o `discover` rodar também os testes de `test_registry_mlflow` neste arquivo? Não: o unittest só coleta classes `TestCase` com métodos `test_*`; `ComBanco` não tem nenhum. Se aparecerem testes duplicados, troque por `import test_registry_mlflow as base` e use `base.ComBanco`.
 
 - [ ] **Step 4: Commit**
 
@@ -637,7 +856,7 @@ SIMULAR=1 VERSAO=4 venv/bin/python src/ml/portao_mlflow.py         # record the 
 Na seção "MLflow", depois do item da versão ativa, acrescentar:
 
 ```
-- `src/ml/portao_mlflow.py` is the promotion gate. It compares the candidate (`VERSAO=`, default: the latest registered version) with the active version on the candidate's data: out-of-fold predictions of both definitions on the same rows, download and upload by the MAE difference, latency and jitter by the p90 pinball difference and the p90 coverage (90% intervals, positions resampled within buildings). It promotes when no target gets worse and at least one gets better; a tie keeps the active version. The same definition retrained with more data is promoted without comparison. The verdict is stored on the candidate run (tags `portao`, `portao_promovida`, `portao_contra`, `portao_simulado`, file `portao.json`, with the per-room ruler and "atende completo" of both runs as auxiliaries) and on the registered version (tags `portao`, `portao_contra`). `ativar_mlflow.py` stays for rollbacks.
+- `src/ml/portao_mlflow.py` is the promotion gate. It compares the candidate (`VERSAO=`, default: the latest registered version) with the active version on the candidate's data: out-of-fold predictions of both definitions on the same rows, download and upload by the MAE difference, latency and jitter by the p90 pinball difference and the p90 coverage (90% intervals, positions resampled within buildings). It promotes when no target gets worse and at least one gets better; a tie keeps the active version. The same definition retrained with more data is compared with itself trained only on the active version's datasets (same rows, leave-one-building-out) and promoted unless some target gets worse. The verdict is stored on the candidate run (tags `portao`, `portao_promovida`, `portao_contra`, `portao_simulado`, file `portao.json`, with the per-room ruler and "atende completo" of both runs as auxiliaries) and on the registered version (tags `portao`, `portao_contra`). `ativar_mlflow.py` stays for rollbacks.
 ```
 
 - [ ] **Step 2: Docstring de `ativar_mlflow.py`**
@@ -685,6 +904,32 @@ venv/bin/python src/ml/ativar_mlflow.py
 
 Expected: o portão compara v5 com v1 nos dados da v5. Se promover, o alias volta para a 5. Se não promover (empate ou pior), anotar o motivo e voltar à mão: `VERSAO=5 venv/bin/python src/ml/ativar_mlflow.py`. **O alias termina na 5.**
 
+- [ ] **Step 3b: Dado novo, com a Villa no papel de dado novo**
+
+Os ids da versão 5 sem os dois arquivos da Villa:
+
+```bash
+SEM_VILLA=$(venv/bin/python - <<'EOF'
+import sys; sys.path.insert(0, 'src')
+from ml.core import carga as C, registry_mlflow as G
+por_fp = {d['fingerprint']: d['id'] for d in C.descobertos() if d.get('usable')}
+print(','.join(por_fp[f] for f in G.info_versao(5)['fingerprints'] if not por_fp[f].startswith('villa')))
+EOF
+)
+echo "$SEM_VILLA"
+MODELO=v5 DATASETS="$SEM_VILLA" venv/bin/python src/ml/versao_mlflow.py 2>&1 | tail -3
+```
+
+Expected: `versão registrada 6`. Então:
+
+```bash
+VERSAO=6 venv/bin/python src/ml/ativar_mlflow.py
+VERSAO=5 venv/bin/python src/ml/portao_mlflow.py 2>&1 | grep -v -i warn
+venv/bin/python src/ml/ativar_mlflow.py
+```
+
+Expected: "v5 com dado novo: treino só com [...] contra treino com [...]", os quatro vereditos e a decisão. Se não promover, anotar o motivo (é um resultado: a Villa pioraria algum alvo) e voltar à mão com `VERSAO=5 venv/bin/python src/ml/ativar_mlflow.py`. **O alias termina na 5.** A versão 6 fica registrada (v5 sem a Villa), com o veredito do portão nas tags da 5.
+
 - [ ] **Step 4: O veredito está gravado**
 
 ```bash
@@ -705,7 +950,7 @@ Expected: as versões 4 e 5 com as tags do portão e `portao.json`.
 
 - [ ] **Step 5: Efeito medido no CHANGELOG**
 
-Acrescentar à entrada do portão a seção "Efeito medido" com: o resultado por alvo de v4 contra v5 e de v5 contra v1, o tempo de cada comparação, e o estado final do alias. Commit:
+Acrescentar à entrada do portão a seção "Efeito medido" com: o resultado por alvo de v4 contra v5, de v5 contra v1 e da v5 com a Villa contra a v5 sem a Villa, o tempo de cada comparação, e o estado final do alias. Commit:
 
 ```bash
 git add CHANGELOG.md
