@@ -1,7 +1,7 @@
 """Mostra ou troca a versão ativa: o alias 'ativo' do modelo 'qoe-wifi' no Model Registry.
 
 Sem variáveis, mostra a ativa. MODELO=<definição> ativa a versão registrada mais recente dessa definição;
-VERSAO=<n> ativa a versão registrada n. É a promoção manual até o portão de promoção existir.
+VERSAO=<n> ativa a versão registrada n. O caminho normal é o portão (src/ml/portao_mlflow.py); este comando fica para voltar uma versão ou forçar uma troca.
 
   venv/bin/python src/ml/ativar_mlflow.py
   MODELO=v5 venv/bin/python src/ml/ativar_mlflow.py

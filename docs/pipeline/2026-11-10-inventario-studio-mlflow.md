@@ -107,7 +107,7 @@ Wifi QoE"), gravados por scripts separados.
 3. **Versão do dado no run.** Só `experimental/classifier_mlflow.py` usa `mlflow.log_input`.
 4. **Métricas por prédio.** Existem só dentro de `avaliacao.json`, e por isso não aparecem na
    comparação do MLflow.
-5. **Veredito de promoção.** É calculado pelo Studio na hora e não fica gravado em lugar nenhum.
+5. **Veredito de promoção** (feito em 2026-11-11: tags e `portao.json` no run da candidata). Era calculado pelo Studio na hora e não fica gravado em lugar nenhum.
 
 ## Decisões para o time
 
@@ -154,7 +154,7 @@ Os 9 arquivos `tests/test_studio_*.py` e os testes de JS precisam ser migrados o
    e versão do dado. Feito em 2026-11-10: `src/ml/versao_mlflow.py`
    (spec em `docs/superpowers/specs/2026-11-10-versao-mlflow-design.md`).
 4. Registrar as versões v1 a v5 no Model Registry e criar o alias do modelo ativo. Feito em 2026-11-11: `core/registry_mlflow.py` e `ativar_mlflow.py`; o Studio lê o alias e não ativa mais (spec `docs/superpowers/specs/2026-11-11-model-registry-alias-design.md`).
-5. Criar o portão de promoção.
+5. Criar o portão de promoção. Feito em 2026-11-11: `core/portao.py` e `portao_mlflow.py` (spec `docs/superpowers/specs/2026-11-11-portao-promocao-design.md`).
 6. Criar os comandos do Laboratório.
 7. Conferir, função por função desta lista, que o resultado novo bate com o do Studio.
 8. Apagar o Studio.

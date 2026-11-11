@@ -1,3 +1,46 @@
+# Changelog — Portão de promoção
+
+**Data:** 2026-11-11
+
+## Por quê
+
+Quinto passo da troca do Studio pelo MLflow e item "Portão de promoção" do backlog. O alias `ativo` só se movia
+à mão, e a DAG de treino precisa de um passo que decida sozinho, depois de cada `versao_mlflow.py`, se a versão
+recém-registrada substitui a ativa, deixando o motivo gravado. O veredito de promoção do Studio era calculado
+na tela e não ficava em lugar nenhum. Comparar as métricas gravadas nos dois runs não serve: cada run pode ter
+sido avaliado com dados diferentes.
+
+## Decisões
+
+- A comparação recalcula as previsões fora do fold (LOGO por prédio) das duas definições nos dados da
+  candidata, nas mesmas linhas, com as mesmas funções da avaliação.
+- Download e upload decidem pelo Δ MAE; latência e jitter, pelo Δ pinball do p90 e pela cobertura do p90. As
+  réguas de QoE (por cômodo e "atende completo") vão para o relatório como auxiliares e não decidem.
+- Promove se nenhum alvo piorar e pelo menos um melhorar. Empate mantém a ativa. Sem versão ativa, promove a
+  candidata.
+- Re-treino da mesma definição com dado novo: compara a receita treinada só com os datasets da ativa contra a
+  treinada com tudo, nas mesmas linhas, e promove se nenhum alvo piorar (mais dado da mesma receita é a
+  expectativa; exigir "melhor" deixaria a ativa presa no dado velho). Mesmos dados: nada a trocar. Dados que não
+  contêm os da ativa: não promove e explica.
+- Degradação da ativa: quando a candidata traz datasets que a ativa não viu, o pacote da ativa prevê essas
+  linhas e o erro é comparado com o esperado (validação cruzada gravada no run dela). Só informativo.
+- O veredito fica no run da candidata (tags `portao`, `portao_promovida`, `portao_contra`, `portao_simulado`,
+  `portao_degradacao` e `portao.json`) e na versão registrada (tags `portao` e `portao_contra`).
+- `SIMULAR=1` grava o veredito sem mover o alias. `ativar_mlflow.py` continua para voltar uma versão.
+
+## Mudanças
+
+- `core/avaliacao.py` e `core/quantis.py`: `prever_fora_do_fold` e `prever_quantis_fora_do_fold` aceitam
+  `treinar_em`, que restringe as linhas de treino de cada fold sem mudar as de teste (padrão: todas).
+- `core/portao.py` (novo): `comparar`, `decidir`, `situacao_mesma_definicao`, `decidir_sem_comparar`,
+  `comparar_dado_novo` e `decidir_dado_novo`.
+- `core/degradacao.py` (novo): `medir` e `degradou`.
+- `core/registry_mlflow.py`: `versao_mais_recente`, `info_versao` e `marcar_portao`.
+- `portao_mlflow.py` (novo): `VERSAO=<n>` escolhe a candidata (padrão: a mais recente); `SIMULAR=1`.
+- Testes: `test_portao.py`, `test_degradacao.py`, `test_portao_mlflow.py` (novos), mais testes de `treinar_em` em
+  `test_avaliacao.py` e `test_quantis.py` e de Registry em `test_registry_mlflow.py`.
+
+
 # Changelog — Model Registry e alias do modelo ativo
 
 **Data:** 2026-11-11
